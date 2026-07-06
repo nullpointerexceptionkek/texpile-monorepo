@@ -6,7 +6,7 @@ A local, offline LaTeX editor for Windows, macOS, and Linux. Open a folder, edit
 
 ## Download
 
-Installers for all three platforms are on [texpile.com/download](https://desktop.texpile.com/download), or directly:
+Installers for all three platforms are on [desktop.texpile.com/download](https://desktop.texpile.com/download), or directly:
 
 | Platform         | Link                                                                   |
 | ---------------- | ---------------------------------------------------------------------- |

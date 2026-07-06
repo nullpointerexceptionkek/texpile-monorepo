@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg id="Layer_2" data-name="Layer 2" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="0 0 523.58 493.03">
+  <defs>
+    <style>
+      .cls-1 {
+        fill: url(#Dégradé_sans_nom_10-2);
+      }
+
+      .cls-1, .cls-2, .cls-3 {
+        stroke-width: 0px;
+      }
+
+      .cls-2 {
+        fill: url(#Dégradé_sans_nom_10-3);
+      }
+
+      .cls-3 {
+        fill: url(#Dégradé_sans_nom_10);
+      }
+    </style>
+    <radialGradient id="Dégradé_sans_nom_10" data-name="Dégradé sans nom 10" cx="613.24" cy="329.39" fx="613.24" fy="329.39" r="425.23" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#0088f7"/>
+      <stop offset=".14" stop-color="#0097f7"/>
+      <stop offset=".5" stop-color="#00b9f8"/>
+      <stop offset=".8" stop-color="#00cef8"/>
+      <stop offset="1" stop-color="#00d6f9"/>
+    </radialGradient>
+    <radialGradient id="Dégradé_sans_nom_10-2" data-name="Dégradé sans nom 10" cx="1331.88" cy="-875.11" fx="1331.88" fy="-875.11" r="152.55" gradientTransform="translate(1037.94 1499.44) rotate(-90)" xlink:href="#Dégradé_sans_nom_10"/>
+    <radialGradient id="Dégradé_sans_nom_10-3" data-name="Dégradé sans nom 10" cx="1331.88" cy="-875.11" fx="1331.88" fy="-875.11" r="152.55" gradientTransform="translate(1037.94 1499.44) rotate(-90)" xlink:href="#Dégradé_sans_nom_10"/>
+  </defs>
+  <g id="Calque_1" data-name="Calque 1">
+    <g>
+      <path class="cls-3" d="M474.43,389.78c-8.78-18.53-13.46-39.27-13.46-59.82v-201.55H199.93V0h-71.52v128.41H0v71.52h128.41v130.03c0,31.14,7.09,62.42,20.48,90.57l34.46,72.49h340.24l-49.15-103.25ZM228.54,421.51l-15.08-31.73c-8.84-18.53-13.52-39.27-13.52-59.82v-130.03h189.52v130.03c0,31.14,7.02,62.42,20.42,90.57l.46.98h-181.79Z"/>
+      <rect class="cls-1" x="128.41" y="199.93" width="71.52" height="128.41"/>
+      <rect class="cls-2" x="128.41" width="71.52" height="128.41"/>
+    </g>
+  </g>
+</svg>

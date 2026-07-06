@@ -1,0 +1,206 @@
+# Build Texpile installers for all three OSes; a version tag (v*) also attaches them to a draft release.
+#
+# node-pty ships win/mac prebuilds but no linux ones, so Linux rebuilds it for Electron's ABI.
+# macOS builds are unsigned (right-click > Open the first time). Windows signs with Azure Trusted
+# Signing once the three AZURE_* repo variables + three AZURE_* secrets exist; until then the
+# fallback step builds unsigned. Signing is injected as CLI overrides here (not electron-builder.yml)
+# so local `pnpm dist` stays unsigned and needs no Azure credentials.
+name: release
+
+on:
+  workflow_dispatch:
+    inputs:
+      publish_r2:
+        description: 'Also upload the installers to the R2 downloads bucket'
+        type: boolean
+        default: false
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write # attach artifacts to the draft release on tag builds
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            artifacts: |
+              release/*.exe
+              release/*.blockmap
+          - os: macos-latest
+            artifacts: |
+              release/*.dmg
+              release/*.blockmap
+          - os: ubuntu-latest
+            artifacts: |
+              release/*.AppImage
+              release/*.deb
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      # no linux prebuilds ship with node-pty
+      - if: runner.os == 'Linux'
+        run: pnpm electron:rebuild
+
+      # version goes into the artifact name so a stale build can't be mistaken for a fresh one
+      - id: ver
+        run: echo "v=$(node -p "require('./package.json').version")" >> "$GITHUB_OUTPUT"
+        shell: bash
+
+      # the PowerShell module electron-builder uses for Azure Trusted Signing; a named up-front step
+      # turns a PSGallery hiccup into an obvious failure. RequiredVersion matches electron-builder@25.1.8.
+      - name: Set up Azure Trusted Signing (Windows)
+        if: runner.os == 'Windows' && vars.AZURE_ENDPOINT != ''
+        shell: pwsh
+        run: |
+          try { Install-PackageProvider -Name NuGet -MinimumVersion 2.8.5.201 -Force -Scope CurrentUser -ErrorAction Stop }
+          catch { Write-Host "NuGet provider bootstrap skipped (often already present): $($_.Exception.Message)" }
+          Set-PSRepository -Name PSGallery -InstallationPolicy Trusted
+          Install-Module -Name TrustedSigning -RequiredVersion 0.4.1 -Force -Repository PSGallery -Scope CurrentUser
+
+      # creds come from the AZURE_* secrets, account/profile/endpoint from repo variables. The
+      # RFC-3161 timestamp is essential: Trusted Signing certs live ~3 days, so untimestamped
+      # signatures die when the cert lapses. Use the long --config.<path> form: pwsh tokenizes
+      # -c.<path> into `-c` plus a bogus config file path (ENOENT).
+      - name: Build & sign installer (Windows / Azure Trusted Signing)
+        if: runner.os == 'Windows' && vars.AZURE_ENDPOINT != ''
+        shell: pwsh
+        run: >
+          pnpm dist
+          --config.win.azureSignOptions.endpoint=${{ vars.AZURE_ENDPOINT }}
+          --config.win.azureSignOptions.codeSigningAccountName=${{ vars.AZURE_CODE_SIGNING_ACCOUNT }}
+          --config.win.azureSignOptions.certificateProfileName=${{ vars.AZURE_CERT_PROFILE }}
+          --config.win.azureSignOptions.TimestampRfc3161=http://timestamp.acs.microsoft.com
+          --config.win.azureSignOptions.TimestampDigest=SHA256
+        env:
+          AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+          AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+          AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
+
+      # unsigned fallback: macOS/Linux, or Windows before signing is configured
+      - name: Build installers
+        if: runner.os != 'Windows' || vars.AZURE_ENDPOINT == ''
+        run: pnpm dist
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: texpile-${{ runner.os }}-v${{ steps.ver.outputs.v }}
+          path: ${{ matrix.artifacts }}
+          if-no-files-found: error
+
+      - if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          draft: true
+          files: ${{ matrix.artifacts }}
+
+  # publish the installers to the R2 bucket behind the landing page's download links.
+  # Needs CLOUDFLARE_API_TOKEN ("Workers R2 Storage: Edit") + CLOUDFLARE_ACCOUNT_ID secrets.
+  publish-r2:
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/v') || inputs.publish_r2
+    runs-on: ubuntu-latest
+    # the Cloudflare secrets live in this environment; without naming it they never reach the job
+    environment: CICD
+    env:
+      BUCKET: texpile-releases # must match the bucket name created in the Cloudflare dashboard
+    steps:
+      # only needed to read the version from package.json
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: texpile-*
+          merge-multiple: true
+          path: dist
+
+      - name: Rename to versioned download names
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          echo "VERSION=$VERSION" >> "$GITHUB_ENV"
+          cd dist
+          # electron-builder's artifact names vary by target; normalize to the canonical download
+          # name, skipping the move when it already matches (mv errors on same-file)
+          rename_one() {
+            local src
+            src=$(ls $1 2>/dev/null | head -1)
+            if [ -z "$src" ]; then echo "::error::no artifact matched $1"; exit 1; fi
+            if [ "$src" != "$2" ]; then mv -f -- "$src" "$2"; fi
+          }
+          rename_one '*.exe' "Texpile-Setup-$VERSION.exe"
+          rename_one '*.dmg' "Texpile-$VERSION.dmg"
+          rename_one '*.AppImage' "Texpile-$VERSION.AppImage"
+          rename_one '*.deb' "texpile-$VERSION.deb"
+          ls -la
+
+      # the landing fetches this to link the versioned files and show the version number
+      - name: Write latest.json
+        run: |
+          cat > dist/latest.json <<EOF
+          {
+            "version": "$VERSION",
+            "publishedAt": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
+            "files": {
+              "windows": "v$VERSION/Texpile-Setup-$VERSION.exe",
+              "mac": "v$VERSION/Texpile-$VERSION.dmg",
+              "linuxAppImage": "v$VERSION/Texpile-$VERSION.AppImage",
+              "linuxDeb": "v$VERSION/texpile-$VERSION.deb"
+            }
+          }
+          EOF
+          cat dist/latest.json
+
+      # each release lands twice: an immutable copy under v<version>/, plus the stable root names
+      # (overwritten every release, the landing's no-JS fallback links)
+      - name: Upload to R2
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          put() { npx wrangler@4 r2 object put "$BUCKET/$1" --file "$2" --remote --content-type "$3"; }
+          put "v$VERSION/Texpile-Setup-$VERSION.exe" "dist/Texpile-Setup-$VERSION.exe" application/octet-stream
+          put "v$VERSION/Texpile-$VERSION.dmg" "dist/Texpile-$VERSION.dmg" application/octet-stream
+          put "v$VERSION/Texpile-$VERSION.AppImage" "dist/Texpile-$VERSION.AppImage" application/octet-stream
+          put "v$VERSION/texpile-$VERSION.deb" "dist/texpile-$VERSION.deb" application/octet-stream
+          put "Texpile-Setup.exe" "dist/Texpile-Setup-$VERSION.exe" application/octet-stream
+          put "Texpile.dmg" "dist/Texpile-$VERSION.dmg" application/octet-stream
+          put "Texpile.AppImage" "dist/Texpile-$VERSION.AppImage" application/octet-stream
+          put "texpile.deb" "dist/texpile-$VERSION.deb" application/octet-stream
+          put "latest.json" "dist/latest.json" application/json
+
+      # cumulative manifest for the landing's version history (latest.json only describes the
+      # newest). Dropping any existing entry for this version keeps a re-publish idempotent.
+      - name: Update versions.json
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          npx wrangler@4 r2 object get "$BUCKET/versions.json" --file dist/versions.json --remote 2>/dev/null \
+            || echo '{"versions":[]}' > dist/versions.json
+          node -e '
+            const fs = require("fs");
+            const version = process.env.VERSION;
+            let manifest;
+            try { manifest = JSON.parse(fs.readFileSync("dist/versions.json", "utf8")); } catch { manifest = null; }
+            if (!manifest || !Array.isArray(manifest.versions)) manifest = { versions: [] };
+            const entry = JSON.parse(fs.readFileSync("dist/latest.json", "utf8"));
+            manifest.versions = manifest.versions.filter((v) => v.version !== version);
+            manifest.versions.unshift(entry);
+            fs.writeFileSync("dist/versions.json", JSON.stringify(manifest, null, 2));
+          '
+          cat dist/versions.json
+          npx wrangler@4 r2 object put "$BUCKET/versions.json" --file dist/versions.json --remote --content-type application/json

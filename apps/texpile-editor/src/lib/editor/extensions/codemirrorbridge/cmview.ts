@@ -1,0 +1,244 @@
+import { EditorView as CodeMirrorView, keymap as cmKeymap, drawSelection } from '@codemirror/view';
+import { Compartment as CodeMirrorCompartment } from '@codemirror/state';
+import { defaultKeymap, indentWithTab } from '@codemirror/commands';
+import { cmSyntaxHighlight } from '$lib/editor/cmHighlight';
+import { exitCode } from 'prosemirror-commands';
+import { undo, redo } from 'prosemirror-history';
+import { TextSelection, Selection } from 'prosemirror-state';
+import type { Node } from 'prosemirror-model';
+import type { EditorView as ProseMirrorView } from 'prosemirror-view';
+import { languages as cmlangdata } from '@codemirror/language-data';
+import { markdown } from '@codemirror/lang-markdown';
+
+class CodeBlockView {
+	node: Node;
+	view: ProseMirrorView;
+	getPos: () => number;
+	cm: CodeMirrorView;
+	dom: HTMLElement;
+	updating: boolean;
+	languageConf = new CodeMirrorCompartment();
+	language = new CodeMirrorCompartment();
+	tabSize = new CodeMirrorCompartment();
+
+	constructor(node: Node, view: ProseMirrorView, getPos: () => number) {
+		this.node = node;
+		this.view = view;
+		this.getPos = getPos;
+
+		this.cm = new CodeMirrorView({
+			doc: this.node.textContent,
+			extensions: [
+				cmKeymap.of([...this.codeMirrorKeymap(), ...defaultKeymap]),
+				cmKeymap.of([indentWithTab]),
+				drawSelection(),
+				this.languageConf.of(markdown()),
+				cmSyntaxHighlight(),
+				CodeMirrorView.updateListener.of((update) => this.forwardUpdate(update as never)),
+				CodeMirrorView.contentAttributes.of({ spellcheck: 'false' }),
+				CodeMirrorView.contentAttributes.of({ 'data-gramm': 'false' }), // disable grammarly
+				CodeMirrorView.contentAttributes.of({ 'data-gramm_editor': 'false' }),
+				CodeMirrorView.contentAttributes.of({ 'data-enable-grammarly': 'false' })
+			]
+		});
+
+		const wrapper = document.createElement('div');
+		wrapper.className = 'noautofocus cm-wrapper border-2 border-gray-1100 shadow-lg rounded-md p-2 m-1';
+
+		const dropdown = document.createElement('select');
+		dropdown.className =
+			'noautofocus bg-surface-50-950 text-surface-900-100 border-surface-300-700 flex h-5 w-full items-center justify-center rounded border-[0.504px] text-xs font-medium';
+		cmlangdata.forEach((lang) => {
+			const option = document.createElement('option');
+			option.value = lang.name;
+			option.text = lang.name;
+			dropdown.appendChild(option);
+		});
+
+		dropdown.addEventListener('change', async (event) => {
+			const selectedLanguage = (event.target as HTMLSelectElement).value;
+			const selectedLanguageData = cmlangdata.find((lang) => lang.name === selectedLanguage);
+			this.view.dispatch(this.view.state.tr.setNodeMarkup(this.getPos(), undefined, { lang: selectedLanguage }));
+			this.cm.dispatch({
+				effects: this.languageConf.reconfigure(await selectedLanguageData.load())
+			});
+		});
+		wrapper.appendChild(dropdown);
+		wrapper.appendChild(this.cm.dom);
+		this.dom = wrapper;
+
+		const currentlang = this.node.attrs.lang;
+		const langData = cmlangdata.find((lang) => lang.name.toLowerCase() === currentlang?.toLowerCase());
+		if (langData) {
+			langData.load().then((lang) => {
+				dropdown.value = langData.name;
+				this.cm.dispatch({
+					effects: this.languageConf.reconfigure(lang)
+				});
+			});
+		}
+
+		this.handleFocus = this.handleFocus.bind(this);
+		this.handleBlur = this.handleBlur.bind(this);
+		this.cm.dom.addEventListener('focus', this.handleFocus, true);
+		this.cm.dom.addEventListener('blur', this.handleBlur, true);
+	}
+
+	handleFocus() {}
+	handleBlur() {
+		this.deselectNode();
+	}
+
+	// eslint-disable-next-line @typescript-eslint/no-explicit-any
+	forwardUpdate(update: any): void {
+		if (this.updating || !this.cm.hasFocus) return;
+		let offset = this.getPos() + 1;
+		const { main } = update.state.selection;
+		const selFrom = offset + main.from,
+			selTo = offset + main.to;
+		const pmSel = this.view.state.selection;
+		if (update.docChanged || pmSel.from != selFrom || pmSel.to != selTo) {
+			const tr = this.view.state.tr;
+			update.changes.iterChanges((fromA, toA, fromB, toB, text) => {
+				if (text.length) tr.replaceWith(offset + fromA, offset + toA, this.node.type.schema.text(text.toString()));
+				else tr.delete(offset + fromA, offset + toA);
+				offset += toB - fromB - (toA - fromA);
+			});
+			tr.setSelection(TextSelection.create(tr.doc, selFrom, selTo));
+			this.view.dispatch(tr);
+		}
+	}
+
+	setSelection(anchor: number, head: number): void {
+		this.cm.focus();
+		this.updating = true;
+		this.cm.dispatch({ selection: { anchor, head } });
+		this.updating = false;
+	}
+
+	codeMirrorKeymap(): Array<unknown> {
+		const view = this.view;
+		return [
+			{
+				key: 'ArrowUp',
+				run: () => this.maybeEscape('line', -1)
+			},
+			{
+				key: 'ArrowLeft',
+				run: () => this.maybeEscape('char', -1)
+			},
+			{
+				key: 'ArrowDown',
+				run: () => this.maybeEscape('line', 1)
+			},
+			{
+				key: 'ArrowRight',
+				run: () => this.maybeEscape('char', 1)
+			},
+			{
+				key: 'Ctrl-Enter',
+				mac: 'Cmd-Enter', // match the raw/inline-latex views
+				run: () => {
+					if (!exitCode(view.state, view.dispatch)) return false;
+					view.focus();
+					return true;
+				}
+			},
+			{
+				key: 'Ctrl-z',
+				mac: 'Cmd-z',
+				run: () => undo(view.state, view.dispatch)
+			},
+			{
+				key: 'Shift-Ctrl-z',
+				mac: 'Shift-Cmd-z',
+				run: () => redo(view.state, view.dispatch)
+			},
+			{
+				key: 'Ctrl-y',
+				mac: 'Cmd-y',
+				run: () => redo(view.state, view.dispatch)
+			},
+			{ key: 'Backspace', run: () => this.maybeDelete() }
+		];
+	}
+
+	maybeDelete(): boolean {
+		if (this.cm.state.doc.toString().trim() !== '') {
+			return false;
+		}
+
+		const pos = this.getPos();
+		const tr = this.view.state.tr.delete(pos, pos + this.node.nodeSize);
+		this.view.dispatch(tr);
+		this.view.focus();
+		return true;
+	}
+
+	maybeEscape(unit: string, dir: number): boolean {
+		const { state } = this.cm;
+		let { main } = state.selection;
+		if (!main.empty) return false;
+		if (unit === 'line') main = state.doc.lineAt(main.head) as never;
+		if (dir < 0 ? main.from > 0 : main.to < state.doc.length) return false;
+		const targetPos = this.getPos() + (dir < 0 ? 0 : this.node.nodeSize);
+		const selection = Selection.near(this.view.state.doc.resolve(targetPos), dir);
+		const tr = this.view.state.tr.setSelection(selection).scrollIntoView();
+		this.view.dispatch(tr);
+		this.view.focus();
+		return true;
+	}
+
+	update(node: Node): boolean {
+		if (node.type != this.node.type) return false;
+		this.node = node;
+		if (this.updating) return true;
+		const newText = node.textContent,
+			curText = this.cm.state.doc.toString();
+		if (newText != curText) {
+			let start = 0,
+				curEnd = curText.length,
+				newEnd = newText.length;
+			while (start < curEnd && curText.charCodeAt(start) == newText.charCodeAt(start)) {
+				++start;
+			}
+			while (curEnd > start && newEnd > start && curText.charCodeAt(curEnd - 1) == newText.charCodeAt(newEnd - 1)) {
+				curEnd--;
+				newEnd--;
+			}
+			this.updating = true;
+			this.cm.dispatch({
+				changes: {
+					from: start,
+					to: curEnd,
+					insert: newText.slice(start, newEnd)
+				}
+			});
+			this.updating = false;
+		}
+		return true;
+	}
+
+	selectNode(): void {
+		this.cm.focus();
+	}
+
+	deselectNode(): void {
+		setTimeout(() => {
+			this.cm.dispatch({ selection: { anchor: 0, head: 0 } });
+		}, 0);
+	}
+
+	stopEvent(): boolean {
+		return true;
+	}
+	destory() {
+		this.cm.dom.removeEventListener('focus', this.handleFocus, true);
+		this.cm.dom.removeEventListener('blur', this.handleBlur, true);
+		this.dom.querySelector('select').removeEventListener('focus', this.handleFocus);
+		this.dom.querySelector('select').removeEventListener('blur', this.handleBlur);
+		this.cm.destroy();
+	}
+}
+
+export default CodeBlockView;

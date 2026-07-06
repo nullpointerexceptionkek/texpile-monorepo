@@ -1,0 +1,74 @@
+appId: com.texpile.desktop
+productName: Texpile
+copyright: Copyright © Texpile
+
+# .tex file associations; main.ts turns an opened file into an "open its folder" workspace action
+fileAssociations:
+  - ext: tex
+    name: LaTeX Document
+    role: Editor
+    mimeType: text/x-tex
+
+# never self-publish: electron-builder auto-detects CI and tries to push artifacts to a GitHub
+# release (failing without GH_TOKEN); the release workflow attaches artifacts itself
+publish: null
+
+directories:
+  output: release
+
+# only the Electron shell goes into the asar; the renderer bundle ships as an extra resource,
+# served from the app:// protocol. The exclusions keep third-party sourcemaps/tests out.
+files:
+  - electron/dist/**/*
+  - electron/icon.png
+  - package.json
+  - '!**/*.map'
+  - '!**/node_modules/**/{test,tests,__mocks__}/**'
+
+# node-pty (its .node binary plus the Windows ConPTY runtime, conpty.dll / OpenConsole.exe) must
+# stay out of the asar so it can be dlopen'd at runtime
+asarUnpack:
+  - '**/node_modules/node-pty/**'
+
+# restore the exec bit on node-pty's macOS spawn-helper (lost in packaging -> "posix_spawnp failed")
+afterPack: scripts/after-pack.cjs
+
+extraResources:
+  - from: apps/texpile-editor/dist
+    to: app-dist
+    filter:
+      - '**/*'
+
+# node-pty is rebuilt for Electron's ABI in the `dist` script (pnpm electron:rebuild), so
+# electron-builder must not try (and overwrite) it here
+npmRebuild: false
+
+# a single 1024x1024 PNG; electron-builder generates the per-platform .ico/.icns
+linux:
+  target:
+    - AppImage
+    - deb
+  category: Office
+  synopsis: A local, offline LaTeX editor
+  icon: electron/icon.png
+
+mac:
+  # one universal (x64 + arm64) dmg so Intel Macs are covered; a host-arch build on the arm64
+  # runner ships an arm64-only dmg. node-pty has both darwin prebuilds, so the merge succeeds.
+  target:
+    - target: dmg
+      arch: universal
+  category: public.app-category.productivity
+  icon: electron/icon.png
+
+win:
+  target:
+    - nsis
+  icon: electron/icon.png
+
+# show the AGPL text as an installer page (macOS/Linux installs have no comparable UI).
+# The artifact name must have no spaces: electron-builder's Trusted Signing signer space-joins
+# its Invoke-TrustedSigning -Files arg without quoting, so a spaced name gets split and signing fails.
+nsis:
+  license: build/license.txt
+  artifactName: ${productName}-Setup-${version}.${ext}

@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en" data-theme="theme" data-mode="light">
+	<head>
+		<meta charset="utf-8" />
+		<link rel="icon" href="/favicon.svg" />
+		<link rel="apple-touch-icon" href="/favicon.svg" />
+		<meta name="viewport" content="width=device-width, initial-scale=1" />
+		<meta name="theme-color" content="#2563eb" />
+		<title>Texpile</title>
+		<script>
+			// Apply the saved appearance before paint so there's no flash (see lib/theme.ts).
+			// Choice is light | dark | system (default); "system" follows the OS preference.
+			try {
+				var c = localStorage.getItem('texpile:mode');
+				var sysDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+				var dark = c === 'dark' || ((c === 'system' || !c) && sysDark);
+				document.documentElement.setAttribute('data-mode', dark ? 'dark' : 'light');
+				if (dark) document.documentElement.classList.add('dark');
+			} catch (e) {}
+		</script>
+	</head>
+	<body>
+		<div id="app" style="display: contents"></div>
+		<script type="module" src="/src/main.ts"></script>
+	</body>
+</html>

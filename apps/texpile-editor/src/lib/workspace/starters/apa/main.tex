@@ -1,0 +1,46 @@
+\PassOptionsToPackage{hidelinks}{hyperref}
+\documentclass[stu,12pt,floatsintext]{apa7}
+
+\usepackage[american]{babel}
+\usepackage{csquotes}
+\usepackage[style=apa,sortcites=true,sorting=nyt,backend=biber]{biblatex}
+\DeclareLanguageMapping{american}{american-apa}
+\addbibresource{references.bib}
+
+\usepackage{fontspec}
+\setmainfont{Times New Roman}
+
+% Texpile feature packages that the apa7 class does not already provide.
+% (apa7 preloads hyperref, graphicx, booktabs, caption, amsmath, xcolor.)
+\usepackage{soul}
+\usepackage{mathtools}
+\usepackage{braket}
+\usepackage{colonequals}
+\usepackage[version=4]{mhchem}
+\usepackage{gensymb}
+\usepackage{wrapfig}
+\usepackage{tabularx}
+\usepackage{multirow}
+\usepackage{tikz}
+
+\title{The Title of Your Paper}
+\shorttitle{Short Title}
+\author{Your Name}
+\affiliation{Your Institution}
+\course{Course Number and Title}
+\professor{Instructor Name}
+\duedate{\today}
+
+\abstract{Write your abstract here.}
+
+\begin{document}
+
+\maketitle
+
+\section{Introduction}
+
+Begin your paper here. Cite a source like this \parencite{sample}.
+
+\printbibliography
+
+\end{document}

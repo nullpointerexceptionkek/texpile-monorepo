@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg
+  xmlns="http://www.w3.org/2000/svg"
+  xmlns:xlink="http://www.w3.org/1999/xlink"
+  viewBox="0 0 523 523"
+  width="96"
+  height="96"
+  aria-hidden="true">
+
+  <defs>
+    <radialGradient id="g1" cx="613.24" cy="329.39" r="425.23" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#0088f7" />
+      <stop offset=".14" stop-color="#0097f7" />
+      <stop offset=".50" stop-color="#00b9f8" />
+      <stop offset=".80" stop-color="#00cef8" />
+      <stop offset="1" stop-color="#00d6f9" />
+    </radialGradient>
+    <radialGradient id="g2"
+      cx="1331.88" cy="-875.11" r="152.55"
+      gradientTransform="translate(1037.94 1499.44) rotate(-90)"
+      xlink:href="#g1" />
+    <radialGradient id="g3"
+      cx="1331.88" cy="-875.11" r="152.55"
+      gradientTransform="translate(1037.94 1499.44) rotate(-90)"
+      xlink:href="#g1" />
+  </defs>
+  <path fill="url(#g1)"
+    d="M474.43,389.78c-8.78-18.53-13.46-39.27-13.46-59.82v-201.55H199.93V0h-71.52v128.41H0v71.52h128.41v130.03
+           c0,31.14,7.09,62.42,20.48,90.57l34.46,72.49h340.24l-49.15-103.25ZM228.54,421.51l-15.08-31.73
+           c-8.84-18.53-13.52-39.27-13.52-59.82v-130.03h189.52v130.03c0,31.14,7.02,62.42,20.42,90.57l.46.98h-181.79Z" />
+  <rect x="128.41" y="199.93" width="71.52" height="128.41" fill="url(#g2)" />
+  <rect x="128.41" width="71.52" height="128.41" fill="url(#g3)" />
+</svg>

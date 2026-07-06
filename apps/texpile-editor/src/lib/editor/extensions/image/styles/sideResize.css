@@ -1,0 +1,31 @@
+.imageResizeBoxControl {
+	display: none;
+}
+
+.imageResizeBoxControl.bottomRight {
+	display: inline-block;
+	cursor: e-resize;
+	margin-top: -5px;
+	right: 0;
+	top: 50%;
+}
+
+.imageResizeBoxControl.bottomLeft {
+	display: inline-block;
+	cursor: w-resize;
+	left: -5px;
+	margin-top: -5px;
+	top: 50%;
+}
+
+.imageResizeBoxControl::after {
+	background-color: darkgreen;
+	border: solid 1px #fff;
+	box-sizing: border-box;
+	content: '';
+	height: 50px;
+	left: 0px;
+	position: absolute;
+	top: -20px;
+	width: 10px;
+}

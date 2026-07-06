@@ -1,0 +1,10 @@
+{
+	"name": "Texpile",
+	"short_name": "Texpile",
+	"description": "A local, offline LaTeX editor",
+	"icons": [{ "src": "/favicon-96x96.png", "sizes": "96x96", "type": "image/png" }],
+	"start_url": "/",
+	"display": "browser",
+	"background_color": "#ffffff",
+	"theme_color": "#0088f7"
+}

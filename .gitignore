@@ -1,0 +1,40 @@
+node_modules/
+.DS_Store
+
+# build artifacts
+/build
+**/build/
+.svelte-kit/
+/package
+**/package/
+dist/
+out/
+*.tsbuildinfo
+
+# env / secrets
+.env
+.env.*
+service-account.json
+
+# local dev context, not part of the public tree
+CLAUDE.md
+AGENTS.md
+.claude/
+
+# electron packaging output
+/release
+electron/dist/
+electron/server-dist/
+
+# logs
+*-debug.log
+*.log
+
+# editor temp
+vite.config.js.timestamp-*
+vite.config.ts.timestamp-*
+
+# Local round-trip fidelity diagnostics (PDFs + heatmaps)
+roundtrip-diff/
+# exception: the installer license page (electron-builder nsis.license)
+!build/license.txt

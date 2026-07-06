@@ -1,0 +1,24 @@
+# Download counter + file server for dl.texpile.com (see README.md).
+#
+# The Worker route takes precedence over the R2 custom domain on the same
+# hostname, so deploying this changes nothing about the URLs; deleting the
+# route hands dl.texpile.com straight back to R2 exactly as before.
+
+name = "texpile-dl"
+main = "src/index.ts"
+compatibility_date = "2026-07-01"
+
+routes = [
+	{ pattern = "dl.texpile.com/*", zone_name = "texpile.com" }
+]
+
+# The bucket release.yml publishes to (immutable v<version>/ copies + stable root names).
+[[r2_buckets]]
+binding = "RELEASES"
+bucket_name = "texpile-releases"
+
+# Download counts land here; query with the SQL API (examples in README.md).
+# The dataset is created automatically on first write.
+[[analytics_engine_datasets]]
+binding = "DOWNLOADS"
+dataset = "texpile_downloads"

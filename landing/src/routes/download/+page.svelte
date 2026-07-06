@@ -1,0 +1,296 @@
+<script lang="ts">
+	import { Download, Info, Terminal, ChevronDown, Copy, Check } from '@lucide/svelte';
+	import { onMount } from 'svelte';
+	import { Menu, Portal } from '@skeletonlabs/skeleton-svelte';
+	import { trackEvent } from '$lib/plausible';
+	import OsLogo from '$lib/comp/OsLogo.svelte';
+
+	// latest.json upgrades the links to versioned files; versions.json feeds the history list.
+	// Without either (fetch failed, JS off) the stable root names still download the newest release.
+	const DL = 'https://dl.texpile.com';
+
+	type Release = { version: string; publishedAt?: string; files: Record<string, string> };
+	let latest = $state<Release | null>(null);
+	let history = $state<Release[]>([]);
+	let detected = $state<'windows' | 'mac' | 'linux' | null>(null);
+
+	onMount(async () => {
+		detected = detectOS();
+		try {
+			const res = await fetch(`${DL}/latest.json`);
+			if (res.ok) latest = await res.json();
+		} catch {
+			/* keep the stable fallback links */
+		}
+		try {
+			const res = await fetch(`${DL}/versions.json`);
+			if (res.ok) {
+				const data = await res.json();
+				if (Array.isArray(data?.versions)) history = data.versions;
+			}
+		} catch {
+			/* no history section if the manifest is missing */
+		}
+	});
+
+	function detectOS(): 'windows' | 'mac' | 'linux' | null {
+		if (typeof navigator === 'undefined') return null;
+		const ua = navigator.userAgent;
+		if (/Windows|Win32|Win64/i.test(ua)) return 'windows';
+		if (/Macintosh|Mac OS X/i.test(ua) && !/iPhone|iPad|iPod/i.test(ua)) return 'mac';
+		if (/Linux|X11/i.test(ua) && !/Android/i.test(ua)) return 'linux';
+		return null;
+	}
+
+	function fmtDate(iso?: string) {
+		if (!iso) return '';
+		const d = new Date(iso);
+		return Number.isNaN(d.getTime()) ? '' : d.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
+	}
+
+	type Platform = {
+		key: 'windows' | 'mac' | 'linux';
+		os: 'windows' | 'apple' | 'linux';
+		name: string;
+		detail: string;
+		fileKey: string;
+		fallback: string;
+	};
+	const PLATFORMS: Platform[] = [
+		{ key: 'windows', os: 'windows', name: 'Windows', detail: 'Installer (.exe)', fileKey: 'windows', fallback: 'Texpile-Setup.exe' },
+		{ key: 'mac', os: 'apple', name: 'macOS', detail: 'Intel & Apple silicon (.dmg)', fileKey: 'mac', fallback: 'Texpile.dmg' },
+		{ key: 'linux', os: 'linux', name: 'Linux', detail: 'AppImage', fileKey: 'linuxAppImage', fallback: 'Texpile.AppImage' }
+	];
+
+	const hrefFor = (p: Platform) => `${DL}/${latest?.files[p.fileKey] ?? p.fallback}`;
+	const debHref = $derived(`${DL}/${latest?.files.linuxDeb ?? 'texpile.deb'}`);
+	const versionLabel = $derived(latest ? `v${latest.version.replace(/^v/, '')}` : null);
+	const recommended = $derived(PLATFORMS.find((p) => p.key === detected) ?? null);
+	const others = $derived(recommended ? PLATFORMS.filter((p) => p.key !== recommended.key) : PLATFORMS);
+
+	// this Plausible plan has no custom properties, so the platform goes in the event name
+	function trackDownload(platform: string) {
+		trackEvent(`Download: ${platform}`);
+	}
+
+	// start a download without navigating away (Linux menu items aren't plain <a> links)
+	function triggerDownload(url: string) {
+		const a = document.createElement('a');
+		a.href = url;
+		a.download = '';
+		document.body.appendChild(a);
+		a.click();
+		a.remove();
+	}
+
+	// macOS Gatekeeper blocks unsigned apps; this strips the quarantine flag from the installed bundle
+	const MAC_UNQUARANTINE = 'xattr -dr com.apple.quarantine /Applications/Texpile.app';
+	let copiedCmd = $state(false);
+	async function copyCmd() {
+		try {
+			await navigator.clipboard.writeText(MAC_UNQUARANTINE);
+			copiedCmd = true;
+			setTimeout(() => (copiedCmd = false), 1500);
+		} catch {
+			/* clipboard unavailable; the command is still selectable */
+		}
+	}
+
+	function onLinuxSelect(value: string) {
+		if (value === 'appimage') {
+			trackDownload('Linux');
+			triggerDownload(`${DL}/${latest?.files.linuxAppImage ?? 'Texpile.AppImage'}`);
+		} else if (value === 'deb') {
+			trackDownload('Linux (.deb)');
+			triggerDownload(debHref);
+		}
+	}
+</script>
+
+<svelte:head>
+	<title>Download Texpile - Windows, macOS, Linux</title>
+	<meta name="description" content="Download Texpile, the free offline LaTeX editor, for Windows, macOS, and Linux. No account required." />
+</svelte:head>
+
+<section class="bg-surface-50 border-surface-200 border-b">
+	<div class="container mx-auto max-w-3xl px-4 py-14 text-center sm:px-6 md:py-16 lg:px-8">
+		<h1 class="text-3xl font-bold md:text-4xl">Download Texpile</h1>
+		<p class="text-surface-600 mx-auto mt-4 max-w-xl">Free and fully offline. No account, no cloud, runs on your own machine.</p>
+		{#if versionLabel}
+			<p class="text-surface-500 mt-3 text-sm">
+				Latest release {versionLabel}{#if fmtDate(latest?.publishedAt)}&nbsp;·&nbsp;{fmtDate(latest?.publishedAt)}{/if}
+			</p>
+		{/if}
+	</div>
+</section>
+
+<section class="bg-white py-12 md:py-14">
+	<div class="container mx-auto max-w-3xl px-4 sm:px-6 lg:px-8">
+		<!-- lead download for the detected OS -->
+		{#if recommended}
+			{#if recommended.key === 'linux'}
+				<div class="border-surface-200 flex items-center gap-4 rounded-lg border bg-white p-5 sm:gap-5 sm:p-6">
+					<div class="bg-primary-500/10 text-primary-600 flex h-14 w-14 shrink-0 items-center justify-center rounded-md">
+						<OsLogo os="linux" class="h-8 w-8" />
+					</div>
+					<div class="min-w-0 flex-1">
+						<div class="text-lg font-semibold">Download for Linux</div>
+						<div class="text-surface-500 mt-0.5 text-sm">
+							AppImage or .deb{#if versionLabel}&nbsp;·&nbsp;{versionLabel}{/if}
+						</div>
+					</div>
+					{@render linuxDownload('lead')}
+				</div>
+			{:else}
+				<a
+					href={hrefFor(recommended)}
+					download
+					onclick={() => trackDownload(recommended.name)}
+					class="border-surface-200 hover:border-primary-400 flex items-center gap-4 rounded-lg border bg-white p-5 transition-colors sm:gap-5 sm:p-6"
+				>
+					<div class="bg-primary-500/10 text-primary-600 flex h-14 w-14 shrink-0 items-center justify-center rounded-md">
+						<OsLogo os={recommended.os} class="h-8 w-8" />
+					</div>
+					<div class="min-w-0 flex-1">
+						<div class="text-lg font-semibold">Download for {recommended.name}</div>
+						<div class="text-surface-500 mt-0.5 text-sm">
+							{recommended.detail}{#if versionLabel}&nbsp;·&nbsp;{versionLabel}{/if}
+						</div>
+					</div>
+					<div
+						class="btn preset-filled-primary-500 rounded-base hidden shrink-0 items-center gap-2 px-5 py-2.5 text-sm font-semibold text-white sm:flex"
+					>
+						<Download class="h-4 w-4" /> Download
+					</div>
+				</a>
+			{/if}
+		{/if}
+
+		<div class="mt-10">
+			<h2 class="text-surface-500 mb-4 text-center text-xs font-semibold tracking-wide uppercase">
+				{recommended ? 'Other platforms' : 'Choose your platform'}
+			</h2>
+			<div class="flex flex-wrap justify-center gap-4">
+				{#each others as p (p.key)}
+					<div class="border-surface-200 flex w-full flex-col items-center gap-2.5 rounded-lg border bg-white p-5 text-center sm:w-56">
+						<div class="bg-surface-100 text-surface-700 flex h-12 w-12 items-center justify-center rounded-md">
+							<OsLogo os={p.os} class="h-7 w-7" />
+						</div>
+						<div class="font-semibold">{p.name}</div>
+						<div class="text-surface-500 text-sm">{p.detail}</div>
+						<div class="mt-auto flex flex-col items-center pt-2">
+							{#if p.key === 'linux'}
+								{@render linuxDownload('grid')}
+							{:else}
+								<a
+									href={hrefFor(p)}
+									download
+									onclick={() => trackDownload(p.name)}
+									class="btn preset-outlined-primary-500 rounded-base inline-flex items-center gap-1.5 px-4 py-1.5 text-sm font-medium"
+								>
+									<Download class="h-4 w-4" /> Download{#if versionLabel}&nbsp;{versionLabel}{/if}
+								</a>
+							{/if}
+						</div>
+					</div>
+				{/each}
+			</div>
+		</div>
+
+		<div class="border-surface-200 bg-surface-50 mt-10 rounded-lg border p-5">
+			<h2 class="text-surface-500 mb-3 text-xs font-semibold tracking-wide uppercase">Before you install</h2>
+			<ul class="space-y-3">
+				<li class="flex items-start gap-3">
+					<Info class="text-surface-400 mt-0.5 h-4 w-4 shrink-0" />
+					<div class="text-surface-600 text-sm leading-relaxed">
+						<p>
+							Builds are currently unsigned. On Windows, SmartScreen asks you to confirm the first launch. On macOS, if Gatekeeper blocks
+							the app, remove the quarantine flag from Terminal:
+						</p>
+						<div class="border-surface-200 bg-surface-100 rounded-base mt-2 flex items-center gap-2 border py-1.5 pr-1.5 pl-2.5">
+							<code class="text-surface-700 flex-1 overflow-x-auto font-mono text-xs whitespace-nowrap">{MAC_UNQUARANTINE}</code>
+							<button
+								type="button"
+								onclick={copyCmd}
+								class="text-surface-500 hover:text-primary-600 hover:bg-surface-200 rounded-base shrink-0 p-1 transition-colors"
+								aria-label="Copy command"
+							>
+								{#if copiedCmd}<Check class="h-4 w-4" />{:else}<Copy class="h-4 w-4" />{/if}
+							</button>
+						</div>
+					</div>
+				</li>
+				<li class="flex items-start gap-3">
+					<Terminal class="text-surface-400 mt-0.5 h-4 w-4 shrink-0" />
+					<span class="text-surface-600 text-sm leading-relaxed">
+						To compile PDFs, bring your own TeX distribution (TeX Live, MiKTeX, or MacTeX). Editing works without one.
+					</span>
+				</li>
+			</ul>
+		</div>
+
+		{#if history.length}
+			<div class="mt-10">
+				<h2 class="text-surface-500 mb-3 text-center text-xs font-semibold tracking-wide uppercase">Version history</h2>
+				<div class="border-surface-200 divide-surface-200 divide-y overflow-hidden rounded-lg border bg-white">
+					{#each history as r, i (r.version)}
+						<div class="flex flex-col gap-2 p-4 sm:flex-row sm:items-center sm:justify-between">
+							<div class="flex items-center gap-2.5">
+								<span class="font-semibold">v{r.version.replace(/^v/, '')}</span>
+								{#if i === 0}
+									<span class="border-surface-300 text-surface-500 rounded-base border px-1.5 py-0.5 text-xs font-medium">Latest</span>
+								{/if}
+								{#if fmtDate(r.publishedAt)}<span class="text-surface-400 text-sm">{fmtDate(r.publishedAt)}</span>{/if}
+							</div>
+							<div class="text-primary-600 flex flex-wrap gap-x-4 gap-y-1 text-sm">
+								{#if r.files.windows}
+									<a class="anchor" href={`${DL}/${r.files.windows}`} download onclick={() => trackDownload('Windows')}>Windows</a>
+								{/if}
+								{#if r.files.mac}
+									<a class="anchor" href={`${DL}/${r.files.mac}`} download onclick={() => trackDownload('macOS')}>macOS</a>
+								{/if}
+								{#if r.files.linuxAppImage}
+									<a class="anchor" href={`${DL}/${r.files.linuxAppImage}`} download onclick={() => trackDownload('Linux')}>AppImage</a>
+								{/if}
+								{#if r.files.linuxDeb}
+									<a class="anchor" href={`${DL}/${r.files.linuxDeb}`} download onclick={() => trackDownload('Linux (.deb)')}>.deb</a>
+								{/if}
+							</div>
+						</div>
+					{/each}
+				</div>
+			</div>
+		{/if}
+	</div>
+</section>
+
+{#snippet linuxDownload(variant: 'lead' | 'grid')}
+	<Menu onSelect={(details) => onLinuxSelect(details.value)} positioning={{ placement: 'bottom' }}>
+		<Menu.Trigger
+			class={variant === 'lead'
+				? 'btn preset-filled-primary-500 rounded-base flex shrink-0 items-center gap-2 px-5 py-2.5 text-sm font-semibold text-white'
+				: 'btn preset-outlined-primary-500 rounded-base inline-flex items-center gap-1.5 px-4 py-1.5 text-sm font-medium'}
+		>
+			<Download class="h-4 w-4" /> Download{#if variant === 'grid' && versionLabel}&nbsp;{versionLabel}{/if}
+			<ChevronDown class="h-4 w-4 opacity-70" />
+		</Menu.Trigger>
+		<Portal>
+			<Menu.Positioner>
+				<Menu.Content class="border-surface-200 z-50 min-w-52 rounded-lg border bg-white p-1 shadow-lg outline-none">
+					<Menu.Item
+						value="appimage"
+						class="rounded-base hover:bg-surface-100 data-[highlighted]:bg-surface-100 cursor-pointer px-3 py-2 text-sm font-medium"
+					>
+						<Menu.ItemText>AppImage</Menu.ItemText>
+					</Menu.Item>
+					<Menu.Item
+						value="deb"
+						class="rounded-base hover:bg-surface-100 data-[highlighted]:bg-surface-100 cursor-pointer px-3 py-2 text-sm font-medium"
+					>
+						<Menu.ItemText>.deb <span class="text-surface-400 font-normal">Debian / Ubuntu</span></Menu.ItemText>
+					</Menu.Item>
+				</Menu.Content>
+			</Menu.Positioner>
+		</Portal>
+	</Menu>
+{/snippet}

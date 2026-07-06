@@ -1,0 +1,5 @@
+packages:
+  - 'packages/*'
+  - 'apps/*'
+  # The landing page site (not an app) lives at the repo top level.
+  - 'landing'

@@ -1,0 +1,41 @@
+placeholder {
+	color: #ccc;
+	position: relative;
+	top: 6px;
+}
+placeholder:after {
+	content: '☁';
+	font-size: 200%;
+	line-height: 0.1;
+	font-weight: bold;
+}
+
+.imagePluginRoot {
+	display: flex;
+	flex-direction: column;
+	position: relative;
+	border-radius: 0.25rem;
+}
+
+.imagePluginRoot img {
+	align-self: center;
+	width: 100%;
+}
+
+.imagePluginRoot:hover .imagePluginOverlay {
+	opacity: 1;
+}
+
+.imagePluginOverlay {
+	position: absolute;
+	transition: all 0.3s ease;
+	justify-content: center;
+	opacity: 0;
+	z-index: 2;
+
+	left: 50%;
+	transform: translateX(-50%);
+}
+.imagePluginRoot .text {
+	text-align: center;
+}

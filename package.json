@@ -1,0 +1,59 @@
+{
+	"name": "texpile-desktop",
+	"version": "0.10.1",
+	"private": true,
+	"description": "Texpile",
+	"author": {
+		"name": "Texpile",
+		"email": "support@texpile.com"
+	},
+	"homepage": "https://texpile.com",
+	"main": "electron/dist/main.js",
+	"scripts": {
+		"build": "pnpm -r --if-present run build",
+		"set-version": "node scripts/set-version.mjs",
+		"preinstall": "npx only-allow pnpm",
+		"postinstall": "pnpm -r --if-present sync",
+		"app:build": "pnpm --filter=svelte-pdf-view run package && pnpm --filter=texpile-editor run build && pnpm electron:build:prod",
+		"electron": "pnpm electron:build && electron .",
+		"electron:build": "tsc -p electron",
+		"electron:dev": "concurrently -k -n vite,electron \"pnpm --filter=texpile-editor dev\" \"pnpm electron:build && wait-on tcp:5173 && cross-env ELECTRON_START_URL=http://localhost:5173 electron .\"",
+		"electron:rebuild": "electron-rebuild -f -w node-pty",
+		"dist": "pnpm app:build && electron-builder",
+		"dist:linux": "pnpm app:build && electron-builder --linux",
+		"dist:dir": "pnpm app:build && electron-builder --dir",
+		"format": "prettier --write .",
+		"electron:build:prod": "tsc -p electron --noEmit && node scripts/build-electron.mjs"
+	},
+	"devDependencies": {
+		"@electron/rebuild": "^3.7.0",
+		"@types/node": "^22.10.0",
+		"concurrently": "^9.1.0",
+		"cross-env": "^7.0.3",
+		"electron": "^33.2.0",
+		"electron-builder": "^25.1.8",
+		"esbuild": "^0.28.1",
+		"prettier": "^3.6.2",
+		"prettier-plugin-svelte": "^4.0.0",
+		"prettier-plugin-tailwindcss": "^0.8.0",
+		"shelljs": "^0.8.5",
+		"typescript": "^5.5.0",
+		"wait-on": "^8.0.1",
+		"simple-git": "^3.36.0"
+	},
+	"engines": {
+		"pnpm": ">=9.2.0"
+	},
+	"pnpm": {
+		"onlyBuiltDependencies": [
+			"electron",
+			"esbuild",
+			"@sentry/cli",
+			"node-pty"
+		]
+	},
+	"dependencies": {
+		"node-pty": "^1.1.0"
+	},
+	"packageManager": "pnpm@10.14.0"
+}

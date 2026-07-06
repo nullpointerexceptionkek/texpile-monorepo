@@ -1,0 +1,49 @@
+{
+	"name": "svelte-pdf-view",
+	"version": "0.4.0",
+	"description": "Vendored fork of svelte-pdf-view (Louis Li, Apache-2.0) with SyncTeX hooks: forward scroll+highlight and inverse page-click coordinates.",
+	"license": "Apache-2.0",
+	"private": true,
+	"type": "module",
+	"sideEffects": [
+		"**/*.css"
+	],
+	"svelte": "./dist/index.js",
+	"types": "./dist/index.d.ts",
+	"exports": {
+		".": {
+			"types": "./dist/index.d.ts",
+			"svelte": "./dist/index.js"
+		}
+	},
+	"files": [
+		"dist"
+	],
+	"scripts": {
+		"package": "svelte-kit sync && svelte-package",
+		"prepare": "svelte-kit sync || echo ''"
+	},
+	"dependencies": {
+		"esm-env": "^1.2.2",
+		"pdfjs-dist": "^5.4.394"
+	},
+	"peerDependencies": {
+		"@lucide/svelte": ">=0.500.0",
+		"svelte": "^5.0.0"
+	},
+	"peerDependenciesMeta": {
+		"@lucide/svelte": {
+			"optional": true
+		}
+	},
+	"devDependencies": {
+		"@sveltejs/kit": "^2.49.1",
+		"@sveltejs/package": "^2.5.7",
+		"@sveltejs/vite-plugin-svelte": "^6.2.1",
+		"@types/node": "^22",
+		"svelte": "^5.45.6",
+		"svelte-check": "^4.3.4",
+		"typescript": "^5.9.3",
+		"vite": "^7.2.2"
+	}
+}

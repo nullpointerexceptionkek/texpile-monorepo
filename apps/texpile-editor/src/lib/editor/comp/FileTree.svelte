@@ -1,0 +1,412 @@
+<script lang="ts">
+	import {
+		ChevronRight,
+		ChevronDown,
+		Folder,
+		FileText,
+		File,
+		FilePlus,
+		FolderPlus,
+		Pencil,
+		Trash2,
+		Star,
+		FileSymlink
+	} from '@lucide/svelte';
+	import type { TreeEntry } from '$lib/workspace/fileSystem';
+	import { gitKey } from '$lib/workspace/gitStore';
+	import type { GitBadge } from '$lib/workspace/git';
+
+	interface Props {
+		tree: TreeEntry[];
+		rootPath: string;
+		activePath: string | null;
+		/** Absolute path of the project's main entry .tex (badged in the tree), or null. */
+		mainPath?: string | null;
+		/** Per-file git status badges, keyed by gitKey(path). Empty when not a repo. */
+		gitStatus?: Record<string, GitBadge>;
+		onOpen: (entry: TreeEntry) => void;
+		/** type 'include' creates a .tex fragment AND inserts an \input for it at the cursor. */
+		onCreate: (parentDir: string, name: string, type: 'file' | 'dir' | 'include') => void;
+		onRename: (entry: TreeEntry, newName: string) => void;
+		onDelete: (entry: TreeEntry) => void;
+		onMove: (entry: TreeEntry, targetDir: string) => void;
+		/** Set (or, if already main, clear) the project's main entry file. */
+		onSetMain?: (entry: TreeEntry) => void;
+	}
+	let {
+		tree,
+		rootPath,
+		activePath,
+		mainPath = null,
+		gitStatus = {},
+		onOpen,
+		onCreate,
+		onRename,
+		onDelete,
+		onMove,
+		onSetMain
+	}: Props = $props();
+
+	const isTex = (e: TreeEntry) => e.type === 'file' && e.name.toLowerCase().endsWith('.tex');
+	const isMain = (e: TreeEntry) => !!mainPath && e.path.replace(/\\/g, '/').toLowerCase() === mainPath.replace(/\\/g, '/').toLowerCase();
+
+	// Git status badge (VS Code convention: a single colored letter). Only files carry one.
+	const gitBadge = (e: TreeEntry): GitBadge | undefined => (e.type === 'file' ? gitStatus[gitKey(e.path)] : undefined);
+	const BADGE_COLOR: Record<GitBadge, string> = {
+		M: 'text-amber-500',
+		A: 'text-green-500',
+		D: 'text-red-500',
+		U: 'text-sky-500',
+		R: 'text-violet-500'
+	};
+	const BADGE_TITLE: Record<GitBadge, string> = {
+		M: 'Modified',
+		A: 'Added',
+		D: 'Deleted',
+		U: 'Untracked',
+		R: 'Renamed'
+	};
+
+	let expanded = $state<Record<string, boolean>>({});
+	let renaming = $state<string | null>(null);
+	let renameValue = $state('');
+	let creatingIn = $state<string | null>(null);
+	let createType = $state<'file' | 'dir' | 'include'>('file');
+	let createValue = $state('');
+
+	let dragging = $state<TreeEntry | null>(null);
+	let dropTarget = $state<string | null>(null); // path of the row being hovered, or ROOT
+	const ROOT = '__root__';
+
+	const sepOf = (p: string) => (p.includes('\\') ? '\\' : '/');
+	const parentOf = (p: string) => {
+		const i = p.lastIndexOf(sepOf(p));
+		return i >= 0 ? p.slice(0, i) : p;
+	};
+	// dropping on a folder targets it; dropping on a file targets its parent folder
+	const dropDir = (entry: TreeEntry) => (entry.type === 'dir' ? entry.path : parentOf(entry.path));
+	const isInside = (path: string, ancestor: string) => path.startsWith(ancestor + sepOf(ancestor));
+	const canDrop = (target: string) => !!dragging && target !== dragging.path && !isInside(target, dragging.path);
+	const canDropFor = (d: TreeEntry, target: string) => target !== d.path && !isInside(target, d.path);
+
+	function onRowDragStart(e: DragEvent, entry: TreeEntry) {
+		dragging = entry;
+		if (e.dataTransfer) {
+			e.dataTransfer.effectAllowed = 'move';
+			e.dataTransfer.setData('text/plain', entry.path);
+		}
+	}
+	function onRowDragOver(e: DragEvent, entry: TreeEntry) {
+		if (!canDrop(dropDir(entry))) return;
+		e.preventDefault();
+		if (e.dataTransfer) e.dataTransfer.dropEffect = 'move';
+		dropTarget = entry.path;
+	}
+	function onRowDrop(e: DragEvent, entry: TreeEntry) {
+		e.preventDefault();
+		e.stopPropagation();
+		const d = dragging;
+		const target = dropDir(entry);
+		dragging = null;
+		dropTarget = null;
+		if (d && canDropFor(d, target)) onMove(d, target);
+	}
+	function onRootDragOver(e: DragEvent) {
+		if (!canDrop(rootPath)) return;
+		e.preventDefault();
+		if (e.dataTransfer) e.dataTransfer.dropEffect = 'move';
+		dropTarget = ROOT;
+	}
+	function onRootDrop(e: DragEvent) {
+		e.preventDefault();
+		const d = dragging;
+		dragging = null;
+		dropTarget = null;
+		if (d && canDropFor(d, rootPath)) onMove(d, rootPath);
+	}
+	function onDragEnd() {
+		dragging = null;
+		dropTarget = null;
+	}
+
+	let ctxMenu = $state<{ x: number; y: number; entry: TreeEntry | null } | null>(null);
+	function openCtx(e: MouseEvent, entry: TreeEntry | null) {
+		e.preventDefault();
+		e.stopPropagation();
+		// keep the menu on-screen near the bottom/right edges
+		const x = Math.min(e.clientX, window.innerWidth - 184);
+		const y = Math.min(e.clientY, window.innerHeight - 168);
+		ctxMenu = { x, y, entry };
+	}
+	const ctxTargetDir = () => (ctxMenu?.entry?.type === 'dir' ? ctxMenu.entry.path : rootPath);
+
+	// focus once on mount and select the base name (keep the extension, like VSCode).
+	// no re-assert loop: re-grabbing focus made the field impossible to leave.
+	function focusSelect(node: HTMLInputElement) {
+		node.focus();
+		const dot = node.value.lastIndexOf('.');
+		if (dot > 0) node.setSelectionRange(0, dot);
+		else node.select();
+	}
+
+	function startCreate(dir: string, type: 'file' | 'dir' | 'include', defaultName = '') {
+		creatingIn = dir;
+		createType = type;
+		createValue = defaultName;
+		if (dir !== rootPath) expanded[dir] = true;
+	}
+	/** begins creating a file/folder/include at the workspace root; defaultName pre-fills the input. */
+	export function newAtRoot(type: 'file' | 'dir' | 'include', defaultName = '') {
+		startCreate(rootPath, type, defaultName);
+	}
+	/** true while an inline name input is open, so callers don't rebuild the tree out from under it. */
+	export function isEditing() {
+		return creatingIn !== null || renaming !== null;
+	}
+	function commitCreate() {
+		const v = createValue.trim();
+		const dir = creatingIn;
+		creatingIn = null;
+		createValue = '';
+		if (v && dir) onCreate(dir, v, createType);
+	}
+	function cancelCreate() {
+		creatingIn = null;
+		createValue = '';
+	}
+	function startRename(e: TreeEntry) {
+		renaming = e.path;
+		renameValue = e.name;
+	}
+	function commitRename(e: TreeEntry) {
+		if (renaming !== e.path) return; // guard against Enter + blur double-firing
+		renaming = null;
+		const v = renameValue.trim();
+		if (v && v !== e.name) onRename(e, v);
+	}
+	function confirmDelete(e: TreeEntry) {
+		if (confirm(`Delete "${e.name}"${e.type === 'dir' ? ' and everything inside it' : ''}?`)) onDelete(e);
+	}
+</script>
+
+<svelte:window
+	onkeydown={(e) => {
+		if (e.key !== 'Escape') return;
+		// escape hatch even if the inline input lost focus
+		if (ctxMenu) ctxMenu = null;
+		else if (creatingIn !== null) cancelCreate();
+		else if (renaming !== null) renaming = null;
+	}}
+/>
+
+{#snippet createInput(depth: number)}
+	<div class="flex items-center gap-1 py-0.5" style="padding-left: {depth * 12 + 6}px">
+		{#if createType === 'dir'}<Folder class="text-surface-400 size-4 shrink-0" />{:else if createType === 'include'}<FileSymlink
+				class="text-surface-400 size-4 shrink-0"
+			/>{:else}<File class="text-surface-400 size-4 shrink-0" />{/if}
+		<input
+			class="input h-6 flex-1 py-0 text-sm"
+			placeholder={createType === 'dir' ? 'folder name' : createType === 'include' ? 'include file name' : 'file name'}
+			value={createValue}
+			oninput={(e) => (createValue = e.currentTarget.value)}
+			use:focusSelect
+			draggable="false"
+			onpointerdown={(e) => e.stopPropagation()}
+			onkeydown={(e) => {
+				if (e.key === 'Enter') commitCreate();
+				else if (e.key === 'Escape') cancelCreate();
+			}}
+			onblur={commitCreate}
+		/>
+	</div>
+{/snippet}
+
+{#snippet row(entry: TreeEntry, depth: number)}
+	<div>
+		<!-- svelte-ignore a11y_no_static_element_interactions -->
+		<div
+			class="group flex items-center rounded text-sm transition-colors {activePath === entry.path
+				? 'bg-primary-500/15 text-primary-700 dark:text-primary-300 font-medium'
+				: 'hover:bg-surface-200-800'} {dropTarget === entry.path ? 'ring-primary-500 ring-2 ring-inset' : ''} {dragging?.path === entry.path
+				? 'opacity-50'
+				: ''}"
+			draggable={renaming !== entry.path}
+			ondragstart={(e) => onRowDragStart(e, entry)}
+			ondragover={(e) => onRowDragOver(e, entry)}
+			ondragleave={() => {
+				if (dropTarget === entry.path) dropTarget = null;
+			}}
+			ondrop={(e) => onRowDrop(e, entry)}
+			ondragend={onDragEnd}
+			oncontextmenu={(e) => openCtx(e, entry)}
+		>
+			<button
+				class="flex min-w-0 flex-1 items-center gap-1 py-0.5"
+				style="padding-left: {depth * 12 + 4}px"
+				onclick={() => (entry.type === 'dir' ? (expanded[entry.path] = !expanded[entry.path]) : onOpen(entry))}
+				ondblclick={() => entry.type === 'file' && onOpen(entry)}
+			>
+				{#if entry.type === 'dir'}
+					{#if expanded[entry.path]}<ChevronDown class="text-surface-400 size-3.5 shrink-0" />{:else}<ChevronRight
+							class="text-surface-400 size-3.5 shrink-0"
+						/>{/if}
+					<Folder class="text-surface-400 size-4 shrink-0" />
+				{:else}
+					<span class="w-3.5 shrink-0"></span>
+					<FileText class="text-surface-400 size-4 shrink-0" />
+				{/if}
+				{#if renaming === entry.path}
+					<input
+						class="input h-6 min-w-0 flex-1 py-0 text-sm"
+						value={renameValue}
+						oninput={(e) => (renameValue = e.currentTarget.value)}
+						use:focusSelect
+						draggable="false"
+						onpointerdown={(e) => e.stopPropagation()}
+						onclick={(e) => e.stopPropagation()}
+						onkeydown={(e) => {
+							if (e.key === 'Enter') commitRename(entry);
+							else if (e.key === 'Escape') renaming = null;
+						}}
+						onblur={() => commitRename(entry)}
+					/>
+				{:else}
+					<span class="truncate">{entry.name}</span>
+					{#if isMain(entry)}
+						<Star class="fill-primary-500 text-primary-500 size-3 shrink-0" aria-label="Main file" />
+					{/if}
+					{#if gitBadge(entry)}
+						{@const b = gitBadge(entry)}
+						<span class="ml-auto shrink-0 pr-1 font-mono text-xs font-bold {b ? BADGE_COLOR[b] : ''}" title={b ? BADGE_TITLE[b] : ''}
+							>{b}</span
+						>
+					{/if}
+				{/if}
+			</button>
+			{#if renaming !== entry.path}
+				<div class="flex shrink-0 items-center gap-0.5 pr-1 opacity-0 group-hover:opacity-100">
+					{#if entry.type === 'dir'}
+						<button class="btn-icon btn-icon-sm hover:preset-tonal" title="New file" onclick={() => startCreate(entry.path, 'file')}>
+							<FilePlus class="size-3.5" />
+						</button>
+					{/if}
+					<button class="btn-icon btn-icon-sm hover:preset-tonal" title="Rename" onclick={() => startRename(entry)}>
+						<Pencil class="size-3.5" />
+					</button>
+					<button class="btn-icon btn-icon-sm hover:preset-tonal-error" title="Delete" onclick={() => confirmDelete(entry)}>
+						<Trash2 class="size-3.5" />
+					</button>
+				</div>
+			{/if}
+		</div>
+
+		{#if entry.type === 'dir' && expanded[entry.path]}
+			{#if creatingIn === entry.path}{@render createInput(depth + 1)}{/if}
+			{#each entry.children ?? [] as child (child.path)}
+				{@render row(child, depth + 1)}
+			{/each}
+		{/if}
+	</div>
+{/snippet}
+
+<!-- empty-space drops and right-clicks target the workspace root -->
+<!-- svelte-ignore a11y_no_static_element_interactions -->
+<div
+	class="min-h-full rounded {dropTarget === ROOT ? 'ring-primary-500 ring-2 ring-inset' : ''}"
+	ondragover={onRootDragOver}
+	ondragleave={() => {
+		if (dropTarget === ROOT) dropTarget = null;
+	}}
+	ondrop={onRootDrop}
+	oncontextmenu={(e) => openCtx(e, null)}
+>
+	{#if creatingIn === rootPath}{@render createInput(0)}{/if}
+	{#each tree as entry (entry.path)}
+		{@render row(entry, 0)}
+	{/each}
+</div>
+
+{#if ctxMenu}
+	<!-- svelte-ignore a11y_no_static_element_interactions -->
+	<div
+		class="fixed inset-0 z-50"
+		onpointerdown={() => (ctxMenu = null)}
+		oncontextmenu={(e) => {
+			e.preventDefault();
+			ctxMenu = null;
+		}}
+	></div>
+	<div
+		class="bg-surface-50-950 border-surface-300-700 fixed z-50 min-w-[11rem] overflow-hidden rounded border py-1 text-sm shadow-lg"
+		style="left: {ctxMenu.x}px; top: {ctxMenu.y}px"
+	>
+		{#if !ctxMenu.entry || ctxMenu.entry.type === 'dir'}
+			<button
+				class="hover:preset-tonal-primary flex w-full items-center gap-2.5 px-3 py-1.5 text-left"
+				onclick={() => {
+					const d = ctxTargetDir();
+					ctxMenu = null;
+					startCreate(d, 'file');
+				}}
+			>
+				<FilePlus class="text-surface-500 size-4" /> New File
+			</button>
+			<button
+				class="hover:preset-tonal-primary flex w-full items-center gap-2.5 px-3 py-1.5 text-left"
+				onclick={() => {
+					const d = ctxTargetDir();
+					ctxMenu = null;
+					startCreate(d, 'dir');
+				}}
+			>
+				<FolderPlus class="text-surface-500 size-4" /> New Folder
+			</button>
+			<button
+				class="hover:preset-tonal-primary flex w-full items-center gap-2.5 px-3 py-1.5 text-left"
+				onclick={() => {
+					const d = ctxTargetDir();
+					ctxMenu = null;
+					startCreate(d, 'include');
+				}}
+				title="Create a .tex fragment and \input it at the cursor"
+			>
+				<FileSymlink class="text-surface-500 size-4" /> New Include
+			</button>
+		{/if}
+		{#if ctxMenu.entry && isTex(ctxMenu.entry) && onSetMain}
+			<button
+				class="hover:preset-tonal-primary flex w-full items-center gap-2.5 px-3 py-1.5 text-left"
+				onclick={() => {
+					const e = ctxMenu.entry;
+					ctxMenu = null;
+					if (e) onSetMain?.(e);
+				}}
+			>
+				<Star class="text-surface-500 size-4 {ctxMenu.entry && isMain(ctxMenu.entry) ? 'fill-primary-500 text-primary-500' : ''}" />
+				{ctxMenu.entry && isMain(ctxMenu.entry) ? 'Unset main file' : 'Set as main file'}
+			</button>
+		{/if}
+		{#if ctxMenu.entry}
+			<button
+				class="hover:preset-tonal-primary flex w-full items-center gap-2.5 px-3 py-1.5 text-left"
+				onclick={() => {
+					const e = ctxMenu.entry;
+					ctxMenu = null;
+					if (e) startRename(e);
+				}}
+			>
+				<Pencil class="text-surface-500 size-4" /> Rename
+			</button>
+			<button
+				class="hover:preset-tonal-error text-error-600 flex w-full items-center gap-2.5 px-3 py-1.5 text-left"
+				onclick={() => {
+					const e = ctxMenu.entry;
+					ctxMenu = null;
+					if (e) confirmDelete(e);
+				}}
+			>
+				<Trash2 class="size-4" /> Delete
+			</button>
+		{/if}
+	</div>
+{/if}

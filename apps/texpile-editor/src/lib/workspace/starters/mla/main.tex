@@ -1,0 +1,60 @@
+\documentclass[12pt,letterpaper]{article}
+
+% Packages the Texpile editor features rely on (figures, tables, links,
+% colors, highlighting, math). Keep these so the document keeps compiling.
+\usepackage{csquotes}
+\usepackage[hidelinks]{hyperref}
+\usepackage{setspace}
+\usepackage{fancyhdr}
+\usepackage{xcolor}
+\usepackage{soul}
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{mathtools}
+\usepackage{braket}
+\usepackage{colonequals}
+\usepackage{amsopn}
+\usepackage[version=4]{mhchem}
+\usepackage{gensymb}
+\usepackage{graphicx}
+\usepackage{caption}
+\usepackage{wrapfig}
+\usepackage{tabularx}
+\usepackage{booktabs}
+\usepackage{multirow}
+\usepackage{tikz}
+
+% MLA (Modern Language Association) style
+\usepackage[style=mla,backend=biber]{biblatex}
+\addbibresource{references.bib}
+
+\usepackage{fontspec}
+\setmainfont{Times New Roman}
+\doublespacing
+\setlength{\parindent}{0.5in}
+\raggedright
+
+% Running header: your last name and the page number, top right.
+\pagestyle{fancy}
+\fancyhf{}
+\rhead{Last Name \thepage}
+\renewcommand{\headrulewidth}{0pt}
+
+\begin{document}
+
+\begin{flushleft}
+First Last \\
+Professor Name \\
+Course Name \\
+\today
+\end{flushleft}
+
+\begin{center}
+Title of Your Essay
+\end{center}
+
+Begin your essay here. Cite a source like this \autocite{sample}.
+
+\printbibliography[title={Works Cited}]
+
+\end{document}

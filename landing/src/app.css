@@ -1,0 +1,21 @@
+@import 'tailwindcss';
+@plugin '@tailwindcss/forms';
+@plugin '@tailwindcss/typography';
+
+@import '@skeletonlabs/skeleton';
+/* Skeleton v4 sources interactive component styles via this import */
+@import '@skeletonlabs/skeleton-svelte';
+/* Texpile brand theme (navy #0B2949, blue #0088F7, cyan #00D6F9) */
+@import './texpile-theme.css';
+
+/* brand typeface (Poppins), self-hosted */
+@import '@fontsource/poppins/400.css';
+@import '@fontsource/poppins/500.css';
+@import '@fontsource/poppins/600.css';
+@import '@fontsource/poppins/700.css';
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+html {
+	scroll-behavior: smooth;
+}

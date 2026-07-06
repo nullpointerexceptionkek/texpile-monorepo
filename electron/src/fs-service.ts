@@ -277,6 +277,38 @@ export async function search(
 	return { results: out, truncated: state.truncated, total: state.total };
 }
 
+// shell out to latexindent (ships with TeX Live/MiKTeX, same assumption as the compile command)
+// rather than reimplement LaTeX-aware reindenting ourselves. runs next to the original file so a
+// project-local .indentconfig.yaml/localSettings.yaml is picked up, same as latexindent's own CLI
+// convention; the temp input + its indent.log are cleaned up either way.
+export async function formatLatex(filePath: string, text: string): Promise<{ formatted: string }> {
+	if (!filePath) throw new Error('Missing path');
+	const dir = dirname(filePath);
+	const tempFile = join(dir, `.texpile-format-${Date.now()}-${Math.random().toString(36).slice(2)}.tex`);
+	const logFile = join(dir, 'indent.log');
+	try {
+		await writeFile(tempFile, text, 'utf-8');
+		const stdout = await new Promise<string>((res, rej) => {
+			execFile('latexindent', [tempFile], { cwd: dir, timeout: 20000, maxBuffer: 20 * 1024 * 1024 }, (err, out, stderr) => {
+				if (err) {
+					if ((err as NodeJS.ErrnoException).code === 'ENOENT') {
+						rej(new Error('latexindent was not found on PATH. It ships with most LaTeX distributions (TeX Live, MiKTeX).'));
+					} else {
+						rej(new Error(stderr?.trim() || err.message));
+					}
+					return;
+				}
+				res(out);
+			});
+		});
+		if (!stdout.trim()) throw new Error('latexindent produced no output.');
+		return { formatted: stdout };
+	} finally {
+		await rm(tempFile, { force: true }).catch(() => {});
+		await rm(logFile, { force: true }).catch(() => {});
+	}
+}
+
 // shell out to the synctex CLI rather than parse .synctex.gz ourselves; the fiddly coordinate
 // math is its job, and it finds the .synctex(.gz) next to the PDF on its own
 function runSynctex(args: string[]): Promise<string> {

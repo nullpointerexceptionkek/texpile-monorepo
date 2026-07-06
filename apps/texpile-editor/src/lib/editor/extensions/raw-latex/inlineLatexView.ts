@@ -7,7 +7,7 @@ import { TextSelection, Selection } from 'prosemirror-state';
 import type { Node } from 'prosemirror-model';
 import type { EditorView as ProseMirrorView } from 'prosemirror-view';
 import { languages as cmlangdata } from '@codemirror/language-data';
-import { latexAutocomplete } from '$lib/editor/extensions/latex-completion/latexCompletion';
+import { latexAutocomplete } from '$lib/editor/extensions/intellisense/intellisense';
 
 // single-line inline codemirror for inline_latex; newlines rejected, enter / arrow-out exit the node
 class InlineLatexView {

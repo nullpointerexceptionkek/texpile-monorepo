@@ -28,6 +28,7 @@
 	import { replacePreambleFrontmatter } from '$lib/editor/extensions/raw-latex/frontmatterView';
 	import { initSpellcheckConfig } from '$lib/editor/extensions/spellcheck/spellcheckConfig';
 	import Toolbar from '$lib/editor/comp/toolbar/Toolbar.svelte';
+	import SourceToolbar from '$lib/editor/comp/toolbar/SourceToolbar.svelte';
 	import WorkspaceMenuBar from '$lib/editor/comp/WorkspaceMenuBar.svelte';
 	import FileTree from '$lib/editor/comp/FileTree.svelte';
 	import { references, loadReferences, bibItemsToReferences, type BibLaTeXReference } from '$lib/workspace/citations';
@@ -68,6 +69,7 @@
 		detectEol,
 		toLf,
 		fromLf,
+		formatLatexDocument,
 		type Eol,
 		type TreeEntry,
 		type TexFile
@@ -497,6 +499,8 @@
 	let compileCommand = $state(''); // the compile command; {main} expands to the main file's path
 	let compileModalOpen = $state(false);
 	let compileDraft = $state('');
+	let formatModalOpen = $state(false);
+	let formatting = $state(false);
 	// PDF preview pane; opens automatically once a compile writes a fresh PDF
 	let pdfPaneOpen = $state(false);
 	let pdfPaneWidth = $state(480);
@@ -979,6 +983,32 @@
 	function useDefaultCommand() {
 		compileDraft = DEFAULT_COMPILE_COMMAND;
 		saveCompileCommand(true);
+	}
+
+	function openFormatModal() {
+		if (!loadedPath || kind !== 'tex') return;
+		formatModalOpen = true;
+	}
+	// reindents via latexindent and swaps texSource for the result; both views re-derive from it
+	// (source mode's value-sync effect, visual mode's rebuildVisualFromSource below). no backup
+	// file - the confirm modal's warning is the only safety net, undo (Ctrl+Z) covers the rest.
+	async function runFormat() {
+		if (!loadedPath) return;
+		formatModalOpen = false;
+		formatting = true;
+		try {
+			await flushSaveAndWait(); // the formatter should see exactly what's on screen
+			const formatted = toLf(await formatLatexDocument(loadedPath, fromLf(texSource, docEol)));
+			texSource = formatted;
+			isDirty.set(true);
+			scheduleSave(loadedPath, texSource);
+			if (viewMode === 'visual') rebuildVisualFromSource();
+			toaster.success({ title: 'Formatted', description: basename(loadedPath) });
+		} catch (e) {
+			toaster.error({ title: 'Format failed', description: e instanceof Error ? e.message : String(e) });
+		} finally {
+			formatting = false;
+		}
 	}
 
 	// insert an \input of newFilePath at the cursor in the open visual doc: path relative to the
@@ -1733,6 +1763,11 @@
 			e.preventDefault();
 			sidebarView = 'search';
 			sidebarOpen = true;
+		} else if ((e.metaKey || e.ctrlKey) && e.altKey && e.key.toLowerCase() === 'b' && terminalAvailable) {
+			// same chord LaTeX Workshop binds to "build" by default (ctrl+alt+b / cmd+alt+b)
+			e.preventDefault();
+			if (compiling) stopCompile();
+			else runCompile();
 		}
 	}
 </script>
@@ -1753,6 +1788,7 @@
 		onConfigureCompile={openCompileModal}
 		onNewTerminal={addTerminal}
 		onToggleTerminal={toggleTerminal}
+		onFormatDocument={openFormatModal}
 	/>
 	<div class="flex min-h-0 flex-1 overflow-hidden">
 		{#if sidebarOpen}
@@ -1910,11 +1946,15 @@
 							</button>
 						{/if}
 						{#if compiling}
-							<button class="btn btn-sm preset-tonal-error gap-1.5" onclick={stopCompile} title="Stop the running compile (Ctrl+C)">
+							<button
+								class="btn btn-sm preset-tonal-error gap-1.5"
+								onclick={stopCompile}
+								title={`Stop the running compile (${modLabel}+Alt+B)`}
+							>
 								<Square class="size-4" /> Stop
 							</button>
 						{:else}
-							<button class="btn btn-sm preset-tonal-primary gap-1.5" onclick={runCompile} title="Compile (Terminal ▸ Compile)">
+							<button class="btn btn-sm preset-tonal-primary gap-1.5" onclick={runCompile} title={`Compile (${modLabel}+Alt+B)`}>
 								<Play class="size-4" /> Compile
 							</button>
 						{/if}
@@ -1958,6 +1998,10 @@
 					{#if visualDoc && loadedPath && kind === 'tex' && viewMode === 'visual'}
 						<div class="border-surface-200-800 toolbar-hscroll overflow-x-auto border-b">
 							<Toolbar minimal />
+						</div>
+					{:else if loadedPath && kind === 'tex' && viewMode === 'source'}
+						<div class="border-surface-200-800 toolbar-hscroll overflow-x-auto border-b px-2 py-1.5">
+							<SourceToolbar />
 						</div>
 					{/if}
 					<!-- relative anchors the floating find bar; it sits outside the scroller so it doesn't scroll away -->
@@ -2294,6 +2338,36 @@
 							<Play class="size-4" /> Save &amp; run
 						</button>
 					</div>
+				</div>
+			</div>
+		</div>
+	{/if}
+
+	{#if formatModalOpen}
+		<div
+			class="fixed inset-0 z-1300 flex items-center justify-center bg-black/40 p-4"
+			role="presentation"
+			onmousedown={(e) => e.target === e.currentTarget && (formatModalOpen = false)}
+		>
+			<div class="card bg-surface-50-950 border-surface-300-700 w-full max-w-md border p-5 shadow-2xl">
+				<div class="mb-3 flex items-center justify-between">
+					<h2 class="flex items-center gap-2 text-base font-semibold">
+						<TriangleAlert class="text-warning-500 size-5" /> Format document
+					</h2>
+					<button class="btn-icon btn-icon-sm hover:preset-tonal" onclick={() => (formatModalOpen = false)} aria-label="Close">
+						<X class="size-4" />
+					</button>
+				</div>
+				<p class="text-surface-600-300 mb-4 text-sm">
+					This reindents your LaTeX source with <code class="bg-surface-200-800 rounded px-1">latexindent</code>. It only touches
+					whitespace, but in rare cases (unusual verbatim-like environments, whitespace-sensitive macros) that can still change what
+					renders. Undo (Ctrl+Z) reverts it if something looks off.
+				</p>
+				<div class="flex justify-end gap-2">
+					<button class="btn btn-sm hover:preset-tonal" onclick={() => (formatModalOpen = false)}>Cancel</button>
+					<button class="btn btn-sm preset-filled-primary-500 gap-1.5" onclick={runFormat} disabled={formatting}>
+						{#if formatting}<Loader2 class="size-4 animate-spin" />{/if} Format
+					</button>
 				</div>
 			</div>
 		</div>

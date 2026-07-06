@@ -8,7 +8,7 @@
 	import { languages as cmlangdata } from '@codemirror/language-data';
 	import { searchKeymap, openSearchPanel } from '@codemirror/search';
 	import { texpileSearch } from '$lib/editor/extensions/search-panel/searchPanel';
-	import { latexAutocomplete } from '$lib/editor/extensions/latex-completion/latexCompletion';
+	import { latexAutocomplete, latexIntellisense } from '$lib/editor/extensions/intellisense/intellisense';
 	import { lintGutter, setDiagnostics, type Diagnostic } from '@codemirror/lint';
 	import { mathPreview } from '$lib/editor/extensions/math-preview/mathPreview';
 	import { synctexFlash, flashLineEffect } from '$lib/editor/extensions/synctex-flash/synctexFlash';
@@ -124,8 +124,13 @@
 					indentOnInput(),
 					langConf.of([]),
 					cmSyntaxHighlight(),
-					// LaTeX autocomplete + math preview for .tex only; the lint gutter renders compile-log diagnostics
-					...(!filename || /\.tex$/i.test(filename) ? [latexAutocomplete(), mathPreview(), lintGutter({ hoverTime: 0 })] : []),
+					// full intellisense (completion + shortcuts + hover + folding + go-to-def) + math preview for
+					// .tex only; .bib gets entry-type/field completion; the lint gutter renders compile-log diagnostics
+					...(!filename || /\.tex$/i.test(filename)
+						? [latexIntellisense(), mathPreview(), lintGutter({ hoverTime: 0 })]
+						: /\.bib$/i.test(filename)
+							? [latexAutocomplete({ bib: true })]
+							: []),
 					synctexFlash(), // flash the line jumped to by SyncTeX inverse search / Find-in-Files
 					// compact find/replace widget, floated top-right (styles below)
 					texpileSearch(),

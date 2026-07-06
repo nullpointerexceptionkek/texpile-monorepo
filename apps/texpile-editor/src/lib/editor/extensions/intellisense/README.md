@@ -1,0 +1,1 @@
+Most of what's in this folder is heavily inspired by the [LaTeX Workshop](https://github.com/James-Yu/LaTeX-Workshop) VS Code extension's IntelliSense (completion, hover, folding, go-to-definition), reimplemented for CodeMirror with our own curated data instead of its CTAN-scraped package database.

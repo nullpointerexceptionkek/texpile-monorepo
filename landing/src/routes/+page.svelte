@@ -87,7 +87,7 @@
 <section id="top" class="from-primary-50 to-secondary-50 bg-gradient-to-br">
 	<div class="container mx-auto px-4 pt-16 pb-6 sm:px-6 md:pt-24 lg:px-8">
 		<div class="mx-auto max-w-3xl space-y-6 text-center">
-			<h1 class="text-3xl leading-tight font-bold sm:text-4xl">A local, offline LaTeX editor</h1>
+			<h1 class="text-3xl leading-tight font-bold sm:text-4xl">A local, offline, open source LaTeX editor</h1>
 			<p class="text-surface-600 mx-auto max-w-2xl text-lg leading-relaxed">
 				Texpile edits .tex files visually or in source. It runs entirely on your machine, and what it saves is plain LaTeX. No accounts, no
 				cloud.
@@ -99,9 +99,7 @@
 				>
 					<Download class="h-5 w-5" /> Download
 				</a>
-				<p class="text-surface-500 font-mono text-xs">
-					windows · macos · linux · free · offline · <span class="whitespace-nowrap">no account</span>
-				</p>
+				<p class="text-surface-500 font-mono text-xs">Windows · macOS · Linux · Offline · AGPL-3.0</p>
 			</div>
 		</div>
 	</div>

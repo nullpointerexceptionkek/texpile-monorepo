@@ -38,6 +38,7 @@ interface TexpileNative {
 		caseSensitive: boolean
 	) => Promise<{ results: SearchFileResult[]; truncated: boolean; total?: number; error?: string }>;
 	fsStat: (path: string) => Promise<{ exists: boolean; mtimeMs: number; size: number }>;
+	fsFormatLatex: (path: string, text: string) => Promise<{ formatted: string }>;
 	synctex: (body: Record<string, unknown>) => Promise<Record<string, unknown>>;
 	gitStatus: (root: string) => Promise<GitStatusResult>;
 	gitShow: (path: string) => Promise<GitShowResult>;
@@ -112,6 +113,11 @@ export async function writeTextFile(path: string, content: string): Promise<void
 
 export async function writeBinaryFile(path: string, file: Blob): Promise<void> {
 	await ipc(requireNative().fsWriteBinary(path, await file.arrayBuffer()));
+}
+
+/** reindents LaTeX source via latexindent; throws if it isn't installed. */
+export async function formatLatexDocument(path: string, text: string): Promise<string> {
+	return (await ipc(requireNative().fsFormatLatex(path, text))).formatted;
 }
 
 // URL serving a local file's raw bytes (editor images, the compiled PDF). texfile:// answers

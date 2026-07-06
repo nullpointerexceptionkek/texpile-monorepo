@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { Download, Info, Terminal, ChevronDown, Copy, Check } from '@lucide/svelte';
+	import { Download, Info, Terminal, ChevronDown, Copy, Check, Star } from '@lucide/svelte';
 	import { onMount } from 'svelte';
 	import { Menu, Portal } from '@skeletonlabs/skeleton-svelte';
 	import { trackEvent } from '$lib/plausible';
@@ -68,9 +68,19 @@
 	const recommended = $derived(PLATFORMS.find((p) => p.key === detected) ?? null);
 	const others = $derived(recommended ? PLATFORMS.filter((p) => p.key !== recommended.key) : PLATFORMS);
 
+	const GITHUB_URL = 'https://github.com/nullpointerexceptionkek/texpile-monorepo';
+
 	// this Plausible plan has no custom properties, so the platform goes in the event name
 	function trackDownload(platform: string) {
 		trackEvent(`Download: ${platform}`);
+		downloadModalOpen = true;
+	}
+
+	// every download link/menu-item funnels through trackDownload, so this is the one place a
+	// "your download is starting" nudge can hook in regardless of which platform was picked
+	let downloadModalOpen = $state(false);
+	function dismissDownloadModal() {
+		downloadModalOpen = false;
 	}
 
 	// start a download without navigating away (Linux menu items aren't plain <a> links)
@@ -263,6 +273,35 @@
 		{/if}
 	</div>
 </section>
+
+{#if downloadModalOpen}
+	<div
+		class="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
+		role="presentation"
+		onmousedown={(e) => e.target === e.currentTarget && dismissDownloadModal()}
+	>
+		<div class="w-full max-w-sm rounded-lg border border-surface-200 bg-white p-6 text-center shadow-2xl">
+			<div class="bg-primary-500/10 text-primary-600 mx-auto flex h-12 w-12 items-center justify-center rounded-full">
+				<Download class="h-6 w-6" />
+			</div>
+			<p class="text-surface-900 mt-4 text-lg font-semibold">Your download is starting…</p>
+			<p class="text-surface-600 mt-1.5 text-sm">While you wait, consider starring the project on GitHub to support it.</p>
+			<a
+				href={GITHUB_URL}
+				target="_blank"
+				rel="noopener noreferrer"
+				class="btn preset-filled-primary-500 rounded-base mt-5 inline-flex w-full items-center justify-center gap-2 py-2.5 text-sm font-semibold text-white"
+			>
+				<Star class="h-4 w-4" /> Star on GitHub
+			</a>
+			<button type="button" onclick={dismissDownloadModal} class="text-surface-500 hover:text-surface-700 mt-3 text-sm font-medium">
+				Close
+			</button>
+		</div>
+	</div>
+{/if}
+
+<svelte:window onkeydown={(e) => e.key === 'Escape' && dismissDownloadModal()} />
 
 {#snippet linuxDownload(variant: 'lead' | 'grid')}
 	<Menu onSelect={(details) => onLinuxSelect(details.value)} positioning={{ placement: 'bottom' }}>

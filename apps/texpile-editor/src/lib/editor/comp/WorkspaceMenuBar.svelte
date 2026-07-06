@@ -35,6 +35,8 @@
 		onConfigureCompile?: () => void;
 		onNewTerminal?: () => void;
 		onToggleTerminal?: () => void;
+		/** Reindent the current document via latexindent (opens the confirm-first modal). */
+		onFormatDocument?: () => void;
 	}
 	let {
 		disabled = false,
@@ -47,7 +49,8 @@
 		onCompile,
 		onConfigureCompile,
 		onNewTerminal,
-		onToggleTerminal
+		onToggleTerminal,
+		onFormatDocument
 	}: Props = $props();
 
 	let imageInput: HTMLInputElement;
@@ -126,12 +129,18 @@
 			]
 		},
 		{
+			group: 'Compile',
+			items: [{ keys: combo({ alt: true }, 'B'), label: 'Compile (Stop if already running)' }]
+		},
+		{
 			group: 'Formatting',
 			items: [
 				{ keys: combo({}, 'B'), label: 'Bold' },
 				{ keys: combo({}, 'I'), label: 'Italic' },
 				{ keys: combo({}, 'U'), label: 'Underline' },
 				{ keys: combo({}, '`'), label: 'Inline code' },
+				{ keys: combo({}, '.'), label: 'Superscript' },
+				{ keys: combo({}, ','), label: 'Subscript' },
 				{ keys: combo({ shift: true }, 'B'), label: 'Block quote' },
 				{ keys: combo({ shift: true }, '`'), label: 'Code block' },
 				{
@@ -140,6 +149,13 @@
 						: `${combo({ shift: true }, '1')} … ${combo({ shift: true }, '3')}`,
 					label: 'Heading 1–3'
 				}
+			]
+		},
+		{
+			group: 'Math',
+			items: [
+				{ keys: combo({}, 'M'), label: 'Inline math' },
+				{ keys: combo({ shift: true }, 'M'), label: 'Display math' }
 			]
 		}
 	];
@@ -415,7 +431,7 @@
 		</Portal>
 	</Menu>
 
-	<Menu onSelect={(d) => formatSelect(d.value)}>
+	<Menu onSelect={(d) => (d.value === 'format-document' ? onFormatDocument?.() : formatSelect(d.value))}>
 		<Menu.Trigger
 			class={triggerClass}
 			disabled={disabled || $cursorInCm}
@@ -439,6 +455,10 @@
 					<Menu.Item value="h2" class={itemClass}><Menu.ItemText>Heading 2</Menu.ItemText></Menu.Item>
 					<Menu.Item value="h3" class={itemClass}><Menu.ItemText>Heading 3</Menu.ItemText></Menu.Item>
 					<Menu.Item value="quote" class={itemClass}><Menu.ItemText>Block quote</Menu.ItemText></Menu.Item>
+					{#if onFormatDocument}
+						<Menu.Separator class="border-surface-200-800 my-1 border-t" />
+						<Menu.Item value="format-document" class={itemClass}><Menu.ItemText>Format document (latexindent)…</Menu.ItemText></Menu.Item>
+					{/if}
 				</Menu.Content>
 			</Menu.Positioner>
 		</Portal>

@@ -35,6 +35,8 @@ contextBridge.exposeInMainWorld('texpileNative', {
 	fsSearch: (root: string, q: string, regex: boolean, caseSensitive: boolean) => invokeFs('fs:search', root, q, regex, caseSensitive),
 	/** { exists, mtimeMs, size }, used to poll for a freshly-written compile output. */
 	fsStat: (path: string) => invokeFs('fs:stat', path),
+	/** reindent via latexindent -> { formatted }; throws if latexindent isn't on PATH. */
+	fsFormatLatex: (path: string, text: string) => invokeFs('fs:formatLatex', path, text),
 	synctex: (body: Record<string, unknown>) => invokeFs('synctex:call', body),
 
 	/** per-file git status + branch -> { ok, branch?, entries? }. */

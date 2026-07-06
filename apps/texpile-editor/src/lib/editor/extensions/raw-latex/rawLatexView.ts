@@ -9,7 +9,7 @@ import type { Node } from 'prosemirror-model';
 import type { EditorView as ProseMirrorView } from 'prosemirror-view';
 import { languages as cmlangdata } from '@codemirror/language-data';
 import { rawEditorActiveStore } from '$lib/stores/editorStore';
-import { latexAutocomplete } from '$lib/editor/extensions/latex-completion/latexCompletion';
+import { latexAutocomplete } from '$lib/editor/extensions/intellisense/intellisense';
 
 // codemirror-backed NodeView for raw_latex blocks; content reaches the serializer unprocessed
 class RawLatexView {

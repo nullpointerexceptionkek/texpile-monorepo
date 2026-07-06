@@ -198,6 +198,7 @@ handleFs('fs:tree', fsService.tree);
 handleFs('fs:op', fsService.op);
 handleFs('fs:search', fsService.search);
 handleFs('fs:stat', fsService.statFile);
+handleFs('fs:formatLatex', fsService.formatLatex);
 handleFs('synctex:call', fsService.synctex);
 handleFs('git:status', gitService.gitStatus);
 handleFs('git:show', gitService.gitShowHead);

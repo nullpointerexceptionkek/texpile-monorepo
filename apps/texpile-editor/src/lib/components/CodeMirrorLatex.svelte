@@ -5,7 +5,7 @@
 	import { defaultKeymap, history, historyKeymap, indentWithTab } from '@codemirror/commands';
 	import { foldGutter, indentOnInput, bracketMatching, foldKeymap } from '@codemirror/language';
 	import { cmSyntaxHighlight } from '$lib/editor/cmHighlight';
-	import { latexAutocomplete } from '$lib/editor/extensions/latex-completion/latexCompletion';
+	import { latexAutocomplete } from '$lib/editor/extensions/intellisense/intellisense';
 	import { bibtex } from '$lib/editor/extensions/bibtex/bibtex';
 	import { languages } from '@codemirror/language-data';
 	import { closeBrackets, closeBracketsKeymap } from '@codemirror/autocomplete';

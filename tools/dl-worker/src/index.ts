@@ -47,6 +47,14 @@ function versionOf(key: string): string {
 	return m ? m[1] : 'root';
 }
 
+// the download page's links are cross-origin (dl.texpile.com vs the site itself), where the
+// HTML `download` attribute can't force a filename/silent save on its own - browsers fall back
+// to Content-Disposition, and without it some show a Save As prompt instead of saving straight
+// to Downloads. only the actual installers need this; latest.json/versions.json are fetch()ed, not downloaded.
+function attachmentName(key: string): string {
+	return key.split('/').pop() ?? key;
+}
+
 // Coarse agent family; the raw UA is kept (truncated) as its own dimension for later filtering.
 function agentFamily(ua: string): string {
 	if (/curl|wget|powershell|httpie/i.test(ua)) return 'cli';
@@ -177,6 +185,7 @@ export default {
 			headers.set('etag', head.httpEtag);
 			headers.set('content-length', String(head.size));
 			headers.set('accept-ranges', 'bytes');
+			if (INSTALLER.test(key)) headers.set('content-disposition', `attachment; filename="${attachmentName(key)}"`);
 			return new Response(null, { status: 200, headers });
 		}
 
@@ -200,6 +209,7 @@ export default {
 		} else if (/^v\d/.test(key)) {
 			headers.set('cache-control', 'public, max-age=31536000, immutable'); // versioned copies never change
 		}
+		if (INSTALLER.test(key)) headers.set('content-disposition', `attachment; filename="${attachmentName(key)}"`);
 
 		// Precondition (If-None-Match) matched: no body comes back.
 		if (!object.body) return new Response(null, { status: 304, headers });

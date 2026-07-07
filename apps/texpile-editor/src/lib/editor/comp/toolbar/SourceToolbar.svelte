@@ -122,7 +122,7 @@
 		</li>
 		<li class="toolbarButton hover:preset-tonal">
 			<button
-				onclick={run((s) => computeWrapBlock(s, '$', '$'))}
+				onclick={run((s) => computeWrapBlock(s, '\\(', '\\)'))}
 				class="flex items-center p-1"
 				aria-label="Inline math"
 				title="Inline math (Ctrl+M)"

@@ -1,0 +1,47 @@
+% === CASE: plain well-formed verbatim block ===
+Before text.
+
+\begin{verbatim}
+code here
+more code
+\end{verbatim}
+
+After text.
+
+% === CASE: pathological nested-looking verbatim (user-reported) ===
+% real verbatim scanning closes at the FIRST literal \end{verbatim}; everything before that,
+% including the fake nested \begin{verbatim}/\begin{quote}/\subsubsection{...}, is the verbatim
+% body's literal text, not real structure. The 3 orphan \end{verbatim} after have nothing to
+% close (genuinely invalid LaTeX), but the recognized verbatim block itself must still show up.
+\begin{verbatim}
+\begin{verbatim}
+\begin{verbatim}
+\begin{verbatim}
+\begin{quote}
+\begin{quote}
+\begin{quote}
+\begin{quote}
+\begin{quote}
+\begin{quote}
+\subsubsection{\subsection{\subsection{\subsection{\subsection{\subsection{}}}}}}
+\end{quote}
+\end{quote}
+\end{quote}
+\end{quote}
+\end{quote}
+\end{quote}
+\end{verbatim}
+\end{verbatim}
+\end{verbatim}
+\end{verbatim}\hypersetup{colorlinks=false}
+
+a \par
+
+% === CASE: comment environment (also verbatim-shaped, must stay a raw chip not a code block) ===
+Before.
+
+\begin{comment}
+this is commented out
+\end{comment}
+
+After.

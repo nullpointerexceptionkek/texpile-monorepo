@@ -1607,11 +1607,20 @@ const VERBATIM_ENVS = new Set([
 
 function convertNodeToBlock(node: Node, ctx: ConversionContext, options: ConversionOptions): PMNode[] | null {
 	switch (node.type) {
-		// unified-latex parses any environment it recognizes as genuinely verbatim-bodied
-		// (verbatim, verbatim*, ...) into this dedicated node shape instead of a generic
-		// 'environment' node, even though the fields (env/content/args) are the same.
-		case 'verbatim':
-			return [codeBlockFromVerbatimEnv(node as unknown as Environment)];
+		case 'verbatim': {
+			// unified-latex parses any environment it recognizes as genuinely verbatim-bodied
+			// (verbatim, verbatim*, comment, filecontents, Verbatim, alltt, ...) into this
+			// dedicated node shape instead of a generic 'environment' one, even though the
+			// fields (env/content/args) match. Route it through the same envHandler-or-raw
+			// fallback the 'environment' case uses, so e.g. `comment`/`filecontents` still
+			// become an opaque raw_latex chip (per VERBATIM_ENVS) instead of looking like an
+			// editable code block - only names with a dedicated handler (plain `verbatim`) do.
+			const env = node as unknown as Environment;
+			const envHandler = envHandlers[env.env];
+			if (envHandler) return envHandler(env, ctx, options);
+			const latexSource = nodeRawSource(node) ?? nodeToLatexString(node);
+			return [el('raw_latex', null, [txt(latexSource)])];
+		}
 		case 'environment': {
 			const env = node as Environment;
 			const envHandler = envHandlers[env.env];

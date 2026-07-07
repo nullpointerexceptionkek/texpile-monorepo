@@ -113,7 +113,7 @@ export function formatShortcuts(): Extension {
 		{ key: 'Mod-Alt-1', run: (v) => wrapBlock(v, '\\section{', '}') },
 		{ key: 'Mod-Alt-2', run: (v) => wrapBlock(v, '\\subsection{', '}') },
 		{ key: 'Mod-Alt-3', run: (v) => wrapBlock(v, '\\subsubsection{', '}') },
-		{ key: 'Mod-m', run: (v) => wrapBlock(v, '$', '$') },
+		{ key: 'Mod-m', run: (v) => wrapBlock(v, '\\(', '\\)') },
 		{ key: 'Mod-Shift-m', run: (v) => wrapBlock(v, '\\[', '\\]') }
 	]);
 }

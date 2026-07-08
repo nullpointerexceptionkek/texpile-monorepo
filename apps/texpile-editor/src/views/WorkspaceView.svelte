@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { get } from 'svelte/store';
+	import { Switch } from '@skeletonlabs/skeleton-svelte';
 	import { browser } from '$lib/runtime';
 	import { navigate } from '$lib/router.svelte';
 	// prettier-ignore
@@ -44,7 +45,9 @@
 		isDirty,
 		mainFile,
 		savedMainFile,
-		setMainFile
+		setMainFile,
+		savedCompileCommand,
+		setFolderCompileCommand
 	} from '$lib/workspace/workspaceStore';
 	import { addRecentFolder } from '$lib/workspace/workspaceStore';
 	import { refreshGitStatus, isGitRepo, gitStatusMap, gitChanges, gitBranch, takeNoGitHint } from '$lib/workspace/gitStore';
@@ -217,7 +220,7 @@
 				pdfPaneWidth = clampPdf((frac > 0 && frac < 1 ? frac : 0.4) * window.innerWidth);
 			}
 			pdfPaneOpen = s.pdfPaneOpen; // reopen the preview if it was open last (loadExistingPdf fills it)
-			compileCommand = s.compileCommand ?? '';
+			compileCommand = resolveCompileCommand(get(workspaceRoot), s.compileCommand ?? '');
 			if (s.terminalHeight >= 120 && s.terminalHeight <= 700) terminalHeight = s.terminalHeight;
 			if (terminalAvailable && s.terminalVisible) {
 				terminalMounted = true;
@@ -527,6 +530,8 @@
 	let compileCommand = $state(''); // the compile command; {main} expands to the main file's path
 	let compileModalOpen = $state(false);
 	let compileDraft = $state('');
+	// per-folder command wins over the global default (the last one saved anywhere)
+	const resolveCompileCommand = (root: string | null, global: string) => (root && savedCompileCommand(root)) || global || '';
 	let formatModalOpen = $state(false);
 	let formatting = $state(false);
 	// PDF preview pane; opens automatically once a compile writes a fresh PDF
@@ -561,11 +566,12 @@
 	}
 	// a new folder's diagnostics start blank, the previous folder's log is meaningless here
 	$effect(() => {
-		void $workspaceRoot;
+		const root = $workspaceRoot;
 		compileLog.set(null);
 		dockView = 'terminal';
 		compiling = false;
 		compileGen++; // any pollers still watching the previous folder's paths stand down
+		compileCommand = resolveCompileCommand(root, get(settings).compileCommand);
 	});
 	// last compile's problems for the file open in source mode; badboxes ride along
 	// as "info" so they underline without alarming colors
@@ -732,9 +738,15 @@
 		await ensureOutputDir();
 		refreshTree(); // the output/ folder may have just been created
 		showTerminal();
-		compiling = true;
+		// marker off = no end signal from the shell; leave the button as Compile instead of a
+		// Stop that would linger until the log/PDF pollers time out
+		const track = get(settings).compileSentinel;
+		compiling = track;
 		const gen = ++compileGen;
-		runInTerminal(withBatchFlags(resolvedCompileCommand(cmd)), () => finalizeCompile(gen, pdfPath, before, logPath, logBefore));
+		runInTerminal(
+			withBatchFlags(resolvedCompileCommand(cmd)),
+			track ? () => finalizeCompile(gen, pdfPath, before, logPath, logBefore) : undefined
+		);
 		if (pdfPath) watchPdf(gen, pdfPath, before);
 		if (logPath) watchLog(gen, logPath, logBefore);
 		// reload the explorer as the build writes its output (also covers builds that produce no PDF)
@@ -900,7 +912,7 @@
 		// read the persisted command directly: on first mount this can run before the
 		// reactive compileCommand is hydrated, and a stale '' would point at the wrong folder
 		const s0 = await loadSettings();
-		const pdfPath = expectedPdfPath(s0.compileCommand);
+		const pdfPath = expectedPdfPath(resolveCompileCommand(get(workspaceRoot), s0.compileCommand));
 		if (!pdfPath) {
 			pdfStore.set(null);
 			return;
@@ -1004,7 +1016,9 @@
 	}
 	function saveCompileCommand(thenRun: boolean) {
 		compileCommand = compileDraft.trim();
-		updateSettings({ compileCommand });
+		const root = get(workspaceRoot);
+		if (root) setFolderCompileCommand(root, compileCommand || null);
+		updateSettings({ compileCommand }); // also the starting default for folders without their own
 		compileModalOpen = false;
 		if (thenRun && compileCommand) runCompile();
 	}
@@ -1981,14 +1995,18 @@
 						{/if}
 						{#if compiling}
 							<button
-								class="btn btn-sm preset-tonal-error gap-1.5"
+								class="btn btn-sm preset-tonal-error w-24 justify-center gap-1.5"
 								onclick={stopCompile}
 								title={`Stop the running compile (${modLabel}+Alt+Enter)`}
 							>
 								<Square class="size-4" /> Stop
 							</button>
 						{:else}
-							<button class="btn btn-sm preset-tonal-primary gap-1.5" onclick={runCompile} title={`Compile (${modLabel}+Alt+Enter)`}>
+							<button
+								class="btn btn-sm preset-tonal-primary w-24 justify-center gap-1.5"
+								onclick={runCompile}
+								title={`Compile (${modLabel}+Alt+Enter)`}
+							>
 								<Play class="size-4" /> Compile
 							</button>
 						{/if}
@@ -2323,7 +2341,8 @@
 					</button>
 				</div>
 				<p class="text-surface-600-300 mb-3 text-sm">
-					Runs in a shell at the folder root. <code class="bg-surface-200-800 rounded px-1">{'{main}'}</code> expands to your main file.
+					Runs in a shell at the folder root. <code class="bg-surface-200-800 rounded px-1">{'{main}'}</code> expands to your main file. Saved
+					for this folder.
 				</p>
 				{#if !$mainFile}
 					<!-- no main file picked yet: choose one so {main} resolves -->
@@ -2349,6 +2368,17 @@
 						else if (e.key === 'Escape') compileModalOpen = false;
 					}}
 				/>
+				<div class="mt-4 flex items-center justify-between gap-4">
+					<span class="text-sm">Compile completion marker</span>
+					<Switch checked={$settings.compileSentinel} onCheckedChange={(d) => updateSettings({ compileSentinel: d.checked })}>
+						<Switch.Control><Switch.Thumb /></Switch.Control>
+						<Switch.HiddenInput />
+					</Switch>
+				</div>
+				<p class="text-surface-500 mt-1 text-xs">
+					Appends a marker echo after the compile command so the editor knows when it finishes. Turn off if it interferes with your shell or
+					compile command.
+				</p>
 				<div class="mt-4 flex items-center justify-between gap-3">
 					<span class="text-surface-500 text-xs">
 						{#if compileDraft.includes('{main}') && !$mainFile}Pick a main file to run.{/if}

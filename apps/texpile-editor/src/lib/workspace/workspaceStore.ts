@@ -5,6 +5,7 @@ import type { TexFile, TreeEntry } from './fileSystem';
 
 const RECENT_KEY = 'texpile:recentFolders';
 const MAIN_KEY = 'texpile:mainFiles'; // { [folderRoot]: relPathOfMainFile }
+const CMD_KEY = 'texpile:compileCommands'; // { [folderRoot]: compile command }
 
 export const workspaceRoot = writable<string | null>(null);
 
@@ -77,4 +78,28 @@ export function setMainFile(root: string, path: string | null): void {
 	if (path) map[norm(root)] = relInRoot(root, path);
 	else delete map[norm(root)];
 	localStorage.setItem(MAIN_KEY, JSON.stringify(map));
+}
+
+function loadCmdMap(): Record<string, string> {
+	if (!browser) return {};
+	try {
+		const v = JSON.parse(localStorage.getItem(CMD_KEY) || '{}');
+		return v && typeof v === 'object' ? v : {};
+	} catch {
+		return {};
+	}
+}
+
+/** the folder's own compile command, or null to fall back to the global default. */
+export function savedCompileCommand(root: string): string | null {
+	return loadCmdMap()[norm(root)] ?? null;
+}
+
+/** remembers (or clears) a folder-specific compile command. */
+export function setFolderCompileCommand(root: string, cmd: string | null): void {
+	if (!browser) return;
+	const map = loadCmdMap();
+	if (cmd) map[norm(root)] = cmd;
+	else delete map[norm(root)];
+	localStorage.setItem(CMD_KEY, JSON.stringify(map));
 }

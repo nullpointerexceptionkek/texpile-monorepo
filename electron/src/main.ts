@@ -218,6 +218,7 @@ const DEFAULT_SETTINGS = {
 	dictionary: [] as string[], // spell-check ignore list
 	tocFraction: 0.5, // table-of-contents share of the sidebar height (0..1)
 	compileCommand: 'latexmk -lualatex -synctex=1 -output-directory=output {main}', // {main} = main file
+	compileSentinel: true, // append a marker echo after the compile command to detect completion
 	terminalVisible: false,
 	terminalHeight: 240,
 	pdfPaneWidth: 480,
@@ -284,7 +285,11 @@ ipcMain.handle('terminal:spawn', (e, { id, cwd, cols, rows }: TerminalSpawnOpts 
 	if (ptys.has(id)) return { ok: true, shell };
 	let proc: IPty;
 	try {
-		proc = pty.spawn(shellPath, [], {
+		// macOS: login shell, so /etc/zprofile runs path_helper and picks up /etc/paths.d
+		// (MacTeX registers /Library/TeX/texbin there). A Finder-launched app only has
+		// launchd's bare PATH, and a non-login zsh never repairs it - Terminal.app,
+		// iTerm and VS Code all spawn login shells for the same reason.
+		proc = pty.spawn(shellPath, process.platform === 'darwin' ? ['-l'] : [], {
 			name: 'xterm-color',
 			cwd: cwd && fs.existsSync(cwd) ? cwd : app.getPath('home'),
 			cols: Math.max(1, cols! | 0) || 80,

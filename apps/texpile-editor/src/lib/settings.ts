@@ -18,6 +18,8 @@ export interface AppSettings {
 	tocFraction: number;
 	/** LaTeX compile command run in the terminal; {main} expands to the main file. */
 	compileCommand: string;
+	/** append a marker echo after the compile command to detect when it finishes. */
+	compileSentinel: boolean;
 	terminalVisible: boolean;
 	terminalHeight: number;
 	pdfPaneWidth: number;
@@ -45,6 +47,7 @@ const DEFAULTS: AppSettings = {
 	dictionary: [],
 	tocFraction: 0.5,
 	compileCommand: DEFAULT_COMPILE_COMMAND,
+	compileSentinel: true,
 	terminalVisible: false,
 	terminalHeight: 240,
 	pdfPaneWidth: 480,

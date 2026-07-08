@@ -1,8 +1,10 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
+	import { get } from 'svelte/store';
 	import { Terminal } from '@xterm/xterm';
 	import { FitAddon } from '@xterm/addon-fit';
 	import '@xterm/xterm/css/xterm.css';
+	import { settings } from '$lib/settings';
 
 	// a real shell (node-pty in the Electron main) rendered with xterm.js via the window.texpileTerminal bridge
 	let { cwd = '' }: { cwd?: string } = $props();
@@ -31,7 +33,26 @@
 	// the whole line, compile included; the log/PDF pollers still detect completion
 	const POSIX_SHELLS = /^(bash|zsh|fish|sh|dash|ash|ksh|mksh|tcsh|csh)$/;
 
+	const CHAIN_OPERATORS = ['&', '|', ';', '\\', '^'];
+
+	// true if the command ends in a shell chain/continuation char (ignoring trailing spaces):
+	// appending our suffix right after one of these breaks the line (`cmd & ; echo` is invalid)
+	function endsWithChainOperator(command: string): boolean {
+		const trimmed = command.trimEnd();
+		const lastChar = trimmed.charAt(trimmed.length - 1);
+		return CHAIN_OPERATORS.includes(lastChar);
+	}
+
+	// true if PowerShell's "--%" stop-parsing token appears as its own word: everything after it
+	// becomes literal text, so our appended suffix would just be swallowed as an argument.
+	// split on \s+ (not just ' '), so a tab or doubled space between args doesn't hide the token
+	function hasStopParsingToken(command: string): boolean {
+		return command.split(/\s+/).includes('--%');
+	}
+
 	function withSentinel(command: string, onDone: () => void): string {
+		if (!get(settings).compileSentinel) return command;
+		if (endsWithChainOperator(command) || hasStopParsingToken(command)) return command;
 		// no shell name: don't guess, syntax the actual shell can't parse could fail the whole line
 		const shell = shellName.toLowerCase().replace(/\.exe$/, '');
 		const token = `__texpile_done_${++trackSeq}__`;

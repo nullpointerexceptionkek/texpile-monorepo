@@ -479,7 +479,7 @@
 								<div class="text-surface-600-400 px-2 py-1 text-xs font-semibold uppercase">{group.label}</div>
 
 								{#if group.id === 'matrices'}
-									<div class="border-surface-300 border-b p-3">
+									<div class="border-surface-300-700 border-b p-3">
 										<div class="mb-2 text-xs font-medium">Matrix Style</div>
 										<div class="mb-3 flex flex-wrap gap-2">
 											<button
@@ -487,8 +487,8 @@
 												class="rounded border px-2 py-1 text-xs transition-colors"
 												class:preset-tonal-primary={matrixBracketMode === 'matrix'}
 												class:border-blue-400={matrixBracketMode === 'matrix'}
-												class:bg-surface-100={matrixBracketMode !== 'matrix'}
-												class:border-surface-300={matrixBracketMode !== 'matrix'}
+												class:bg-surface-100-900={matrixBracketMode !== 'matrix'}
+												class:border-surface-300-700={matrixBracketMode !== 'matrix'}
 												onclick={() => (matrixBracketMode = 'matrix')}
 												onmousedown={preventFocusLoss}
 												tabindex="-1"
@@ -501,8 +501,8 @@
 												class="rounded border px-2 py-1 text-xs transition-colors"
 												class:preset-tonal-primary={matrixBracketMode === 'pmatrix'}
 												class:border-blue-400={matrixBracketMode === 'pmatrix'}
-												class:bg-surface-100={matrixBracketMode !== 'pmatrix'}
-												class:border-surface-300={matrixBracketMode !== 'pmatrix'}
+												class:bg-surface-100-900={matrixBracketMode !== 'pmatrix'}
+												class:border-surface-300-700={matrixBracketMode !== 'pmatrix'}
 												onclick={() => (matrixBracketMode = 'pmatrix')}
 												onmousedown={preventFocusLoss}
 												tabindex="-1"
@@ -515,8 +515,8 @@
 												class="rounded border px-2 py-1 text-xs transition-colors"
 												class:preset-tonal-primary={matrixBracketMode === 'bmatrix'}
 												class:border-blue-400={matrixBracketMode === 'bmatrix'}
-												class:bg-surface-100={matrixBracketMode !== 'bmatrix'}
-												class:border-surface-300={matrixBracketMode !== 'bmatrix'}
+												class:bg-surface-100-900={matrixBracketMode !== 'bmatrix'}
+												class:border-surface-300-700={matrixBracketMode !== 'bmatrix'}
 												onclick={() => (matrixBracketMode = 'bmatrix')}
 												onmousedown={preventFocusLoss}
 												tabindex="-1"
@@ -529,8 +529,8 @@
 												class="rounded border px-2 py-1 text-xs transition-colors"
 												class:preset-tonal-primary={matrixBracketMode === 'Bmatrix'}
 												class:border-blue-400={matrixBracketMode === 'Bmatrix'}
-												class:bg-surface-100={matrixBracketMode !== 'Bmatrix'}
-												class:border-surface-300={matrixBracketMode !== 'Bmatrix'}
+												class:bg-surface-100-900={matrixBracketMode !== 'Bmatrix'}
+												class:border-surface-300-700={matrixBracketMode !== 'Bmatrix'}
 												onclick={() => (matrixBracketMode = 'Bmatrix')}
 												onmousedown={preventFocusLoss}
 												tabindex="-1"
@@ -543,8 +543,8 @@
 												class="rounded border px-2 py-1 text-xs transition-colors"
 												class:preset-tonal-primary={matrixBracketMode === 'vmatrix'}
 												class:border-blue-400={matrixBracketMode === 'vmatrix'}
-												class:bg-surface-100={matrixBracketMode !== 'vmatrix'}
-												class:border-surface-300={matrixBracketMode !== 'vmatrix'}
+												class:bg-surface-100-900={matrixBracketMode !== 'vmatrix'}
+												class:border-surface-300-700={matrixBracketMode !== 'vmatrix'}
 												onclick={() => (matrixBracketMode = 'vmatrix')}
 												onmousedown={preventFocusLoss}
 												tabindex="-1"
@@ -557,8 +557,8 @@
 												class="rounded border px-2 py-1 text-xs transition-colors"
 												class:preset-tonal-primary={matrixBracketMode === 'Vmatrix'}
 												class:border-blue-400={matrixBracketMode === 'Vmatrix'}
-												class:bg-surface-100={matrixBracketMode !== 'Vmatrix'}
-												class:border-surface-300={matrixBracketMode !== 'Vmatrix'}
+												class:bg-surface-100-900={matrixBracketMode !== 'Vmatrix'}
+												class:border-surface-300-700={matrixBracketMode !== 'Vmatrix'}
 												onclick={() => (matrixBracketMode = 'Vmatrix')}
 												onmousedown={preventFocusLoss}
 												tabindex="-1"
@@ -577,8 +577,8 @@
 															class="aspect-square w-full rounded border text-xs transition-colors"
 															class:preset-tonal-primary={row + 1 <= matrixGridHoverRows && col + 1 <= matrixGridHoverCols}
 															class:border-blue-400={row + 1 <= matrixGridHoverRows && col + 1 <= matrixGridHoverCols}
-															class:bg-surface-100={!(row + 1 <= matrixGridHoverRows && col + 1 <= matrixGridHoverCols)}
-															class:border-surface-300={!(row + 1 <= matrixGridHoverRows && col + 1 <= matrixGridHoverCols)}
+															class:bg-surface-100-900={!(row + 1 <= matrixGridHoverRows && col + 1 <= matrixGridHoverCols)}
+															class:border-surface-300-700={!(row + 1 <= matrixGridHoverRows && col + 1 <= matrixGridHoverCols)}
 															aria-label={`Insert ${row + 1}×${col + 1} matrix`}
 															onmouseover={() => {
 																matrixGridHoverRows = row + 1;
@@ -606,7 +606,7 @@
 										{#each group.symbols as symbol}
 											<button
 												type="button"
-												class="env-btn"
+												class="env-btn bg-surface-100-900"
 												tabindex="-1"
 												onmousedown={preventFocusLoss}
 												onclick={() => insertSymbol(symbol.latex)}
@@ -625,7 +625,7 @@
 										{#each group.symbols as symbol}
 											<button
 												type="button"
-												class="symbol-btn"
+												class="symbol-btn bg-surface-100-900"
 												tabindex="-1"
 												onmousedown={preventFocusLoss}
 												onclick={() => insertSymbol(symbol.latex)}
@@ -718,7 +718,6 @@
 		padding: 8px 12px;
 		border-radius: 4px;
 		border: 1px solid transparent;
-		background: var(--color-surface-100);
 		text-align: left;
 		transition:
 			background-color 0.15s,
@@ -754,7 +753,6 @@
 		height: 80px;
 		border-radius: 4px;
 		border: 1px solid transparent;
-		background: var(--color-surface-100);
 		transition:
 			background-color 0.15s,
 			border-color 0.15s;

@@ -26,6 +26,8 @@ export interface AppSettings {
 	figureResizeStep: number;
 	/** render PDF pages inverted in dark mode. */
 	pdfDarkPages: boolean;
+	/** check dl.texpile.com/latest.json for a newer version on launch. */
+	checkForUpdates: boolean;
 }
 
 /** default compile command. -interaction=nonstopmode keeps errors from parking the engine at its
@@ -48,7 +50,8 @@ const DEFAULTS: AppSettings = {
 	pdfPaneWidth: 480,
 	pdfPaneOpen: false,
 	figureResizeStep: 0.25,
-	pdfDarkPages: true
+	pdfDarkPages: true,
+	checkForUpdates: true
 };
 
 const LS_KEY = 'texpile:settings';

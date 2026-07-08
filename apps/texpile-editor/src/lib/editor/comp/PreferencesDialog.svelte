@@ -72,6 +72,7 @@
 					</p>
 				</div>
 				{@render toggle('Reopen last folder on launch', $settings.reopenLastFolder, (v) => updateSettings({ reopenLastFolder: v }))}
+				{@render toggle('Check for updates on launch', $settings.checkForUpdates, (v) => updateSettings({ checkForUpdates: v }))}
 				{@render toggle('Spell check', $settings.spellcheck, (v) => setSpellcheckEnabled(v))}
 				<div>
 					{@render toggle('Dark PDF pages in dark mode', $settings.pdfDarkPages, (v) => updateSettings({ pdfDarkPages: v }))}

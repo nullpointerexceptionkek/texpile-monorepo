@@ -41,7 +41,7 @@
 		{/each}
 		{#if onImport}
 			<button
-				class="border-surface-200-800 hover:border-primary-500 hover:bg-surface-100-900 rounded-container flex flex-col gap-1 border p-3 text-left transition-colors disabled:opacity-50"
+				class="border-surface-200-800 hover:border-primary-500 hover:bg-surface-100-900 rounded-container flex flex-col gap-1 border p-3 text-left transition-colors disabled:opacity-50 sm:col-span-2"
 				disabled={busy}
 				onclick={() => importInput?.click()}
 			>

@@ -18,3 +18,10 @@ export const modLabel = isMac ? '⌘' : 'Ctrl';
 export function modKey(...rest: string[]): string {
 	return [modLabel, ...rest].join('+');
 }
+
+/** dl.texpile.com/latest/<key> stable-download-link suffix for this OS. */
+export function downloadKey(): 'mac' | 'linux' | 'windows' {
+	if (isMac) return 'mac';
+	if (browser && /Linux/i.test(navigator.userAgent) && !/Android/i.test(navigator.userAgent)) return 'linux';
+	return 'windows';
+}

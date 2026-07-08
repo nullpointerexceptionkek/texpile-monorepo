@@ -6,7 +6,7 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { navigate } from '$lib/router.svelte';
-	import { FolderOpen, FolderPlus, Loader2 } from '@lucide/svelte';
+	import { FolderOpen, FolderPlus, GraduationCap, Loader2 } from '@lucide/svelte';
 	// dark wordmark for light backgrounds, white one for dark mode
 	import logoOnLight from '$lib/assets/logo/Logo-dark.svg';
 	import logoOnDark from '$lib/assets/logo/Logo-light.svg';
@@ -15,11 +15,13 @@
 	import { workspaceRoot, texFiles, recentFolders, addRecentFolder, activeFilePath, setMainFile } from '$lib/workspace/workspaceStore';
 	import { getSettings, updateSettings } from '$lib/settings';
 	import StarterPicker from '$lib/editor/comp/StarterPicker.svelte';
-	import { applyStarter, applyImportedFiles, type Starter, type ImportedFile } from '$lib/workspace/starters';
+	import TutorialConfirmModal from '$lib/editor/comp/TutorialConfirmModal.svelte';
+	import { applyStarter, applyImportedFiles, openTutorialProject, type Starter, type ImportedFile } from '$lib/workspace/starters';
 
 	let busy = $state(false);
 	let error = $state<string | null>(null);
 	let templateFor = $state<string | null>(null); // an empty folder awaiting a starter-template choice
+	let tutorialModalOpen = $state(false);
 
 	async function finishOpen(root: string, active: string | null) {
 		const { files } = await scanTexFiles(root);
@@ -41,6 +43,22 @@
 			await finishOpen(root, mainPath);
 		} catch (e) {
 			error = e instanceof Error ? e.message : 'Failed to create from template';
+		} finally {
+			busy = false;
+		}
+	}
+
+	// TutorialConfirmModal has the user pick an empty folder and confirm first; this only runs after
+	async function openTutorial(pickedRoot: string) {
+		if (busy) return;
+		busy = true;
+		error = null;
+		try {
+			const { root, mainFile } = await openTutorialProject(pickedRoot);
+			setMainFile(root, mainFile);
+			await finishOpen(root, mainFile);
+		} catch (e) {
+			error = e instanceof Error ? e.message : 'Failed to open the tutorial';
 		} finally {
 			busy = false;
 		}
@@ -180,6 +198,14 @@
 				</button>
 			</div>
 
+			<button
+				class="text-surface-500 hover:text-surface-950-50 mt-3 inline-flex items-center gap-1.5 text-sm disabled:opacity-50"
+				onclick={() => (tutorialModalOpen = true)}
+				disabled={busy}
+			>
+				<GraduationCap class="size-4" /> New here? Try the tutorial
+			</button>
+
 			{#if error}
 				<p class="text-error-500 mt-2 px-2 text-sm">{error}</p>
 			{/if}
@@ -205,3 +231,5 @@
 		{/if}
 	</div>
 </div>
+
+<TutorialConfirmModal bind:open={tutorialModalOpen} onConfirm={openTutorial} />

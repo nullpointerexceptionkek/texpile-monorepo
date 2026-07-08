@@ -222,7 +222,8 @@ const DEFAULT_SETTINGS = {
 	terminalHeight: 240,
 	pdfPaneWidth: 480,
 	pdfPaneOpen: false,
-	pdfDarkPages: true // in dark mode, render PDF pages inverted
+	pdfDarkPages: true, // in dark mode, render PDF pages inverted
+	checkForUpdates: true
 };
 const settingsFile = () => path.join(app.getPath('userData'), 'settings.json');
 function readSettings(): Record<string, unknown> {

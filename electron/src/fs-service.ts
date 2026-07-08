@@ -76,8 +76,10 @@ export async function read(path: string): Promise<{ content: string }> {
 	return { content };
 }
 
+/** writes text, creating parent directories. */
 export async function write(path: string, content: string): Promise<{ ok: true }> {
 	if (!path || typeof content !== 'string') throw new Error('Missing path or content');
+	await mkdir(dirname(path), { recursive: true });
 	await writeFile(path, content, 'utf-8');
 	return { ok: true };
 }

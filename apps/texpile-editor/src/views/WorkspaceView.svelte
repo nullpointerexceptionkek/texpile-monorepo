@@ -13,8 +13,9 @@
 	import PDFViewer from '$lib/editor/comp/PDFViewer.svelte';
 	import GlobalSearch from '$lib/editor/comp/GlobalSearch.svelte';
 	import StarterPicker from '$lib/editor/comp/StarterPicker.svelte';
+	import TutorialConfirmModal from '$lib/editor/comp/TutorialConfirmModal.svelte';
 	import WordCount from '$lib/editor/comp/WordCount.svelte';
-	import { applyStarter, applyImportedFiles, type Starter, type ImportedFile } from '$lib/workspace/starters';
+	import { applyStarter, applyImportedFiles, openTutorialProject, type Starter, type ImportedFile } from '$lib/workspace/starters';
 	import { pdfStore } from '$lib/stores/pdfStore';
 	import { editorViewStore, sourceCmView, viewMode as viewModeStore } from '$lib/stores/editorStore';
 	import { synctexForward, synctexInverse } from '$lib/workspace/synctex';
@@ -319,6 +320,33 @@
 			console.error('Failed to open folder:', e);
 		}
 	}
+
+	// clears the in-memory workspace and returns to the Start screen. Doesn't touch the persisted
+	// `lastFolder` setting, so relaunching the app still reopens where you left off - this only
+	// affects the current session's view.
+	async function closeWorkspace() {
+		await flushSaveAndWait();
+		workspaceRoot.set(null);
+		texFiles.set([]);
+		fileTree.set([]);
+		activeFilePath.set(null);
+		mainFile.set(null);
+		isDirty.set(false);
+		navigate('/');
+	}
+
+	// TutorialConfirmModal has the user pick an empty folder and confirm first; this only runs after
+	async function openTutorial(pickedRoot: string) {
+		try {
+			const { root, mainFile } = await openTutorialProject(pickedRoot);
+			await openFolderFromMenu(root);
+			setMainFile(root, mainFile);
+			activeFilePath.set(mainFile); // openFolderFromMenu opens files[0] (alphabetical), not the main file
+		} catch (e) {
+			toaster.error({ title: 'Could not open tutorial', description: e instanceof Error ? e.message : String(e) });
+		}
+	}
+	let tutorialModalOpen = $state(false);
 
 	const samePath = (a: string, b: string) => a.replace(/\\/g, '/').toLowerCase() === b.replace(/\\/g, '/').toLowerCase();
 
@@ -1763,8 +1791,12 @@
 			e.preventDefault();
 			sidebarView = 'search';
 			sidebarOpen = true;
-		} else if ((e.metaKey || e.ctrlKey) && e.altKey && e.key.toLowerCase() === 'b' && terminalAvailable) {
-			// same chord LaTeX Workshop binds to "build" by default (ctrl+alt+b / cmd+alt+b)
+		} else if ((e.metaKey || e.ctrlKey) && e.altKey && e.key === 'Enter' && terminalAvailable) {
+			// was ctrl/cmd+alt+b (LaTeX Workshop's default build chord), but macOS treats
+			// option+b as a dead key for a special character, so e.key never reliably comes
+			// through as "b" there. Swapped the letter to Enter (not a dead-key character on
+			// macOS) rather than dropping Alt entirely - bare ctrl/cmd+enter is already taken
+			// by the Source Control panel's commit shortcut (SourceControlPanel.svelte).
 			e.preventDefault();
 			if (compiling) stopCompile();
 			else runCompile();
@@ -1781,6 +1813,7 @@
 		imageDir={loadedPath && kind === 'tex' ? dirname(loadedPath) : undefined}
 		onNewFile={(ext) => newFileOfType(ext)}
 		onOpenFolder={openFolderFromMenu}
+		onCloseWorkspace={closeWorkspace}
 		onSave={save}
 		{terminalAvailable}
 		{terminalVisible}
@@ -1789,6 +1822,7 @@
 		onNewTerminal={addTerminal}
 		onToggleTerminal={toggleTerminal}
 		onFormatDocument={openFormatModal}
+		onOpenTutorial={() => (tutorialModalOpen = true)}
 	/>
 	<div class="flex min-h-0 flex-1 overflow-hidden">
 		{#if sidebarOpen}
@@ -1949,12 +1983,12 @@
 							<button
 								class="btn btn-sm preset-tonal-error gap-1.5"
 								onclick={stopCompile}
-								title={`Stop the running compile (${modLabel}+Alt+B)`}
+								title={`Stop the running compile (${modLabel}+Alt+Enter)`}
 							>
 								<Square class="size-4" /> Stop
 							</button>
 						{:else}
-							<button class="btn btn-sm preset-tonal-primary gap-1.5" onclick={runCompile} title={`Compile (${modLabel}+Alt+B)`}>
+							<button class="btn btn-sm preset-tonal-primary gap-1.5" onclick={runCompile} title={`Compile (${modLabel}+Alt+Enter)`}>
 								<Play class="size-4" /> Compile
 							</button>
 						{/if}
@@ -2413,3 +2447,5 @@
 		</div>
 	{/if}
 </div>
+
+<TutorialConfirmModal bind:open={tutorialModalOpen} onConfirm={openTutorial} />

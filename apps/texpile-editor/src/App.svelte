@@ -3,11 +3,26 @@
 	import { route, navigate } from '$lib/router.svelte';
 	import { native, scanTexFiles, dirname } from '$lib/workspace/fileSystem';
 	import { workspaceRoot, texFiles, activeFilePath, addRecentFolder } from '$lib/workspace/workspaceStore';
-	import { updateSettings } from '$lib/settings';
+	import { updateSettings, loadSettings } from '$lib/settings';
+	import { checkForUpdate } from '$lib/updateCheck';
+	import UpdateAvailableModal from '$lib/components/UpdateAvailableModal.svelte';
 
 	import StartView from './views/StartView.svelte';
 	import WorkspaceView from './views/WorkspaceView.svelte';
 	import ErrorView from './views/ErrorView.svelte';
+
+	let updateVersion = $state<string | null>(null);
+	let updateModalOpen = $state(false);
+
+	onMount(async () => {
+		const s = await loadSettings();
+		if (!s.checkForUpdates) return;
+		const info = await checkForUpdate();
+		if (info) {
+			updateVersion = info.version;
+			updateModalOpen = true;
+		}
+	});
 
 	// OS "Open With" hands us a .tex via the main process; open its folder and activate the file
 	onMount(() => {
@@ -60,6 +75,10 @@
 	<WorkspaceView />
 {:else}
 	<ErrorView status={404} />
+{/if}
+
+{#if updateVersion}
+	<UpdateAvailableModal bind:open={updateModalOpen} version={updateVersion} />
 {/if}
 
 <noscript>

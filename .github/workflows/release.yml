@@ -1,10 +1,15 @@
 # Build Texpile installers for all three OSes; a version tag (v*) also attaches them to a draft release.
 #
 # node-pty ships win/mac prebuilds but no linux ones, so Linux rebuilds it for Electron's ABI.
-# macOS builds are unsigned (right-click > Open the first time). Windows signs with Azure Trusted
-# Signing once the three AZURE_* repo variables + three AZURE_* secrets exist; until then the
-# fallback step builds unsigned. Signing is injected as CLI overrides here (not electron-builder.yml)
-# so local `pnpm dist` stays unsigned and needs no Azure credentials.
+# Windows signs with Azure Trusted Signing once the three AZURE_* repo variables + three AZURE_*
+# secrets exist; until then the fallback step builds unsigned. macOS signs (Developer ID) and
+# notarizes once the MACOS_CSC_*/APPLE_* secrets exist, same fallback pattern. Linux always builds
+# unsigned (no distribution-wide signing convention there). Signing is injected as env vars/CLI
+# overrides here (not electron-builder.yml) so local `pnpm dist` stays unsigned and needs no
+# credentials. electron-builder reads CSC_LINK/CSC_KEY_PASSWORD directly (it auto-detects raw
+# base64 content and manages its own temporary signing keychain); notarization only needs
+# APPLE_API_KEY/_ID/_ISSUER as env vars, no explicit config, since @electron/notarize's `--key`
+# arg must be a real file path, not the secret's base64 content, it's decoded to a temp file first.
 name: release
 
 on:
@@ -40,6 +45,12 @@ jobs:
               release/*.AppImage
               release/*.deb
     runs-on: ${{ matrix.os }}
+    # step-level `if:` can't see the `secrets` context directly (GitHub Actions restriction, not
+    # a linter false-positive - see https://docs.github.com/en/actions/learn-github-actions/contexts
+    # for the per-position context availability table); mirror the one secret we branch on into an
+    # `env` var here, which step `if:` conditions CAN read.
+    env:
+      HAS_MACOS_CSC: ${{ secrets.MACOS_CSC_LINK != '' }}
     steps:
       - uses: actions/checkout@v4
 
@@ -91,9 +102,25 @@ jobs:
           AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
           AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
 
-      # unsigned fallback: macOS/Linux, or Windows before signing is configured
+      # decode the notarization API key to a real file: @electron/notarize passes it straight to
+      # `xcrun notarytool --key`, which requires an actual path, not the secret's base64 content
+      - name: Build & sign installer (macOS / Developer ID + notarization)
+        if: runner.os == 'macOS' && env.HAS_MACOS_CSC == 'true'
+        shell: bash
+        run: |
+          echo "$APPLE_API_KEY_BASE64" | base64 --decode > "$RUNNER_TEMP/apple_api_key.p8"
+          export APPLE_API_KEY="$RUNNER_TEMP/apple_api_key.p8"
+          pnpm dist
+        env:
+          CSC_LINK: ${{ secrets.MACOS_CSC_LINK }}
+          CSC_KEY_PASSWORD: ${{ secrets.MACOS_CSC_PASSWORD }}
+          APPLE_API_KEY_BASE64: ${{ secrets.APPLE_API_KEY }}
+          APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+
+      # unsigned fallback: Linux always, Windows/macOS before their own signing secrets exist
       - name: Build installers
-        if: runner.os != 'Windows' || vars.AZURE_ENDPOINT == ''
+        if: runner.os == 'Linux' || (runner.os == 'Windows' && vars.AZURE_ENDPOINT == '') || (runner.os == 'macOS' && env.HAS_MACOS_CSC == 'false')
         run: pnpm dist
 
       - uses: actions/upload-artifact@v4

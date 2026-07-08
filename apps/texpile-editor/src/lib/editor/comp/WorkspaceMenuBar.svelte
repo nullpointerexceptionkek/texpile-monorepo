@@ -27,6 +27,8 @@
 		/** Create a new file. `ext` (tex/bib/cls/sty) seeds the name + content; omitted = a plain new file. */
 		onNewFile?: (ext?: string) => void;
 		onOpenFolder?: (path?: string) => void;
+		/** Close the current folder and return to the Start screen. */
+		onCloseWorkspace?: () => void;
 		onSave?: () => void;
 		/** Terminal menu (shown only in the desktop app). */
 		terminalAvailable?: boolean;
@@ -37,12 +39,15 @@
 		onToggleTerminal?: () => void;
 		/** Reindent the current document via latexindent (opens the confirm-first modal). */
 		onFormatDocument?: () => void;
+		/** Open the bundled Texpile Tutorial project (switches the workspace to it). */
+		onOpenTutorial?: () => void;
 	}
 	let {
 		disabled = false,
 		imageDir,
 		onNewFile,
 		onOpenFolder,
+		onCloseWorkspace,
 		onSave,
 		terminalAvailable = false,
 		terminalVisible = false,
@@ -50,7 +55,8 @@
 		onConfigureCompile,
 		onNewTerminal,
 		onToggleTerminal,
-		onFormatDocument
+		onFormatDocument,
+		onOpenTutorial
 	}: Props = $props();
 
 	let imageInput: HTMLInputElement;
@@ -130,7 +136,7 @@
 		},
 		{
 			group: 'Compile',
-			items: [{ keys: combo({ alt: true }, 'B'), label: 'Compile (Stop if already running)' }]
+			items: [{ keys: combo({ alt: true }, 'Enter'), label: 'Compile (Stop if already running)' }]
 		},
 		{
 			group: 'Formatting',
@@ -163,6 +169,7 @@
 	let prefsOpen = $state(false);
 	function fileSelect(value: string) {
 		if (value === 'save') onSave?.();
+		else if (value === 'close-workspace') onCloseWorkspace?.();
 		else if (value === 'preferences') prefsOpen = true;
 	}
 	function newFileSelect(ext: string) {
@@ -357,6 +364,9 @@
 					<Menu.Item value="save" class={itemClass}>
 						<Menu.ItemText>Save</Menu.ItemText><span class="opacity-50">{combo({}, 'S')}</span>
 					</Menu.Item>
+					{#if onCloseWorkspace}
+						<Menu.Item value="close-workspace" class={itemClass}><Menu.ItemText>Close Workspace</Menu.ItemText></Menu.Item>
+					{/if}
 					<Menu.Separator class="border-surface-200-800 my-1 border-t" />
 					<Menu.Item value="preferences" class={itemClass}><Menu.ItemText>Preferences…</Menu.ItemText></Menu.Item>
 				</Menu.Content>
@@ -500,12 +510,15 @@
 		</Menu>
 	{/if}
 
-	<Menu onSelect={(d) => helpSelect(d.value)}>
+	<Menu onSelect={(d) => (d.value === 'tutorial' ? onOpenTutorial?.() : helpSelect(d.value))}>
 		<Menu.Trigger class={triggerClass}>Help</Menu.Trigger>
 		<Portal>
 			<Menu.Positioner>
 				<Menu.Content class={contentClass}>
 					<Menu.Item value="shortcuts" class={itemClass}><Menu.ItemText>Keyboard shortcuts</Menu.ItemText></Menu.Item>
+					{#if onOpenTutorial}
+						<Menu.Item value="tutorial" class={itemClass}><Menu.ItemText>Open Tutorial</Menu.ItemText></Menu.Item>
+					{/if}
 					<Menu.Separator class="border-surface-200-800 my-1 border-t" />
 					<Menu.Item value="discord" class={itemClass}><Menu.ItemText>Join Discord</Menu.ItemText></Menu.Item>
 					<Menu.Item value="support" class={itemClass}><Menu.ItemText>Contact support</Menu.ItemText></Menu.Item>

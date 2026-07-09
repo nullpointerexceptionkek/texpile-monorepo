@@ -102,27 +102,21 @@ jobs:
           AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
           AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
 
-      # NOTARIZATION TEMPORARILY DISABLED: our Apple Developer account's first-ever notarization
-      # submissions have been stuck "In Progress" for 10+ hours (known first-submission backlog on
-      # a brand-new account/cert - see the account's notary history). Signing still runs below;
-      # only the three APPLE_API_* env vars are commented out, since electron-builder's
-      # getNotarizeOptions() hard-errors if it sees ONE OR TWO of them set but not all three
-      # (app-builder-lib/out/macPackager.js) - so they must be added back together, not one at a time.
-      # Re-enable once a submission clears (or Apple support resolves the account): uncomment the
-      # env vars below and the two `run:` lines that decode/export APPLE_API_KEY.
-      - name: Build & sign installer (macOS / Developer ID, notarization disabled for now)
+      # decode the notarization API key to a real file: @electron/notarize passes it straight to
+      # `xcrun notarytool --key`, which requires an actual path, not the secret's base64 content
+      - name: Build & sign installer (macOS / Developer ID + notarization)
         if: runner.os == 'macOS' && env.HAS_MACOS_CSC == 'true'
         shell: bash
         run: |
-          # echo "$APPLE_API_KEY_BASE64" | base64 --decode > "$RUNNER_TEMP/apple_api_key.p8"
-          # export APPLE_API_KEY="$RUNNER_TEMP/apple_api_key.p8"
+          echo "$APPLE_API_KEY_BASE64" | base64 --decode > "$RUNNER_TEMP/apple_api_key.p8"
+          export APPLE_API_KEY="$RUNNER_TEMP/apple_api_key.p8"
           pnpm dist
         env:
           CSC_LINK: ${{ secrets.MACOS_CSC_LINK }}
           CSC_KEY_PASSWORD: ${{ secrets.MACOS_CSC_PASSWORD }}
-          # APPLE_API_KEY_BASE64: ${{ secrets.APPLE_API_KEY }}
-          # APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
-          # APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+          APPLE_API_KEY_BASE64: ${{ secrets.APPLE_API_KEY }}
+          APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
 
       # unsigned fallback: Linux always, Windows/macOS before their own signing secrets exist
       - name: Build installers

@@ -3,6 +3,7 @@
 	import Showcase from '$lib/comp/Showcase.svelte';
 	import typingWebm from '$lib/assets/showcase/visual-typing.webm';
 	import typingMp4 from '$lib/assets/showcase/visual-typing.mp4';
+	import livePreviewMp4 from '$lib/assets/showcase/live-preview.mp4';
 	import intellisenseShot from '$lib/assets/showcase/intellisense-dark.png';
 	import errorlogZoomShot from '$lib/assets/showcase/errorlog-zoom-dark.png';
 	// feature-grid thumbs, all 5:3
@@ -131,8 +132,8 @@
 		<div class="mx-auto max-w-3xl space-y-6 text-center">
 			<h1 class="text-3xl leading-tight font-bold sm:text-4xl">A local, offline, open source LaTeX editor</h1>
 			<p class="text-surface-600 mx-auto max-w-2xl text-lg leading-relaxed">
-				Texpile edits .tex files visually or in source. It runs entirely on your machine, and what it saves is plain LaTeX. No accounts, no
-				cloud.
+				Texpile edits .tex files visually or in source, with a live preview compiled by your own LaTeX as you type. It runs entirely on your
+				machine, and what it saves is plain LaTeX. No accounts, no cloud.
 			</p>
 			<div class="flex flex-col items-center justify-center gap-3">
 				<a
@@ -151,7 +152,22 @@
 	</div>
 </section>
 
-<section id="visual-editing" class="bg-white py-16 md:py-20">
+<section id="live-preview" class="bg-white py-16 md:py-20">
+	<div class="container mx-auto max-w-5xl px-4 sm:px-6 lg:px-8">
+		<h2 class="text-surface-900 text-center text-2xl font-semibold md:text-3xl">Live preview</h2>
+		<p class="text-surface-600 mx-auto mt-4 mb-10 max-w-2xl text-center text-lg leading-relaxed">
+			The page updates as you type, compiled by your own LaTeX. No manual compile, no cloud. Math, TikZ, and pgfplots figures render live.
+		</p>
+		<div class="border-surface-200 overflow-hidden rounded-xl border shadow-2xl">
+			<!-- muted looping demo, behaves like an animated image -->
+			<video autoplay muted loop playsinline disablepictureinpicture aria-label="Live preview compiling as you type" class="block w-full">
+				<source src={livePreviewMp4} type="video/mp4" />
+			</video>
+		</div>
+	</div>
+</section>
+
+<section id="visual-editing" class="border-surface-200 border-t bg-white py-16 md:py-20">
 	<div class="container mx-auto max-w-6xl px-4 sm:px-6 lg:px-8">
 		<h2 class="text-surface-900 mb-10 text-center text-2xl font-semibold md:text-3xl">Visual editing</h2>
 		<div class="grid items-center gap-10 lg:grid-cols-2 lg:gap-14">
@@ -292,5 +308,15 @@
 				</div>
 			{/each}
 		</div>
+	</div>
+</section>
+
+<section id="ps" class="border-surface-200 border-t bg-white py-14">
+	<div class="container mx-auto max-w-2xl px-4 text-center sm:px-6">
+		<h2 class="text-surface-900 text-lg font-semibold">PS</h2>
+		<p class="text-surface-600 mt-3 leading-relaxed">
+			Texpile is pronounced with the tex from text (tex-pile). The name is a blend of compiling LaTeX and transpiling it. We write it
+			Texpile, not TeXpile.
+		</p>
 	</div>
 </section>

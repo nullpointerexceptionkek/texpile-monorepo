@@ -294,7 +294,7 @@
 										aria-label="Column spec"
 										onchange={(e) => setColspec((e.currentTarget as HTMLInputElement).value)}
 									/>
-									<div class="text-surface-400 mt-1 text-xs">Too complex to edit visually — edit the spec directly.</div>
+									<div class="text-surface-400 mt-1 text-xs">Too complex to edit visually. Edit the spec directly.</div>
 									<hr class="border-surface-200-800 mt-3" />
 								</div>
 							{/if}

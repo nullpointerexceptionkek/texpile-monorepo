@@ -41,6 +41,11 @@
 		onFormatDocument?: () => void;
 		/** Open the bundled Texpile Tutorial project (switches the workspace to it). */
 		onOpenTutorial?: () => void;
+		/** whole-window zoom, shown as a percentage in the View menu. */
+		uiZoomPercent?: number;
+		onZoomIn?: () => void;
+		onZoomOut?: () => void;
+		onZoomReset?: () => void;
 	}
 	let {
 		disabled = false,
@@ -56,8 +61,18 @@
 		onNewTerminal,
 		onToggleTerminal,
 		onFormatDocument,
-		onOpenTutorial
+		onOpenTutorial,
+		uiZoomPercent = 100,
+		onZoomIn,
+		onZoomOut,
+		onZoomReset
 	}: Props = $props();
+
+	function viewSelect(value: string) {
+		if (value === 'zoom-in') onZoomIn?.();
+		else if (value === 'zoom-out') onZoomOut?.();
+		else if (value === 'zoom-reset') onZoomReset?.();
+	}
 
 	let imageInput: HTMLInputElement;
 	function pickImage() {
@@ -132,6 +147,14 @@
 				{ keys: combo({ shift: true }, 'F'), label: 'Find in files' },
 				{ keys: combo({}, 'Z'), label: 'Undo' },
 				{ keys: combo({ shift: true }, 'Z'), label: 'Redo' }
+			]
+		},
+		{
+			group: 'View',
+			items: [
+				{ keys: isMac ? '⌘ +' : 'Ctrl +', label: 'Zoom in interface' },
+				{ keys: isMac ? '⌘ −' : 'Ctrl −', label: 'Zoom out interface' },
+				{ keys: isMac ? '⌘ 0' : 'Ctrl 0', label: 'Reset interface zoom' }
 			]
 		},
 		{
@@ -389,6 +412,27 @@
 					<Menu.Item value="find" class={itemClass}
 						><Menu.ItemText>Find…</Menu.ItemText><span class="opacity-50">{combo({}, 'F')}</span></Menu.Item
 					>
+				</Menu.Content>
+			</Menu.Positioner>
+		</Portal>
+	</Menu>
+
+	<Menu onSelect={(d) => viewSelect(d.value)}>
+		<Menu.Trigger class={triggerClass}>View</Menu.Trigger>
+		<Portal>
+			<Menu.Positioner>
+				<Menu.Content class={contentClass}>
+					<div class="text-surface-500 px-2.5 py-1 text-xs">Interface zoom: {uiZoomPercent}%</div>
+					<Menu.Separator class="border-surface-200-800 my-1 border-t" />
+					<Menu.Item value="zoom-in" class={itemClass}>
+						<Menu.ItemText>Zoom In</Menu.ItemText><span class="opacity-50">{isMac ? '⌘ +' : 'Ctrl +'}</span>
+					</Menu.Item>
+					<Menu.Item value="zoom-out" class={itemClass}>
+						<Menu.ItemText>Zoom Out</Menu.ItemText><span class="opacity-50">{isMac ? '⌘ −' : 'Ctrl −'}</span>
+					</Menu.Item>
+					<Menu.Item value="zoom-reset" class={itemClass}>
+						<Menu.ItemText>Reset Zoom</Menu.ItemText><span class="opacity-50">{isMac ? '⌘ 0' : 'Ctrl 0'}</span>
+					</Menu.Item>
 				</Menu.Content>
 			</Menu.Positioner>
 		</Portal>

@@ -28,8 +28,15 @@ export interface AppSettings {
 	figureResizeStep: number;
 	/** render PDF pages inverted in dark mode. */
 	pdfDarkPages: boolean;
-	/** check dl.texpile.com/latest.json for a newer version on launch. */
+	/** Draft mode: preview via the incremental per-page engine extractor instead of the
+	 *  terminal compile command. Requires lualatex. */
+	draftMode: boolean;
+	/** check updates.texpile.com for a newer version (and its release notes) on launch. */
 	checkForUpdates: boolean;
+	/** whole-window zoom factor (1 = 100%), applied via webContents.setZoomFactor. */
+	uiZoom: number;
+	/** newest changelog version the What's New modal was dismissed for. */
+	whatsNewSeen: string;
 }
 
 /** default compile command. -interaction=nonstopmode keeps errors from parking the engine at its
@@ -54,7 +61,10 @@ const DEFAULTS: AppSettings = {
 	pdfPaneOpen: false,
 	figureResizeStep: 0.25,
 	pdfDarkPages: true,
-	checkForUpdates: true
+	draftMode: false,
+	checkForUpdates: true,
+	uiZoom: 1,
+	whatsNewSeen: ''
 };
 
 const LS_KEY = 'texpile:settings';

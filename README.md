@@ -1,12 +1,31 @@
-# Texpile Desktop
+<div align="center">
 
-A local, offline LaTeX editor for Windows, macOS, and Linux. Open a folder, edit your `.tex` files in a visual editor or in source view, compile with your own TeX distribution, and read the PDF next to your text. No account, no cloud, nothing leaves your machine.
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="apps/texpile-editor/src/lib/assets/logo/Logo-light.svg" />
+  <img alt="Texpile" src="apps/texpile-editor/src/lib/assets/logo/Logo-dark.svg" width="320" />
+</picture>
 
-![Texpile Desktop](landing/src/lib/assets/showcase/visual-dark.png)
+Texpile is a modern, local, offline LaTeX editor for Windows, macOS, and Linux. Its visual editor shows your document as formatted text, math, tables, and figures while you write, and a live preview compiled by your own TeX distribution updates as you type. Drop into source view whenever you want. No account, no cloud, nothing leaves your machine.
+
+</div>
+
+---
+
+## Visual editor
+
+Edit your document as formatted text, math, tables, and figures. The same file opens in source view whenever you want it.
+
+![The Texpile visual editor](landing/src/lib/assets/showcase/visual-dark.png)
+
+## Live preview
+
+Type in source view and the page re-typesets with your own LuaLaTeX and updates in place, patched in milliseconds. Math, TikZ, and pgfplots figures render live.
+
+![Live preview compiling as you type](apps/texpile-editor/src/lib/assets/live-preview-demo.png)
 
 ## Download
 
-Installers for all three platforms are on [desktop.texpile.com/download](https://desktop.texpile.com/download), or directly:
+Installers for all three platforms are on [texpile.com/download](https://texpile.com/download), or directly:
 
 | Platform         | Link                                                                   |
 | ---------------- | ---------------------------------------------------------------------- |
@@ -17,9 +36,8 @@ Installers for all three platforms are on [desktop.texpile.com/download](https:/
 
 Editing works out of the box. To compile PDFs, install a TeX distribution (TeX Live, MiKTeX, or MacTeX) and Texpile runs it for you.
 
-## What it does
+## More features
 
-- **Visual and source editing of the same file.** The visual editor shows formatted text, math, tables, and figures; the source editor is CodeMirror with LaTeX highlighting, autocomplete, and live math previews. Switch between them at any time.
 - **Your `.tex` file stays yours.** There is no internal document format. Saving a file you did not change writes back the exact same bytes. Editing one paragraph regenerates only that block; the rest of the file, including your preamble and any LaTeX the editor does not model, is preserved verbatim.
 - **Compile with your own toolchain.** The Compile button runs your command (`latexmk`, `pdflatex`, a Makefile, anything) in a built-in terminal. Multi-file projects are supported, with automatic main file detection.
 - **Compile errors as a Problems list.** The LaTeX log (and BibTeX/biber logs) are parsed into errors and warnings with file and line, shown in a panel and inline in the source editor.
@@ -28,29 +46,6 @@ Editing works out of the box. To compile PDFs, install a TeX distribution (TeX L
 - **Source control.** Side-by-side diff against the last commit, staging, and commits, built on your existing git repository.
 - **Spell check** runs locally via [Harper](https://github.com/Automattic/harper).
 - **Starters** for blank articles, APA, and MLA documents.
-
-## Development
-
-This is a pnpm workspace (pnpm >= 9.2). The renderer is a Svelte 5 + Vite app in `apps/texpile-editor`; the Electron shell lives in `electron/`.
-
-```sh
-pnpm install
-
-pnpm electron:dev   # run the app (Vite dev server inside the Electron shell)
-
-pnpm app:build      # build the renderer bundle and compile the Electron TypeScript
-pnpm dist           # package installers for the current OS
-```
-
-The integrated terminal uses node-pty, a native module. If it reports that it needs a rebuild, run `pnpm electron:rebuild` (requires platform C/C++ build tools).
-
-Tests and checks for the editor app:
-
-```sh
-pnpm --filter texpile-editor check       # svelte-check
-pnpm --filter texpile-editor lint        # prettier + eslint
-pnpm --filter texpile-editor testonce    # unit tests (vitest)
-```
 
 ## License
 

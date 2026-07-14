@@ -65,9 +65,19 @@ function loadMainMap(): Record<string, string> {
 	}
 }
 
+// Windows hands out the same folder with varying drive-letter case (picker vs settings),
+// so the stored key must be matched case-insensitively or a saved choice goes invisible
+function mainKeyFor(map: Record<string, string>, root: string): string {
+	const k = norm(root);
+	if (map[k] !== undefined) return k;
+	const lower = k.toLowerCase();
+	return Object.keys(map).find((x) => x.toLowerCase() === lower) ?? k;
+}
+
 /** the persisted main-file path for a folder (absolute), or null if none was saved. */
 export function savedMainFile(root: string): string | null {
-	const rel = loadMainMap()[norm(root)];
+	const map = loadMainMap();
+	const rel = map[mainKeyFor(map, root)];
 	return rel ? absInRoot(root, rel) : null;
 }
 
@@ -76,8 +86,9 @@ export function setMainFile(root: string, path: string | null): void {
 	mainFile.set(path);
 	if (!browser) return;
 	const map = loadMainMap();
-	if (path) map[norm(root)] = relInRoot(root, path);
-	else delete map[norm(root)];
+	const key = mainKeyFor(map, root);
+	if (path) map[key] = relInRoot(root, path);
+	else delete map[key];
 	localStorage.setItem(MAIN_KEY, JSON.stringify(map));
 }
 

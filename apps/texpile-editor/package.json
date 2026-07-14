@@ -1,6 +1,6 @@
 {
 	"name": "texpile-editor",
-	"version": "0.12.1",
+	"version": "0.13.0",
 	"private": true,
 	"scripts": {
 		"dev": "vite dev",
@@ -13,7 +13,8 @@
 		"format": "prettier --plugin-search-dir . --write .",
 		"test:integration": "playwright test",
 		"test:unit": "vitest",
-		"testonce": "vitest run"
+		"testonce": "vitest run",
+		"release": "node scripts/release.mjs"
 	},
 	"files": [
 		"dist"
@@ -64,6 +65,7 @@
 		"diff": "^8.0.2",
 		"harper.js": "^1.0.0",
 		"mathlive": "^0.108.2",
+		"opentype.js": "^2.0.0",
 		"prosemirror-changeset": "^2.2.1",
 		"prosemirror-commands": "^1.6.0",
 		"prosemirror-dropcursor": "^1.8.1",

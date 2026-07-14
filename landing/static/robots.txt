@@ -2,5 +2,5 @@ User-agent: *
 Allow: /
 Allow: /download
 Allow: /_app/
-Sitemap: https://desktop.texpile.com/sitemap.xml
+Sitemap: https://texpile.com/sitemap.xml
 Crawl-delay: 1

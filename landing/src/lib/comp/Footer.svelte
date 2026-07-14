@@ -13,11 +13,8 @@
 						<a href="/download" class="text-surface-300 hover:text-white">Download</a>
 					</li>
 					<li>
-						<a
-							href="https://github.com/nullpointerexceptionkek/texpile-monorepo"
-							target="_blank"
-							rel="noopener noreferrer"
-							class="text-surface-300 hover:text-white">Source code</a
+						<a href="https://github.com/texpile/texpile" target="_blank" rel="noopener noreferrer" class="text-surface-300 hover:text-white"
+							>Source code</a
 						>
 					</li>
 				</ul>
@@ -34,22 +31,14 @@
 							class="text-surface-300 hover:text-white">Discord</a
 						>
 					</li>
-					<li>
-						<a href="https://texpile.com" target="_blank" rel="noopener noreferrer" class="text-surface-300 hover:text-white">
-							Texpile on the web
-						</a>
-					</li>
 				</ul>
 			</div>
 		</div>
 
 		<div class="border-surface-700 mt-8 border-t pt-8 text-center">
 			<p class="text-surface-400">
-				Free and <a
-					href="https://github.com/nullpointerexceptionkek/texpile-monorepo"
-					target="_blank"
-					rel="noopener noreferrer"
-					class="hover:text-white underline">open source</a
+				Free and <a href="https://github.com/texpile/texpile" target="_blank" rel="noopener noreferrer" class="hover:text-white underline"
+					>open source</a
 				> under AGPL-3.0.
 			</p>
 		</div>

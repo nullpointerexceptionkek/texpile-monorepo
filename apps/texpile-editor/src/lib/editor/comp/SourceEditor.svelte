@@ -14,6 +14,7 @@
 	import { synctexFlash, flashLineEffect } from '$lib/editor/extensions/synctex-flash/synctexFlash';
 	import { bibtex } from '$lib/editor/extensions/bibtex/bibtex';
 	import { sourceCmView } from '$lib/stores/editorStore';
+	import { setSourceDocCount, setSourceSelectionCount } from '$lib/stores/countStore.svelte';
 
 	// full-file CodeMirror editor. source-mode edits are written back verbatim, never through the
 	// parse/serialize round-trip. filename picks the syntax mode, defaulting to LaTeX.
@@ -146,12 +147,23 @@
 					EditorView.lineWrapping,
 					EditorView.contentAttributes.of({ spellcheck: 'false', 'data-gramm': 'false', 'data-enable-grammarly': 'false' }),
 					EditorView.updateListener.of((u) => {
-						if (u.docChanged && !syncing) onInput?.(u.state.doc.toString());
+						if (u.docChanged) {
+							const text = u.state.doc.toString();
+							if (!syncing) onInput?.(text);
+							setSourceDocCount(text); // live word/char count in source mode
+						}
+						if (u.docChanged || u.selectionSet) {
+							const s = u.state.selection.main;
+							setSourceSelectionCount(s.empty ? null : u.state.sliceDoc(s.from, s.to));
+						}
 					})
 				]
 			})
 		});
 		view.focus();
+		// seed the counts now; the updateListener only fires on later changes
+		setSourceDocCount(view.state.doc.toString());
+		setSourceSelectionCount(null);
 		// mode-switch sync: reveal the scroll offset near the top, park the caret at the
 		// visual editor's caret and flash its line
 		if (initialScrollPos != null) {

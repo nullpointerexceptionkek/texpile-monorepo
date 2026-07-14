@@ -167,21 +167,11 @@ jobs:
           rename_one '*.deb' "texpile-$VERSION.deb"
           ls -la
 
-      # the landing fetches this to link the versioned files and show the version number
+      # the landing fetches this to link the versioned files and show the version; the updates
+      # worker serves its `version` + `notes` (from the newest CHANGELOG.md entry) to the app
       - name: Write latest.json
         run: |
-          cat > dist/latest.json <<EOF
-          {
-            "version": "$VERSION",
-            "publishedAt": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
-            "files": {
-              "windows": "v$VERSION/Texpile-Setup-$VERSION.exe",
-              "mac": "v$VERSION/Texpile-$VERSION.dmg",
-              "linuxAppImage": "v$VERSION/Texpile-$VERSION.AppImage",
-              "linuxDeb": "v$VERSION/texpile-$VERSION.deb"
-            }
-          }
-          EOF
+          node apps/texpile-editor/scripts/latest-json.mjs > dist/latest.json
           cat dist/latest.json
 
       # each release lands twice: an immutable copy under v<version>/, plus the stable root names

@@ -105,14 +105,20 @@
 	   can theme the toolbar */
 	.pdf-toolbar {
 		display: flex;
-		justify-content: center;
+		/* safe center: stays centered when it fits, but aligns to the start (no groups clipped
+		   past the left edge) once it overflows and scrolls */
+		justify-content: safe center;
 		align-items: center;
 		gap: 1rem;
 		padding: 0.625rem 1rem;
 		background-color: var(--pdf-toolbar-bg, #ffffff);
 		color: var(--pdf-toolbar-fg, #333);
 		flex-shrink: 0;
-		flex-wrap: wrap;
+		/* when the window is too narrow, scroll horizontally instead of wrapping into a second
+		   row (which shifted the whole viewer down and read as a layout glitch) */
+		flex-wrap: nowrap;
+		overflow-x: auto;
+		scrollbar-width: thin;
 		border-bottom: 1px solid var(--pdf-toolbar-border, #e0e0e0);
 		box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
 	}
@@ -121,6 +127,7 @@
 		display: flex;
 		align-items: center;
 		gap: 0.375rem;
+		flex-shrink: 0;
 	}
 
 	.pdf-toolbar button {

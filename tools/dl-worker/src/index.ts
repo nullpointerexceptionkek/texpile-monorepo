@@ -170,7 +170,7 @@ export default {
 		if (request.method !== 'GET' && request.method !== 'HEAD') {
 			return new Response('Method not allowed', { status: 405, headers: { allow: 'GET, HEAD, OPTIONS' } });
 		}
-		if (!key) return Response.redirect('https://desktop.texpile.com/download', 302);
+		if (!key) return Response.redirect('https://texpile.com/download', 302);
 
 		const latestAlias = key.match(/^latest\/([\w-]+)$/);
 		if (latestAlias) return latestRedirect(env, latestAlias[1]);

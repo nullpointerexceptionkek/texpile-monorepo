@@ -13,6 +13,16 @@
 	let error = $state<string | null>(null);
 	let collapsed = $state<Record<string, boolean>>({});
 	let timer: ReturnType<typeof setTimeout> | undefined;
+	let inputEl = $state<HTMLInputElement | null>(null);
+
+	// the autofocus attribute only fires on mount (and not reliably on dynamic insertion);
+	// the Ctrl+Shift+F path calls this so an already-open panel refocuses too. A seed
+	// (the editor's selection) replaces the query; select() lets typing replace either way.
+	export function focusInput(seed?: string) {
+		if (seed?.trim()) query = seed.trim();
+		inputEl?.focus();
+		inputEl?.select();
+	}
 
 	const totalMatches = $derived(results.reduce((n, r) => n + r.matches.length, 0));
 
@@ -71,6 +81,7 @@
 			<input
 				class="input h-8 w-full pl-7 text-sm"
 				placeholder="Search in folder"
+				bind:this={inputEl}
 				bind:value={query}
 				autofocus
 				spellcheck="false"

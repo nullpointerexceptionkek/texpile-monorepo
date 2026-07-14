@@ -68,7 +68,7 @@
 	const recommended = $derived(PLATFORMS.find((p) => p.key === detected) ?? null);
 	const others = $derived(recommended ? PLATFORMS.filter((p) => p.key !== recommended.key) : PLATFORMS);
 
-	const GITHUB_URL = 'https://github.com/nullpointerexceptionkek/texpile-monorepo';
+	const GITHUB_URL = 'https://github.com/texpile/texpile';
 
 	// this Plausible plan has no custom properties, so the platform goes in the event name
 	function trackDownload(platform: string) {
@@ -113,7 +113,7 @@
 	/>
 
 	<!-- Page-specific Open Graph -->
-	<meta property="og:url" content="https://desktop.texpile.com/download" />
+	<meta property="og:url" content="https://texpile.com/download" />
 	<meta property="og:title" content="Download Texpile - Windows, macOS, Linux" />
 	<meta
 		property="og:description"
@@ -121,14 +121,14 @@
 	/>
 
 	<!-- Page-specific Twitter -->
-	<meta property="twitter:url" content="https://desktop.texpile.com/download" />
+	<meta property="twitter:url" content="https://texpile.com/download" />
 	<meta property="twitter:title" content="Download Texpile - Windows, macOS, Linux" />
 	<meta
 		property="twitter:description"
 		content="Download Texpile, the free offline LaTeX editor, for Windows, macOS, and Linux. No account required."
 	/>
 
-	<link rel="canonical" href="https://desktop.texpile.com/download" />
+	<link rel="canonical" href="https://texpile.com/download" />
 </svelte:head>
 
 <section class="bg-surface-50 border-surface-200 border-b">

@@ -6,23 +6,42 @@
 	import { updateSettings, loadSettings } from '$lib/settings';
 	import { checkForUpdate } from '$lib/updateCheck';
 	import UpdateAvailableModal from '$lib/components/UpdateAvailableModal.svelte';
+	import WhatsNewModal from '$lib/components/WhatsNewModal.svelte';
+
+	// the latest CHANGELOG.md entry, injected at build (vite.config); null before the first release
+	const whatsNew = __WHATS_NEW__;
 
 	import StartView from './views/StartView.svelte';
 	import WorkspaceView from './views/WorkspaceView.svelte';
 	import ErrorView from './views/ErrorView.svelte';
 
 	let updateVersion = $state<string | null>(null);
+	let updateNotes = $state<string[] | undefined>(undefined);
 	let updateModalOpen = $state(false);
+	let whatsNewOpen = $state(false);
+	let updatePending = false;
 
 	onMount(async () => {
 		const s = await loadSettings();
+		// one-time What's New for this build's newest changelog entry
+		if (whatsNew && s.whatsNewSeen !== whatsNew.version) whatsNewOpen = true;
 		if (!s.checkForUpdates) return;
 		const info = await checkForUpdate();
 		if (info) {
 			updateVersion = info.version;
-			updateModalOpen = true;
+			updateNotes = info.notes;
+			// don't stack modals: hold the update notice until What's New is dismissed
+			if (whatsNewOpen) updatePending = true;
+			else updateModalOpen = true;
 		}
 	});
+
+	function onWhatsNewClose() {
+		if (updatePending) {
+			updatePending = false;
+			updateModalOpen = true;
+		}
+	}
 
 	// OS "Open With" hands us a .tex via the main process; open its folder and activate the file
 	onMount(() => {
@@ -77,8 +96,11 @@
 	<ErrorView status={404} />
 {/if}
 
+{#if whatsNew}
+	<WhatsNewModal bind:open={whatsNewOpen} entry={whatsNew} onClose={onWhatsNewClose} />
+{/if}
 {#if updateVersion}
-	<UpdateAvailableModal bind:open={updateModalOpen} version={updateVersion} />
+	<UpdateAvailableModal bind:open={updateModalOpen} version={updateVersion} notes={updateNotes} />
 {/if}
 
 <noscript>

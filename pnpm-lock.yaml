@@ -131,6 +131,9 @@ importers:
       mathlive:
         specifier: ^0.108.2
         version: 0.108.3
+      opentype.js:
+        specifier: ^2.0.0
+        version: 2.0.0
       prosemirror-changeset:
         specifier: ^2.2.1
         version: 2.4.1
@@ -3435,6 +3438,10 @@ packages:
   onetime@6.0.0:
     resolution: { integrity: sha512-1FlR+gjXK7X+AsAHso35MnyN5KqGwJRi/31ft6x0M194ht7S+rWAvd7PHss9xSKMzE0asv1pyIHaJYq+BbacAQ== }
     engines: { node: '>=12' }
+
+  opentype.js@2.0.0:
+    resolution: { integrity: sha512-kCyjv6xdDY1W/jLWZ/L3QhhTlKUqDZMQ5+Jdlw12b3dXkKNpYBqqlMMj0YDQPShWFTMwgZI1hG14kN3XUDSg/A== }
+    hasBin: true
 
   optionator@0.9.4:
     resolution: { integrity: sha512-6IpQ7mKUxRcZNLIObR0hz7lxsapSSIYNZJwXPGeF0mTVqGKFIXj1DQcMoT22S3ROcLyY/rz0PWaWZ9ayWmad9g== }
@@ -8142,6 +8149,8 @@ snapshots:
   onetime@6.0.0:
     dependencies:
       mimic-fn: 4.0.0
+
+  opentype.js@2.0.0: {}
 
   optionator@0.9.4:
     dependencies:

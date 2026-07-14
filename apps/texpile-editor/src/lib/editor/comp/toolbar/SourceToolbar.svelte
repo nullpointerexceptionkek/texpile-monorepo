@@ -1,7 +1,7 @@
 <script lang="ts">
 	// Source-mode toolbar: buttons for the same LaTeX-wrapping shortcuts formatShortcuts() binds
 	// (Mod-b/i/u/`/./,/Shift-b/Shift-`/Alt-1-2-3/m/Shift-m), for people who don't know the chords.
-	// unlike the Visual toolbar, buttons don't show an "active" state — that would need re-parsing
+	// unlike the Visual toolbar, buttons don't show an "active" state, which would need re-parsing
 	// the buffer around the cursor on every selection change, not worth it for a first pass.
 	import { Bold, Italic, Underline, Code, Superscript, Subscript, Quote, Sigma } from '@lucide/svelte';
 	import type { EditorState, TransactionSpec } from '@codemirror/state';

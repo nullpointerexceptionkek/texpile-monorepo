@@ -22,9 +22,35 @@ export interface SearchFileResult {
 	matches: { line: number; text: string }[];
 }
 
+export interface DraftPage {
+	n: number;
+	w: number;
+	h: number;
+	records: string; // newline-delimited JSON records for this page
+}
+export type DraftResult =
+	| {
+			ok: true;
+			ms: number;
+			count: number;
+			passes: number;
+			paperW: number;
+			paperH: number;
+			colW: number;
+			marginX: number;
+			marginY: number;
+			pages: DraftPage[];
+	  }
+	| { ok: false; error: string; ms: number; log?: string; superseded?: true };
+
+export type ParagraphResult =
+	| { ok: true; records: Record<string, unknown>[]; stats: Record<string, unknown> | null; hsize: number; textheight: number }
+	| { ok: false; error: string };
+
 interface TexpileNative {
 	openFolder: () => Promise<string | null>;
 	onOpenPath?: (cb: (filePath: string) => void) => () => void;
+	setZoomFactor?: (factor: number) => Promise<number>;
 	fsScan: (root: string, exts?: string) => Promise<{ root: string; files: TexFile[] }>;
 	fsRead: (path: string) => Promise<{ content: string }>;
 	fsWrite: (path: string, content: string) => Promise<{ ok: boolean }>;
@@ -40,6 +66,10 @@ interface TexpileNative {
 	fsStat: (path: string) => Promise<{ exists: boolean; mtimeMs: number; size: number }>;
 	fsFormatLatex: (path: string, text: string) => Promise<{ formatted: string }>;
 	synctex: (body: Record<string, unknown>) => Promise<Record<string, unknown>>;
+	draftCompile: (body: { root: string; mainFile: string }) => Promise<DraftResult>;
+	draftTypeset: (body: { root: string; mainFile: string; text: string; hsize?: number }) => Promise<ParagraphResult>;
+	draftStop: () => Promise<{ ok: boolean }>;
+	draftSavePdf: (body: { root: string; defaultName: string; to?: string }) => Promise<{ saved: boolean; path?: string }>;
 	gitStatus: (root: string) => Promise<GitStatusResult>;
 	gitShow: (path: string) => Promise<GitShowResult>;
 	gitInit: (dir: string) => Promise<GitOpResult>;

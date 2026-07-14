@@ -1,7 +1,9 @@
-// startup update check against the dl.texpile.com R2 feed (CORS-open, no auth, cached 5min).
-// Silent on any failure - this is a courtesy notice, not a feature the user is waiting on.
+import { downloadKey } from '$lib/platform';
+
 export interface UpdateInfo {
 	version: string;
+	/** release notes for the new version, when latest.json carries them */
+	notes?: string[];
 }
 
 function isNewer(latest: string, current: string): boolean {
@@ -17,11 +19,13 @@ function isNewer(latest: string, current: string): boolean {
 
 export async function checkForUpdate(): Promise<UpdateInfo | null> {
 	try {
-		const res = await fetch('https://dl.texpile.com/latest.json');
+		const q = new URLSearchParams({ v: __APP_VERSION__, os: downloadKey() });
+		const res = await fetch(`https://updates.texpile.com/?${q}`);
 		if (!res.ok) return null;
-		const latest = (await res.json()) as { version?: string };
+		const latest = (await res.json()) as { version?: string; notes?: string[] };
 		if (!latest.version || !isNewer(latest.version, __APP_VERSION__)) return null;
-		return { version: latest.version };
+		const notes = Array.isArray(latest.notes) ? latest.notes.filter((n) => typeof n === 'string').slice(0, 10) : undefined;
+		return { version: latest.version, notes };
 	} catch {
 		return null;
 	}

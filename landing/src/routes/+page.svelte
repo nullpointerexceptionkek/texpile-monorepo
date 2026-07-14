@@ -59,10 +59,6 @@
 			a: 'For compiling PDFs, yes: bring your own TeX distribution (TeX Live, MiKTeX, or MacTeX) and Texpile runs it for you. Editing works without one.'
 		},
 		{
-			q: 'How is this different from Texpile on the web?',
-			a: 'The web app at texpile.com is collaborative and compiles in the cloud. This desktop version is a separate, fully offline fork: no sign in, local compilation, and direct access to the folders on your machine.'
-		},
-		{
 			q: 'Why is it built on Electron?',
 			a: 'Texpile started as a web app, and the desktop version is a fork of it. The editor is built on ProseMirror and CodeMirror, which both rely on the browser feature contenteditable. That behavior differs between browser engines, and the web version needed many engine-specific fixes for cursor bugs, most of them on Safari. Electron bundles a fixed version of Chromium, so the editor targets one engine on every platform instead of three. Tauri is lighter, but it uses whatever WebView the operating system provides (WebKit on macOS), which reintroduces the cross-engine differences Electron avoids.'
 		}
@@ -83,7 +79,7 @@
 	/>
 
 	<!-- Page-specific Open Graph -->
-	<meta property="og:url" content="https://desktop.texpile.com/" />
+	<meta property="og:url" content="https://texpile.com/" />
 	<meta property="og:title" content="Texpile - a local, offline LaTeX editor" />
 	<meta
 		property="og:description"
@@ -91,14 +87,14 @@
 	/>
 
 	<!-- Page-specific Twitter -->
-	<meta property="twitter:url" content="https://desktop.texpile.com/" />
+	<meta property="twitter:url" content="https://texpile.com/" />
 	<meta property="twitter:title" content="Texpile - a local, offline LaTeX editor" />
 	<meta
 		property="twitter:description"
 		content="Edit .tex files visually with byte-perfect saves, built-in git, and local compilation. Free and open source."
 	/>
 
-	<link rel="canonical" href="https://desktop.texpile.com/" />
+	<link rel="canonical" href="https://texpile.com/" />
 
 	<!-- Structured Data -->
 	{@html `<script type="application/ld+json">
@@ -107,7 +103,7 @@
 		"@type": "SoftwareApplication",
 		"name": "Texpile",
 		"description": "Texpile is a free, open source LaTeX editor. Edit your .tex files visually, keep byte-perfect output, compile with your own toolchain, and never leave your machine.",
-		"url": "https://desktop.texpile.com",
+		"url": "https://texpile.com",
 		"applicationCategory": "ProductivityApplication",
 		"operatingSystem": "Windows, macOS, Linux",
 		"offers": {

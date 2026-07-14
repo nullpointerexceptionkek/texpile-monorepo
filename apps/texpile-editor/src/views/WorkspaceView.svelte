@@ -1,17 +1,18 @@
 <script lang="ts">
-	import { onMount } from 'svelte';
+	import { onMount, tick } from 'svelte';
 	import { get } from 'svelte/store';
 	import { Switch } from '@skeletonlabs/skeleton-svelte';
 	import { browser } from '$lib/runtime';
 	import { navigate } from '$lib/router.svelte';
 	// prettier-ignore
-	import { Save, FileText, Loader2, CircleAlert, TriangleAlert, FilePlus, FolderPlus, RefreshCw, PanelLeft, PanelRight, Eye, Code, GitCompare, GitBranch, Play, Square, SquareTerminal, X, ChevronDown, Check, Plus, Trash2, LocateFixed, Search } from '@lucide/svelte';
+	import { Save, FileText, Loader2, CircleAlert, TriangleAlert, FilePlus, FolderPlus, RefreshCw, PanelLeft, PanelRight, Eye, Code, GitCompare, GitBranch, Play, Square, SquareTerminal, X, ChevronDown, Check, Plus, Trash2, LocateFixed, Search, Settings2 } from '@lucide/svelte';
 	import EditorView from '$lib/editor/EditorView.svelte';
 	import Terminal from '$lib/editor/comp/Terminal.svelte';
 	import ProblemsPanel from '$lib/editor/comp/ProblemsPanel.svelte';
 	import { compileLog, resolveLogPath } from '$lib/stores/compileLogStore';
 	import { parseCompileDiagnostics } from '$lib/latex-log';
 	import PDFViewer from '$lib/editor/comp/PDFViewer.svelte';
+	import DraftView from '$lib/draft/DraftView.svelte';
 	import GlobalSearch from '$lib/editor/comp/GlobalSearch.svelte';
 	import StarterPicker from '$lib/editor/comp/StarterPicker.svelte';
 	import TutorialConfirmModal from '$lib/editor/comp/TutorialConfirmModal.svelte';
@@ -57,7 +58,7 @@
 	import { refreshGitStatus, isGitRepo, gitStatusMap, gitChanges, gitBranch, takeNoGitHint } from '$lib/workspace/gitStore';
 	import { gitShowHead, gitInit, gitStage, gitUnstage, gitDiscard, gitCommit, type GitStatusEntry } from '$lib/workspace/git';
 	import { settings, loadSettings, updateSettings, DEFAULT_COMPILE_COMMAND } from '$lib/settings';
-	import { detectMainFile, gatherProjectMacros } from '$lib/workspace/project';
+	import { detectMainFile, findDocRoots, gatherProjectMacros } from '$lib/workspace/project';
 	import {
 		readTextFile,
 		writeTextFile,
@@ -78,6 +79,7 @@
 		toLf,
 		fromLf,
 		formatLatexDocument,
+		native,
 		type Eol,
 		type TreeEntry,
 		type TexFile
@@ -208,6 +210,7 @@
 			return;
 		}
 		terminalAvailable = isDesktop(); // client-only; set here so SSR/CSR agree
+		resolveMainConfirm(root); // storage first, before anything can want a compile
 		loadReferences(root);
 		refreshTree();
 		void initProject(root);
@@ -313,6 +316,7 @@
 		const prevRoot = get(workspaceRoot);
 		try {
 			const { files } = await scanTexFiles(root);
+			resolveMainConfirm(root); // before the stores flip, so the modal effect can't see a stale state
 			workspaceRoot.set(root);
 			texFiles.set(files);
 			addRecentFolder(root);
@@ -333,6 +337,7 @@
 	// affects the current session's view.
 	async function closeWorkspace() {
 		await flushSaveAndWait();
+		resolveMainConfirm(null);
 		workspaceRoot.set(null);
 		texFiles.set([]);
 		fileTree.set([]);
@@ -348,6 +353,7 @@
 			const { root, mainFile } = await openTutorialProject(pickedRoot);
 			await openFolderFromMenu(root);
 			setMainFile(root, mainFile);
+			mainConfirmed = true; // the starter picked the main; no first-compile question
 			activeFilePath.set(mainFile); // openFolderFromMenu opens files[0] (alphabetical), not the main file
 		} catch (e) {
 			toaster.error({ title: 'Could not open tutorial', description: e instanceof Error ? e.message : String(e) });
@@ -369,6 +375,9 @@
 		const saved = savedMainFile(root);
 		const main = saved && files.some((f) => samePath(f.path, saved)) ? saved : await detectMainFile(files);
 		if (get(workspaceRoot) !== root) return; // folder changed under us
+		// a folder whose main file was never explicitly chosen asks once before the first
+		// compile (single-file folders have nothing to choose)
+		mainConfirmed = files.length <= 1 || !!(saved && files.some((f) => samePath(f.path, saved)));
 		mainFile.set(main);
 		void loadExistingPdf(); // show an already-compiled PDF for this folder without a recompile
 		projectMacros = main ? await gatherProjectMacros(main, root) : '';
@@ -381,6 +390,7 @@
 		if (!root) return;
 		const next = $mainFile && samePath($mainFile, path) ? null : path; // click the current main again to clear
 		setMainFile(root, next);
+		mainConfirmed = true; // an explicit choice (set or clear) settles the first-compile question
 		void loadExistingPdf(); // the main file changed → its expected PDF did too
 		projectMacros = next ? await gatherProjectMacros(next, root) : '';
 		if (get(workspaceRoot) !== root) return;
@@ -538,6 +548,7 @@
 	const activeRef = (): TermRef => (activeTermId != null ? termRefs[activeTermId] : undefined);
 	let compileCommand = $state(''); // the compile command; {main} expands to the main file's path
 	let compileModalOpen = $state(false);
+	let compileMenuOpen = $state(false); // the small caret dropdown next to the Compile button
 	let compileDraft = $state('');
 	// Advanced (per-folder) output-path overrides, edited in the compile modal
 	let compileOutputsDraft = $state<{ pdf: string; log: string }>({ pdf: '', log: '' });
@@ -575,6 +586,466 @@
 	// true from Compile until the run visibly ends (PDF landed, log settled, or timeout);
 	// drives the Compile button's Stop toggle, and Stop sends Ctrl+C to the shell
 	let compiling = $state(false);
+	// Draft mode: bump to trigger a DraftView recompile; the derived root/main feed it.
+	let draftTrigger = $state(0);
+	let draftRoot = $derived($workspaceRoot ?? '');
+	let draftMainRel = $derived.by(() => {
+		if (mainConfirmed !== true) return ''; // hold the first live compile until the main file is confirmed
+		const target = $mainFile ?? loadedPath;
+		return $workspaceRoot && target ? relFromRoot(target, $workspaceRoot) : '';
+	});
+
+	// First-compile main-file confirmation. Overleaf never shows the concept, so a silent
+	// guess confuses people coming from it: multi-file folders with no explicitly chosen
+	// main ask ONCE, with the detected file preselected; confirming persists it exactly
+	// like the file tree's "Set as main file" (star badge included).
+	// Tri-state: null = unresolved for the current folder; the modal never auto-opens on
+	// null, so it can't flash while initProject is still scanning. Storage is consulted
+	// SYNCHRONOUSLY on folder open (resolveMainConfirm) - a folder with a saved choice is
+	// confirmed before the first render.
+	let mainConfirmed = $state<boolean | null>(null);
+	function resolveMainConfirm(root: string | null) {
+		mainConfirmed = root ? (savedMainFile(root) ? true : null) : null;
+	}
+	let mainConfirmOpen = $state(false);
+	let mainChoice = $state<string | null>(null);
+	let mainDetected = $state<string | null>(null);
+	let mainDocRoots = $state<Set<string>>(new Set());
+	let afterMainConfirm: (() => void) | null = null;
+	// stable order: detected first, then document roots, then the rest (frozen at open so
+	// picking a different radio doesn't reshuffle the list)
+	let mainCandidates = $derived.by(() => {
+		const score = (f: TexFile) => (mainDetected && samePath(f.path, mainDetected) ? 0 : mainDocRoots.has(f.path) ? 1 : 2);
+		return [...$texFiles].sort((a, b) => score(a) - score(b) || a.relPath.localeCompare(b.relPath));
+	});
+	async function openMainConfirm(then?: () => void) {
+		const root = get(workspaceRoot);
+		if (!root || mainConfirmOpen) return;
+		mainConfirmOpen = true;
+		afterMainConfirm = then ?? null;
+		const files = get(texFiles);
+		mainDetected = get(mainFile) ?? (await detectMainFile(files));
+		mainChoice = mainDetected;
+		mainDocRoots = await findDocRoots(files);
+	}
+	function finishMainConfirm() {
+		mainConfirmOpen = false;
+		mainConfirmed = true;
+		if (get(settings).draftMode) draftTrigger++; // the held first live compile can run now
+		const k = afterMainConfirm;
+		afterMainConfirm = null;
+		k?.();
+	}
+	async function confirmMainFile() {
+		const root = get(workspaceRoot);
+		if (!root || !mainChoice) return;
+		const chosen = mainChoice;
+		setMainFile(root, chosen);
+		void loadExistingPdf();
+		finishMainConfirm();
+		projectMacros = await gatherProjectMacros(chosen, root);
+	}
+	// dismissed without confirming: compile with the detected file for this session, ask again next time
+	function dismissMainConfirm() {
+		finishMainConfirm();
+	}
+	// live mode compiles on its own as soon as the pane is open; surface the question then.
+	// Strictly `=== false`: null means initProject is still resolving, never a modal.
+	$effect(() => {
+		const wants = $settings.draftMode && pdfPaneOpen && !draftPaused && !!$workspaceRoot && $texFiles.length > 1;
+		if (wants && mainConfirmed === false && !mainConfirmOpen) void openMainConfirm();
+	});
+	// Draft mode live preview: ONE decision point per edit (the spec's "decide when to
+	// incrementally compile vs recompile"). Diff against the last-compiled source: if exactly
+	// one prose paragraph changed, patch it INSTANTLY (no debounce -- DraftView.instantPatch
+	// coalesces via its own in-flight guard, so continuous typing streams patches at the
+	// daemon's pace rather than only updating when you pause). Any structural change debounces
+	// a full recompile. Only while the preview pane is open; the compile reads from disk.
+	let draftRef = $state<DraftView | null>(null);
+	let draftEditTimer: ReturnType<typeof setTimeout> | null = null;
+	let lastDraftSrc = ''; // source at the last full draft compile; the patch baseline
+	let lastDraftPath: string | null = null; // file that source belongs to
+
+	// Split a .tex buffer into prose paragraphs (line-numbered), treating blank lines,
+	// comment-only lines, and block-level command lines (\section, \begin, \item, ...) as
+	// boundaries -- so the header line above a body paragraph isn't glued onto it.
+	const BLOCK_CMD =
+		/^\s*\\(section|subsection|subsubsection|paragraph|subparagraph|chapter|begin|end|item|maketitle|caption|label|title|author|date|bibliography|printbibliography|tableofcontents|input|include)\b/;
+	const isBoundary = (ln: string) => ln.trim() === '' || /^\s*%/.test(ln) || BLOCK_CMD.test(ln);
+	const BEGIN_LIST = /^\s*\\begin\{(itemize|enumerate|description)\}/;
+	const END_LIST = /^\s*\\end\{(itemize|enumerate|description)\}/;
+	const ITEM = /^\s*\\item\b[ \t]*(.*)$/;
+	// Split a buffer into editable paragraphs. A \item body is captured as a paragraph too,
+	// tagged with its enclosing list env so the fast path can re-typeset it INSIDE that list
+	// (correct width + label), not as full-width prose.
+	type Para = { text: string; startLine: number; wrap?: string; idx?: number; env?: string };
+	// environments captured WHOLE (\begin..\end as one block): the daemon can typeset a complete
+	// env (display math, tabular, quote), never a bare body -- so an edit inside one becomes a
+	// single-block change the instant path can locate and splice. Lists keep per-item capture;
+	// document would swallow everything.
+	const BEGIN_ENV = /^\s*\\begin\{([a-zA-Z*]+)\}/;
+	const NON_BLOCK_ENVS = new Set(['document', 'itemize', 'enumerate', 'description']);
+	function splitParas(src: string): Para[] {
+		const out: Para[] = [];
+		const lines = src.split('\n');
+		let cur: string[] = [];
+		let start = 0;
+		let wrap = '';
+		let idx = 0;
+		const listStack: { env: string; n: number }[] = [];
+		const flush = () => {
+			if (cur.length) out.push({ text: cur.join('\n'), startLine: start + 1, wrap: wrap || undefined, idx });
+			cur = [];
+		};
+		for (let i = 0; i < lines.length; i++) {
+			const ln = lines[i];
+			const be = ln.match(BEGIN_ENV);
+			if (be && !NON_BLOCK_ENVS.has(be[1]) && !listStack.length) {
+				flush();
+				// nesting-aware: accumulate until the matching \end (blank lines included)
+				const s0 = i;
+				let depth = 0;
+				const blk: string[] = [];
+				for (; i < lines.length; i++) {
+					depth += (lines[i].match(/\\begin\{[a-zA-Z*]+\}/g) || []).length;
+					depth -= (lines[i].match(/\\end\{[a-zA-Z*]+\}/g) || []).length;
+					blk.push(lines[i]);
+					if (depth <= 0) break;
+				}
+				out.push({ text: blk.join('\n'), startLine: s0 + 1, env: be[1] });
+				continue;
+			}
+			const bl = ln.match(BEGIN_LIST),
+				el = ln.match(END_LIST),
+				im = ln.match(ITEM);
+			if (bl) {
+				flush();
+				listStack.push({ env: bl[1], n: 0 });
+				continue;
+			}
+			if (el) {
+				flush();
+				listStack.pop();
+				continue;
+			}
+			if (im) {
+				flush();
+				const top = listStack[listStack.length - 1];
+				if (top) top.n++;
+				if (im[1].trim()) {
+					start = i;
+					cur = [im[1]];
+					wrap = top ? top.env : '';
+					idx = top ? top.n : 0;
+				}
+				continue;
+			}
+			if (isBoundary(ln)) {
+				flush();
+				continue;
+			}
+			if (!cur.length) {
+				start = i;
+				wrap = '';
+				idx = 0;
+			}
+			cur.push(ln);
+		}
+		flush();
+		return out;
+	}
+	// wrap a captured \item body back in its list env for the daemon (correct width + label).
+	// For a numbered list, set the counter so the label shows the item's real number, not 1.
+	const wrapItem = (t: string, w?: string, idx?: number) => {
+		if (!w) return t;
+		const setc = w === 'enumerate' && idx && idx > 1 ? `\\setcounter{enumi}{${idx - 1}}` : '';
+		return `\\begin{${w}}${setc}\\item ${t}\\end{${w}}`;
+	};
+	// strip TeX comments: the daemon single-lines the block, so a trailing % would
+	// otherwise swallow the rest of the paragraph
+	const stripTexComments = (s: string) => s.replace(/([^\\]|^)%.*$/gm, '$1');
+	// While typing you pass through unbalanced states (\textbf{ before the }, $ before its
+	// close). An unclosed brace group has no paragraph terminator, so the daemon's typeset
+	// never finishes -- it blocks the full 6s timeout, then SIGKILLs and cold-respawns the
+	// engine. So only fire the instant patch once groups and inline math are balanced;
+	// while they aren't, keep the last preview and wait for the keystroke that closes them.
+	const daemonReady = (t: string): boolean => {
+		let depth = 0;
+		let dollars = 0;
+		for (let i = 0; i < t.length; i++) {
+			const c = t[i];
+			if (c === '\\')
+				i++; // skip the escaped char: \{ \} \$ \\ aren't grouping
+			else if (c === '{') depth++;
+			else if (c === '}') {
+				if (--depth < 0) return false;
+			} else if (c === '$') dollars++;
+		}
+		return depth === 0 && dollars % 2 === 0;
+	};
+	// Mid-typing repair: close still-open math/braces IN NESTING ORDER so the daemon can render
+	// the partial result instantly ($x + y -> $x + y$; \textbf{par -> \textbf{par}). The closers
+	// exist only in this transient render, never in the buffer. Null = not repairable (stray
+	// closers) -> hold the last preview.
+	function repairForPreview(t: string): string | null {
+		const stack: string[] = [];
+		for (let i = 0; i < t.length; i++) {
+			const c = t[i];
+			if (c === '\\') {
+				const n = t[i + 1];
+				if (n === '(') stack.push('\\)');
+				else if (n === '[') stack.push('\\]');
+				else if (n === ')') {
+					if (stack.pop() !== '\\)') return null;
+				} else if (n === ']') {
+					if (stack.pop() !== '\\]') return null;
+				}
+				i++;
+			} else if (c === '{') stack.push('}');
+			else if (c === '}') {
+				if (stack.pop() !== '}') return null;
+			} else if (c === '$') {
+				if (stack[stack.length - 1] === '$') stack.pop();
+				else stack.push('$');
+			}
+		}
+		return stack.length ? t + stack.reverse().join('') : t;
+	}
+	const dev = (kind: string, detail?: unknown) => {
+		const w = window as unknown as { __draftEvents?: unknown[] };
+		(w.__draftEvents ||= []).push({ kind, detail });
+	};
+
+	async function fullRecompile(src: string) {
+		lastDraftSrc = src;
+		lastDraftPath = loadedPath;
+		await flushSaveAndWait();
+		draftTrigger++;
+	}
+
+	// Stop the warm engine when draft mode is off, no preview is open, or the folder changed
+	// -- otherwise it keeps a lualatex process (100-300MB with a heavy preamble) alive for the
+	// whole session. It re-warms in ~1.5s on the next compile. draftStop is a no-op if no
+	// daemon is running, so it's safe to call eagerly.
+	let daemonActive = false;
+	let daemonRoot: string | null = null;
+	$effect(() => {
+		const active = $settings.draftMode && pdfPaneOpen && !draftPaused;
+		const root = $workspaceRoot;
+		if (daemonActive && (!active || root !== daemonRoot)) native()?.draftStop?.();
+		daemonActive = active;
+		daemonRoot = root;
+	});
+
+	$effect(() => {
+		const src = texSource; // re-run on every edit
+		const active = $settings.draftMode && pdfPaneOpen && !!loadedPath && !draftPaused;
+		if (draftEditTimer) {
+			clearTimeout(draftEditTimer);
+			draftEditTimer = null;
+		}
+		if (!active || src === lastDraftSrc) return;
+		// path changed since the last compile (switched files): recompile, don't diff
+		if (loadedPath !== lastDraftPath || !lastDraftSrc) {
+			draftEditTimer = setTimeout(() => fullRecompile(src), 400);
+			return;
+		}
+		const oldP = splitParas(lastDraftSrc);
+		const newP = splitParas(src);
+		let single = -1;
+		if (oldP.length === newP.length) {
+			const changed: number[] = [];
+			for (let i = 0; i < newP.length; i++) if (newP[i].text !== oldP[i].text) changed.push(i);
+			// whitespace/comment-only edit (pressing Enter makes a blank line, etc.): every
+			// paragraph is identical, so the render is identical -- no compile, no patch, just
+			// advance the baseline. Without this, every Enter cost a full recompile.
+			if (changed.length === 0) {
+				lastDraftSrc = src;
+				lastDraftPath = loadedPath;
+				dev('ws-noop-whitespace', {});
+				return;
+			}
+			if (changed.length === 1) single = changed[0];
+		}
+		if (single < 0) {
+			// structural / multi-paragraph edit: heavier, so wait for a pause before recompiling
+			dev('ws-recompile', { reason: oldP.length !== newP.length ? 'para-count' : 'multi-para' });
+			// a structural edit has no patch to follow: register the first diverging paragraph so
+			// the preview jumps to (and highlights) it once the recompile lands
+			const fr = get(workspaceRoot);
+			let fi = 0;
+			{
+				const minLen = Math.min(oldP.length, newP.length);
+				while (fi < minLen && oldP[fi].text === newP[fi].text) fi++;
+			}
+			if (fr && loadedPath) {
+				const t = newP[Math.min(fi, newP.length - 1)];
+				if (t)
+					draftRef?.focusAfterCompile({
+						file: relFromRoot(loadedPath, fr),
+						line: t.startLine,
+						endLine: t.startLine + t.text.split('\n').length - 1,
+						text: wrapItem(stripTexComments(t.text), t.wrap, t.idx),
+						listItem: !!t.wrap || !!t.env
+					});
+			}
+			draftEditTimer = setTimeout(() => fullRecompile(src), 500);
+			// PURE single-paragraph insert/delete: splice provisionally instead of leaving the
+			// user staring at a stale preview until the pass lands. Best-effort -- on success the
+			// full-pass debounce is cancelled (the provisional path schedules its own reconcile);
+			// on failure the debounce above still runs.
+			const tailMatches = (o: Para[], nn: Para[], at: number, shift: number) => {
+				for (let j = at; j < o.length; j++) if (o[j].text !== nn[j + shift]?.text) return false;
+				return true;
+			};
+			const onRec = async () => {
+				await flushSaveAndWait();
+				lastDraftSrc = src;
+				lastDraftPath = loadedPath;
+			};
+			if (fr && loadedPath) {
+				const file = relFromRoot(loadedPath, fr);
+				if (newP.length === oldP.length + 1 && fi > 0 && tailMatches(oldP, newP, fi, 1)) {
+					const t = newP[fi];
+					if (!t.env && !t.wrap && daemonReady(stripTexComments(t.text)))
+						void (async () => {
+							// walk back up to 3 anchors: the immediate predecessor can be an odd
+							// fragment (e.g. a list tail) that no tier locates; any earlier
+							// locatable paragraph works because the insert lands below the
+							// contiguous flow, not directly below the anchor band
+							for (let k = fi - 1; k >= 0 && k >= fi - 3; k--) {
+								const a = oldP[k];
+								const ok = await draftRef?.provisionalInsert({
+									file,
+									afterLine: a.startLine,
+									afterEnd: a.startLine + a.text.split('\n').length - 1,
+									anchorOrig: wrapItem(stripTexComments(a.text), a.wrap, a.idx),
+									anchorListItem: !!a.wrap || !!a.env,
+									text: stripTexComments(t.text),
+									onRecompile: onRec
+								});
+								if (ok) {
+									if (draftEditTimer) {
+										clearTimeout(draftEditTimer);
+										draftEditTimer = null;
+									}
+									return;
+								}
+							}
+						})();
+				} else if (newP.length === oldP.length - 1 && tailMatches(newP, oldP, fi, 1)) {
+					const d = oldP[fi];
+					if (d && !d.env)
+						void draftRef
+							?.provisionalDelete({
+								file,
+								line: d.startLine,
+								endLine: d.startLine + d.text.split('\n').length - 1,
+								orig: wrapItem(stripTexComments(d.text), d.wrap, d.idx),
+								listItem: !!d.wrap || !!d.env,
+								onRecompile: onRec
+							})
+							.then((ok) => {
+								if (ok && draftEditTimer) {
+									clearTimeout(draftEditTimer);
+									draftEditTimer = null;
+								}
+							});
+				}
+			}
+			return;
+		}
+		const newText = stripTexComments(newP[single].text);
+		// Mid-command (unbalanced braces / open math): raw dispatch would hang the daemon (an
+		// open group swallows the paragraph terminator). Instead of holding the preview, REPAIR
+		// the transient text (auto-close the open math/groups) so partial math renders live
+		// while typing; the repaired edit is transient (may patch or hold, never compile).
+		let sendText = newText;
+		let transient = false;
+		if (!daemonReady(newText)) {
+			const rep = repairForPreview(newText);
+			if (rep === null || !daemonReady(rep)) {
+				dev('ws-skip-unbalanced', { line: oldP[single].startLine });
+				return;
+			}
+			sendText = rep;
+			transient = true;
+			dev('ws-repaired', { line: oldP[single].startLine });
+		}
+		// A paragraph that is the BODY of a non-list environment (equation, tabular, align,
+		// quote...) is not a standalone typeset unit: the daemon error-recovers it into
+		// something with the same glyphs but the wrong layout (a table becomes plain text, a
+		// display equation becomes inline math), which could pass a content match and splice
+		// garbage. Lists are fine (wrapItem re-wraps them); everything else takes the full pass.
+		{
+			const baseLines = lastDraftSrc.split('\n');
+			let pl = oldP[single].startLine - 2; // line above the paragraph, 0-based
+			while (pl >= 0 && baseLines[pl].trim() === '') pl--;
+			// document is exempt: text after \begin{document} is ordinary prose, not an env body
+			const env = pl >= 0 ? baseLines[pl].match(/^\s*\\begin\{([a-zA-Z*]+)\}/) : null;
+			if (env && !['itemize', 'enumerate', 'description', 'document'].includes(env[1])) {
+				dev('ws-recompile', { reason: 'env-body:' + env[1] });
+				draftEditTimer = setTimeout(() => fullRecompile(src), 500);
+				return;
+			}
+		}
+		const root = get(workspaceRoot);
+		if (!root || !loadedPath) return;
+		dev('ws-dispatch', { file: relFromRoot(loadedPath, root), line: oldP[single].startLine });
+		// One prose paragraph changed: patch IMMEDIATELY. The daemon typesets the text IN
+		// MEMORY (no save needed -- saving here would let a recompile beat the patch), and
+		// instantPatch's in-flight guard coalesces bursts, so the preview updates as you type.
+		// Only an abandon needs the file on disk -- onRecompile saves lazily then advances the
+		// baseline; a successful patch keeps the last full compile as the baseline so
+		// successive keystrokes keep measuring against real geometry.
+		const wrap = newP[single].wrap;
+		// A cell edit inside a FLOATED table can't typeset the whole float (the daemon discards
+		// float material), but the inner tabular alone typesets fine and the float's position is
+		// untouched by content edits: dispatch just the tabular when the change is confined to it.
+		// Caption/placement edits (outside the tabular) keep the whole-block dispatch, which
+		// cal-empties into the full pass.
+		let dispatchText = wrapItem(sendText, wrap, newP[single].idx);
+		let dispatchOrig = wrapItem(stripTexComments(oldP[single].text), oldP[single].wrap, oldP[single].idx);
+		let floatInner = false;
+		if (newP[single].env && /^(table|figure)\*?$/.test(newP[single].env)) {
+			const TAB = /\\begin\{(tabular\*?|tabularx|array)\}[\s\S]*?\\end\{\1\}/;
+			const oSub = dispatchOrig.match(TAB)?.[0] ?? null;
+			const nSub = dispatchText.match(TAB)?.[0] ?? null;
+			if (oSub && nSub && dispatchOrig.replace(oSub, ' ') === dispatchText.replace(nSub, ' ')) {
+				dispatchText = nSub;
+				dispatchOrig = oSub;
+				floatInner = true;
+			}
+		}
+		draftRef?.instantPatch({
+			file: relFromRoot(loadedPath, root),
+			line: oldP[single].startLine,
+			// last source line of the (baseline) paragraph. Its typeset line boxes are often tagged
+			// by synctex to the \par line (blank line / \end{document}), not line 1, so locate's
+			// inverse-mapping fallback needs the range to find the paragraph (esp. the last one).
+			endLine: oldP[single].startLine + oldP[single].text.split('\n').length - 1,
+			text: dispatchText,
+			orig: dispatchOrig,
+			transient,
+			floatInner,
+			// env blocks ride the listItem pathway: paraLeft = column left (their records carry
+			// their own centering/indent) and no \parindent calibration variant
+			listItem: !!wrap || !!newP[single].env,
+			onRecompile: async () => {
+				await flushSaveAndWait();
+				lastDraftSrc = src;
+				lastDraftPath = loadedPath;
+			}
+		});
+	});
+	// Draft mode leans on the on-disk file staying current: the full compile reads from disk,
+	// and a successful instant patch is in-memory only (nothing is written until the next
+	// recompile or an autosave). So force autosave on while draft mode is enabled -- the
+	// Preferences toggle is disabled to match.
+	$effect(() => {
+		if ($settings.draftMode && !$settings.autosave) updateSettings({ autosave: true });
+	});
+
 	function stopCompile() {
 		activeRef()?.interrupt();
 		compiling = false;
@@ -735,12 +1206,53 @@
 		}
 		if (tries < 40) setTimeout(() => runInTerminal(cmd, onDone, tries + 1), 25); // ~1s for first mount
 	}
+	// Draft mode: preview via the incremental per-page engine instead of the terminal
+	// command. Saves first (so the compile sees the buffer), opens the preview pane, and
+	// bumps the trigger; DraftView runs the actual lualatex draft compile + per-page render.
+	// Draft engine pause: keeps the last preview on screen but stops the warm lualatex and all
+	// live dispatch. The Compile button doubles as the draft status (live / paused).
+	let draftPaused = $state(false);
+	function pauseDraft() {
+		draftPaused = true; // the daemon-stop effect sees inactive and kills the engine
+	}
+	async function resumeDraft() {
+		draftPaused = false;
+		await runDraftCompile(); // re-sync (content may have drifted while paused) + re-warm
+	}
+
+	async function runDraftCompile() {
+		if (!draftRoot || !draftMainRel) {
+			openCompileModal();
+			return;
+		}
+		draftPaused = false; // compiling implies live (covers the keyboard-shortcut path)
+		await flushSaveAndWait();
+		lastDraftSrc = texSource; // the live-edit effect won't redundantly recompile this same source
+		lastDraftPath = loadedPath;
+		setPdfPaneOpen(true);
+		draftTrigger++;
+	}
+
 	async function runCompile() {
+		// first compile in a folder with no explicitly chosen main file: confirm it first
+		if (mainConfirmed !== true && get(texFiles).length > 1) {
+			void openMainConfirm(() => void runCompile());
+			return;
+		}
+		if (get(settings).draftMode) {
+			await runDraftCompile();
+			return;
+		}
 		if (!terminalAvailable) return;
 		const cmd = compileCommand.trim();
-		// no command yet, or {main} with no main file to resolve to: ask in the modal first
-		if (!cmd || (cmd.includes('{main}') && !get(mainFile))) {
+		// no command yet: ask in the modal first
+		if (!cmd) {
 			openCompileModal();
+			return;
+		}
+		// {main} with nothing to resolve to means the folder has no .tex file at all
+		if (cmd.includes('{main}') && !get(mainFile)) {
+			toaster.error({ title: 'Nothing to compile', description: 'No .tex file found in this folder.' });
 			return;
 		}
 		// write the buffer to disk BEFORE compiling so SyncTeX indexes exactly what the editor
@@ -849,20 +1361,17 @@
 	}
 	// root-relative detected paths, shown as the Advanced inputs' placeholders; re-derive live as
 	// the user edits the command draft or switches main file
-	const detectedPdfRel = $derived.by(() => {
-		void compileDraft;
-		const root = $workspaceRoot;
-		void $mainFile;
-		const p = detectedPdfPath(compileDraft);
-		return root && p ? relFromRoot(p, root) : 'set a main file first';
-	});
-	const detectedLogRel = $derived.by(() => {
-		void compileDraft;
-		const root = $workspaceRoot;
-		void $mainFile;
-		const p = detectedLogPath(compileDraft);
-		return root && p ? relFromRoot(p, root) : 'set a main file first';
-	});
+	// The Advanced output paths are LITERAL file paths, one file each: the command's {main} is
+	// NOT expanded here, and each must be an actual .pdf / .log. Blank = auto-detect. Warn on
+	// either mistake; the Auto button clears the field back to auto-detect.
+	function outputPathWarning(v: string, ext: '.pdf' | '.log'): string | null {
+		if (!v.trim()) return null;
+		if (/\{[^}]*\}/.test(v)) return 'No {main} here, type the actual file path';
+		if (!v.trim().toLowerCase().endsWith(ext)) return `Should end in ${ext}`;
+		return null;
+	}
+	const pdfPathWarning = $derived(outputPathWarning(compileOutputsDraft.pdf, '.pdf'));
+	const logPathWarning = $derived(outputPathWarning(compileOutputsDraft.log, '.log'));
 
 	// read the .log plus the sibling .blg (it reflects the LAST bib run, which stays valid
 	// even on compiles where latexmk skips bibtex) and publish the parsed problems
@@ -1053,9 +1562,11 @@
 		}
 		if (tries < 30) setTimeout(() => jumpPdf(page, x, y, w, h, tries + 1), 30); // wait for the pane to mount
 	}
-	// forward: a source line -> the matching place in the PDF (scroll + flash a highlight)
+	// forward: a source line -> the matching place in the PDF (scroll + flash a highlight).
+	// Live mode syncs against the reconcile PDF (same layout the canvases show).
 	async function syncForwardLine(line: number) {
-		const pdf = expectedPdfPath();
+		const live = get(settings).draftMode;
+		const pdf = live ? draftRoot + '/_draft/draft.pdf' : expectedPdfPath();
 		if (!loadedPath || kind !== 'tex' || !pdf) return;
 		const res = await synctexForward(pdf, loadedPath, line);
 		console.debug('[synctex] forward', { tex: loadedPath, line, pdf, res });
@@ -1066,7 +1577,8 @@
 		setPdfPaneOpen(true);
 		// highlight the enclosing box: origin (h, v) = line-start + baseline, size (W, H). NOT (x, y),
 		// the matched node's point: pairing that with W/H drew the box shifted and ~a line too low.
-		jumpPdf(res.page, res.h, res.v, res.width, res.height);
+		if (live) draftRef?.syncTo(res.page, res.h, res.v, res.width, res.height);
+		else jumpPdf(res.page, res.h, res.v, res.width, res.height);
 	}
 	// forward from the current cursor (the header "Sync to PDF" button)
 	async function syncForward() {
@@ -1885,14 +2397,73 @@
 		// image / binary: nothing to save
 	}
 
+	// return keyboard focus to whichever editor is showing (Esc from panels)
+	function focusEditor() {
+		if (viewMode === 'source') {
+			const cm = get(sourceCmView);
+			if (cm && cm.dom.isConnected) cm.focus();
+		} else {
+			get(editorViewStore)?.focus();
+		}
+	}
+	// close Find in Files and hand focus back; tick first so the unmounting input
+	// can't re-steal focus to body
+	async function closeGlobalSearch() {
+		sidebarView = 'explorer';
+		await tick();
+		focusEditor();
+	}
+
+	let globalSearchRef = $state<GlobalSearch | null>(null);
+	// open Find in Files with the input focused; a single-line source selection seeds the query
+	async function openGlobalSearch() {
+		let seed: string | undefined;
+		const cm = get(sourceCmView);
+		if (cm && cm.dom.isConnected) {
+			const { from, to } = cm.state.selection.main;
+			if (to > from && to - from < 200) {
+				const sel = cm.state.sliceDoc(from, to);
+				if (!sel.includes('\n')) seed = sel;
+			}
+		}
+		sidebarView = 'search';
+		sidebarOpen = true;
+		await tick(); // let the panel mount before focusing
+		globalSearchRef?.focusInput(seed);
+	}
+
+	// Whole-window UI zoom (webContents.setZoomFactor scales the entire renderer: editor,
+	// sidebar, toolbars, panels). Persisted in settings and adjusted from the View menu and
+	// Ctrl/Cmd +/-/0. Distinct from the PDF / Live preview zoom, which only scales the preview.
+	const UI_ZOOM_MIN = 0.5;
+	const UI_ZOOM_MAX = 2.5;
+	const UI_ZOOM_STEP = 0.1;
+	const uiZoomPercent = $derived(Math.round(($settings.uiZoom ?? 1) * 100));
+	function setUiZoom(factor: number) {
+		const f = Math.min(UI_ZOOM_MAX, Math.max(UI_ZOOM_MIN, Math.round(factor * 100) / 100));
+		native()?.setZoomFactor?.(f);
+		updateSettings({ uiZoom: f });
+	}
+	const uiZoomIn = () => setUiZoom(($settings.uiZoom ?? 1) + UI_ZOOM_STEP);
+	const uiZoomOut = () => setUiZoom(($settings.uiZoom ?? 1) - UI_ZOOM_STEP);
+	const uiZoomReset = () => setUiZoom(1);
+
 	function onKeydown(e: KeyboardEvent) {
 		if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 's') {
 			e.preventDefault();
 			save();
 		} else if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.key.toLowerCase() === 'f') {
 			e.preventDefault();
-			sidebarView = 'search';
-			sidebarOpen = true;
+			void openGlobalSearch();
+		} else if ((e.metaKey || e.ctrlKey) && (e.key === '=' || e.key === '+')) {
+			e.preventDefault(); // '=' is the unshifted '+' key, so this is Ctrl/Cmd+Plus
+			uiZoomIn();
+		} else if ((e.metaKey || e.ctrlKey) && e.key === '-') {
+			e.preventDefault();
+			uiZoomOut();
+		} else if ((e.metaKey || e.ctrlKey) && e.key === '0') {
+			e.preventDefault();
+			uiZoomReset();
 		} else if ((e.metaKey || e.ctrlKey) && e.altKey && e.key === 'Enter' && terminalAvailable) {
 			// was ctrl/cmd+alt+b (LaTeX Workshop's default build chord), but macOS treats
 			// option+b as a dead key for a special character, so e.key never reliably comes
@@ -1907,7 +2478,7 @@
 </script>
 
 <svelte:window onkeydown={onKeydown} />
-<svelte:head><title>{loadedPath ? basename(loadedPath) : 'Texpile'}</title></svelte:head>
+<svelte:head><title>{loadedPath ? `Texpile: ${basename(loadedPath)}` : 'Texpile'}</title></svelte:head>
 
 <div class="flex h-screen flex-col overflow-hidden">
 	<WorkspaceMenuBar
@@ -1925,6 +2496,10 @@
 		onToggleTerminal={toggleTerminal}
 		onFormatDocument={openFormatModal}
 		onOpenTutorial={() => (tutorialModalOpen = true)}
+		{uiZoomPercent}
+		onZoomIn={uiZoomIn}
+		onZoomOut={uiZoomOut}
+		onZoomReset={uiZoomReset}
 	/>
 	<div class="flex min-h-0 flex-1 overflow-hidden">
 		{#if sidebarOpen}
@@ -1955,14 +2530,19 @@
 							class="btn-icon btn-icon-sm {sidebarView === 'search' ? 'text-primary-500' : 'hover:preset-tonal'}"
 							title={`Find in files (${modLabel}+Shift+F)`}
 							aria-label="Find in files"
-							onclick={() => (sidebarView = sidebarView === 'search' ? 'explorer' : 'search')}
+							onclick={() => (sidebarView === 'search' ? (sidebarView = 'explorer') : void openGlobalSearch())}
 						>
 							<Search class="size-4" />
 						</button>
 					</div>
 				</div>
 				{#if sidebarView === 'search'}
-					<GlobalSearch root={$workspaceRoot ?? ''} onOpen={openFileAtLine} onClose={() => (sidebarView = 'explorer')} />
+					<GlobalSearch
+						bind:this={globalSearchRef}
+						root={$workspaceRoot ?? ''}
+						onOpen={openFileAtLine}
+						onClose={() => void closeGlobalSearch()}
+					/>
 				{:else if sidebarView === 'scm'}
 					<div class="min-h-0 flex-1 overflow-y-auto">
 						<SourceControlPanel
@@ -2046,7 +2626,7 @@
 					<FileText class="text-surface-400 size-4 shrink-0" />
 					<span class="truncate text-sm font-medium">{loadedPath ? basename(loadedPath) : 'No file'}</span>
 					{#if $isDirty}<span class="bg-warning-500 size-2 shrink-0 rounded-full" title="Unsaved changes"></span>{/if}
-					{#if loadedPath && kind === 'tex' && viewMode === 'visual'}
+					{#if loadedPath && kind === 'tex' && (viewMode === 'visual' || viewMode === 'source')}
 						<span class="border-surface-300-700 ml-2 shrink-0 border-l pl-3"><WordCount /></span>
 					{/if}
 				</div>
@@ -2081,23 +2661,79 @@
 								<LocateFixed class="size-4" />
 							</button>
 						{/if}
-						{#if compiling}
+						<!-- Compile / Stop with an attached options caret (Overleaf-style) -->
+						<div class="relative flex items-center">
+							{#if compiling}
+								<button
+									class="btn btn-sm preset-tonal-error w-20 justify-center gap-1.5 rounded-r-none"
+									onclick={stopCompile}
+									title={`Stop the running compile (${modLabel}+Alt+Enter)`}
+								>
+									<Square class="size-4" /> Stop
+								</button>
+							{:else if $settings.draftMode && pdfPaneOpen && !draftPaused}
+								<button
+									class="btn btn-sm preset-tonal-success min-w-24 justify-center gap-1.5 rounded-r-none whitespace-nowrap"
+									onclick={pauseDraft}
+									title="Live preview is running. Click to stop the engine"
+								>
+									<span class="bg-success-500 size-2 animate-pulse rounded-full"></span> Live
+								</button>
+							{:else if $settings.draftMode && pdfPaneOpen && draftPaused}
+								<button
+									class="btn btn-sm preset-tonal-warning min-w-24 justify-center gap-1.5 rounded-r-none whitespace-nowrap"
+									onclick={resumeDraft}
+									title="Engine stopped. Click to resume the live preview"
+								>
+									<Play class="size-4" /> Paused
+								</button>
+							{:else}
+								<button
+									class="btn btn-sm preset-tonal-primary w-24 justify-center gap-1.5 rounded-r-none"
+									onclick={runCompile}
+									title={$settings.draftMode ? 'Open the live preview' : `Compile (${modLabel}+Alt+Enter)`}
+								>
+									<Play class="size-4" />
+									{$settings.draftMode ? 'Preview' : 'Compile'}
+								</button>
+							{/if}
 							<button
-								class="btn btn-sm preset-tonal-error w-24 justify-center gap-1.5"
-								onclick={stopCompile}
-								title={`Stop the running compile (${modLabel}+Alt+Enter)`}
+								class="btn btn-sm {compiling
+									? 'preset-tonal-error'
+									: $settings.draftMode && pdfPaneOpen
+										? draftPaused
+											? 'preset-tonal-warning'
+											: 'preset-tonal-success'
+										: 'preset-tonal-primary'} rounded-l-none border-l border-black/10 px-1"
+								onclick={() => (compileMenuOpen = !compileMenuOpen)}
+								title="Compile options"
+								aria-label="Compile options"
+								aria-haspopup="menu"
+								aria-expanded={compileMenuOpen}
 							>
-								<Square class="size-4" /> Stop
+								<ChevronDown class="size-3.5 transition-transform {compileMenuOpen ? 'rotate-180' : ''}" />
 							</button>
-						{:else}
-							<button
-								class="btn btn-sm preset-tonal-primary w-24 justify-center gap-1.5"
-								onclick={runCompile}
-								title={`Compile (${modLabel}+Alt+Enter)`}
-							>
-								<Play class="size-4" /> Compile
-							</button>
-						{/if}
+							{#if compileMenuOpen}
+								<!-- click-away layer -->
+								<button
+									class="fixed inset-0 z-1200 cursor-default"
+									onclick={() => (compileMenuOpen = false)}
+									tabindex="-1"
+									aria-hidden="true"
+								></button>
+								<div class="card bg-surface-50-950 border-surface-300-700 absolute top-full right-0 z-1300 mt-1 w-max border p-1 shadow-xl">
+									<button
+										class="hover:preset-tonal flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-sm whitespace-nowrap"
+										onclick={() => {
+											compileMenuOpen = false;
+											openCompileModal();
+										}}
+									>
+										<Settings2 class="size-4 shrink-0" /> Configure compile command…
+									</button>
+								</div>
+							{/if}
+						</div>
 						{#if $compileLog && ($compileLog.errors.length > 0 || $compileLog.warnings.length > 0)}
 							<button
 								class="btn btn-sm gap-1 {$compileLog.errors.length > 0 ? 'preset-tonal-error' : 'preset-tonal-warning'}"
@@ -2286,12 +2922,24 @@
 					></div>
 					<aside class="border-surface-200-800 flex shrink-0 flex-col border-l" style="width: {pdfPaneWidth}px">
 						<div class="bg-surface-100-900 text-surface-600-300 flex h-8 shrink-0 items-center justify-between border-b px-3 text-xs">
-							<span class="font-medium">PDF preview</span>
+							<span class="font-medium">{$settings.draftMode ? 'Live preview' : 'PDF preview'}</span>
 							<button class="hover:preset-tonal rounded p-0.5" onclick={togglePdfPane} title="Close preview" aria-label="Close preview">
 								<X class="size-3.5" />
 							</button>
 						</div>
-						<div class="min-h-0 flex-1"><PDFViewer bind:this={pdfPaneRef} filename={pdfFilename} onPageClick={onPdfDoubleClick} /></div>
+						<div class="min-h-0 flex-1">
+							{#if $settings.draftMode}
+								<DraftView
+									bind:this={draftRef}
+									root={draftRoot}
+									mainFile={draftMainRel}
+									trigger={draftTrigger}
+									onInverseSync={(file, line, selectText) => openFileAtLine(normPath(file), line, selectText)}
+								/>
+							{:else}
+								<PDFViewer bind:this={pdfPaneRef} filename={pdfFilename} onPageClick={onPdfDoubleClick} />
+							{/if}
+						</div>
 					</aside>
 				{/if}
 			</div>
@@ -2415,6 +3063,55 @@
 		</main>
 	</div>
 
+	{#if mainConfirmOpen}
+		<div
+			class="fixed inset-0 z-1300 flex items-center justify-center bg-black/40 p-4"
+			role="presentation"
+			onmousedown={(e) => e.target === e.currentTarget && dismissMainConfirm()}
+		>
+			<div class="card bg-surface-50-950 border-surface-300-700 w-full max-w-lg border p-5 shadow-2xl">
+				<div class="mb-3 flex items-center justify-between">
+					<h2 class="text-base font-semibold">Choose the main file</h2>
+					<button class="btn-icon btn-icon-sm hover:preset-tonal" onclick={dismissMainConfirm} aria-label="Close">
+						<X class="size-4" />
+					</button>
+				</div>
+				<p class="text-surface-600-300 mb-3 text-sm">
+					A project compiles from one main .tex file; the other files are pulled in from it. Texpile picked the most likely one below. You
+					can change it later by right-clicking a file in the explorer and choosing "Set as main file".
+				</p>
+				<div class="border-surface-300-700 mb-4 max-h-64 overflow-y-auto rounded border">
+					{#each mainCandidates as f (f.path)}
+						<label
+							class="hover:preset-tonal-surface flex cursor-pointer items-center gap-2 px-3 py-1.5 text-sm {mainChoice &&
+							samePath(mainChoice, f.path)
+								? 'preset-tonal-primary'
+								: ''}"
+						>
+							<input
+								type="radio"
+								class="radio"
+								name="main-file-choice"
+								value={f.path}
+								checked={!!mainChoice && samePath(mainChoice, f.path)}
+								onchange={() => (mainChoice = f.path)}
+							/>
+							<span class="truncate">{f.relPath}</span>
+							{#if mainDetected && samePath(f.path, mainDetected)}
+								<span class="badge preset-tonal-primary ml-auto shrink-0 text-[10px]">detected</span>
+							{:else if mainDocRoots.has(f.path)}
+								<span class="badge preset-tonal-surface ml-auto shrink-0 text-[10px]">document</span>
+							{/if}
+						</label>
+					{/each}
+				</div>
+				<div class="flex justify-end">
+					<button class="btn btn-sm preset-filled-primary-500" onclick={confirmMainFile} disabled={!mainChoice}>Use this file</button>
+				</div>
+			</div>
+		</div>
+	{/if}
+
 	{#if compileModalOpen}
 		<div
 			class="fixed inset-0 z-1300 flex items-center justify-center bg-black/40 p-4"
@@ -2428,127 +3125,181 @@
 						<X class="size-4" />
 					</button>
 				</div>
-				<p class="text-surface-600-300 mb-3 text-sm">
-					Runs in a shell at the folder root. <code class="bg-surface-200-800 rounded px-1">{'{main}'}</code> expands to your main file. Saved
-					for this folder.
-				</p>
-				{#if !$mainFile}
-					<!-- no main file picked yet: choose one so {main} resolves -->
-					<label class="mb-3 block">
-						<span class="text-surface-600-300 mb-1 block text-xs font-medium">Main file</span>
-						<select class="select w-full text-sm" onchange={(e) => e.currentTarget.value && applyMainFile(e.currentTarget.value)}>
-							<option value="" selected disabled>Pick your main .tex file</option>
-							{#each $texFiles.filter((f) => f.path.toLowerCase().endsWith('.tex')) as f (f.path)}
-								<option value={f.path}>{f.relPath}</option>
-							{/each}
-						</select>
-					</label>
-				{/if}
+				<!-- (main-file selection lives in the first-compile confirm modal and the file
+				     tree's "Set as main file" - not here; this modal is only about the command) -->
 
-				<!-- quick setup: chips reflect the command when recognizable, and regenerate it on click -->
-				<div class="mb-2 flex flex-wrap items-center gap-2 text-sm">
-					<span class="text-surface-500 text-xs">Engine</span>
-					{#each ['pdflatex', 'lualatex', 'xelatex'] as const as eng (eng)}
-						<button
-							type="button"
-							class="rounded-base border px-2 py-0.5 text-xs {draftEngine === eng
-								? 'border-primary-500 bg-primary-500/10 text-primary-600-400 font-medium'
-								: 'border-surface-300-700 text-surface-600-300 hover:preset-tonal'}"
-							onclick={() => applyEngine(eng)}
-						>
-							{eng}
-						</button>
-					{/each}
-					{#if draftEngine === null && compileDraft.trim()}
-						<span class="text-surface-400 text-xs italic">custom</span>
-					{/if}
-					<label class="text-surface-600-300 ml-auto inline-flex items-center gap-1.5 text-xs">
-						<input type="checkbox" class="checkbox" checked={draftLatexmk} onchange={(e) => applyLatexmk(e.currentTarget.checked)} />
-						use latexmk
-					</label>
-				</div>
-
-				<!-- svelte-ignore a11y_autofocus -->
-				<input
-					class="input w-full font-mono text-sm"
-					bind:value={compileDraft}
-					placeholder={DEFAULT_COMPILE_COMMAND}
-					spellcheck="false"
-					autofocus
-					onkeydown={(e) => {
-						if (e.key === 'Enter' && !(compileDraft.includes('{main}') && !$mainFile)) saveCompileCommand(true);
-						else if (e.key === 'Escape') compileModalOpen = false;
-					}}
-				/>
-				<div class="mt-4 flex items-center justify-between gap-4">
-					<span class="text-sm">Compile completion marker</span>
-					<Switch checked={$settings.compileSentinel} onCheckedChange={(d) => updateSettings({ compileSentinel: d.checked })}>
+				<!-- Live mode has its own lualatex pipeline; when on, the shell command is inert -->
+				<div class="mb-1 flex items-center justify-between gap-4">
+					<span class="text-sm">Live mode <span class="text-surface-500">(experimental)</span></span>
+					<Switch checked={$settings.draftMode} onCheckedChange={(d) => updateSettings({ draftMode: d.checked })}>
 						<Switch.Control><Switch.Thumb /></Switch.Control>
 						<Switch.HiddenInput />
 					</Switch>
 				</div>
-				<p class="text-surface-500 mt-1 text-xs">
-					Appends a marker echo after the compile command so the editor knows when it finishes. Turn off if it interferes with your shell or
-					compile command.
-				</p>
 
-				<button
-					type="button"
-					class="text-surface-500 hover:text-surface-950-50 mt-4 inline-flex items-center gap-1 text-xs"
-					onclick={() => (advancedOpen = !advancedOpen)}
-				>
-					<ChevronDown class="size-3.5 transition-transform {advancedOpen ? '' : '-rotate-90'}" /> Advanced: output paths
-				</button>
-				{#if advancedOpen}
-					<div class="mt-2 space-y-3">
-						<p class="text-surface-500 text-xs">
-							Texpile reads these from your command to find the PDF, log, and SyncTeX data. Override them if it guesses wrong (a custom
-							<code class="bg-surface-200-800 rounded px-1">-jobname</code>, an unusual output layout). SyncTeX follows the PDF. Leave blank
-							to auto-detect; paths are relative to the folder root.
-						</p>
-						<label class="block">
-							<span class="text-surface-600-300 mb-1 block text-xs font-medium">Compiled PDF</span>
-							<input
-								class="input w-full font-mono text-sm"
-								bind:value={compileOutputsDraft.pdf}
-								placeholder={detectedPdfRel}
-								spellcheck="false"
-							/>
-						</label>
-						<label class="block">
-							<span class="text-surface-600-300 mb-1 block text-xs font-medium">Log file</span>
-							<input
-								class="input w-full font-mono text-sm"
-								bind:value={compileOutputsDraft.log}
-								placeholder={detectedLogRel}
-								spellcheck="false"
-							/>
+				{#if $settings.draftMode}
+					<p class="text-surface-500 mt-1 mb-1 text-xs">
+						Live per-page preview: compiles the whole project with the real engine and re-typesets only what you change. Live mode runs its
+						own <strong>lualatex</strong> pipeline, so the compile command and engine below cannot be customized. Only lualatex is supported.
+					</p>
+					<div class="border-surface-300-700 text-surface-500 mt-3 rounded border border-dashed px-3 py-2 text-xs">
+						Compile command &middot; disabled in live mode
+						<code class="bg-surface-200-800 ml-1 rounded px-1 opacity-70">lualatex (built-in)</code>
+					</div>
+				{:else}
+					<p class="text-surface-600-300 mt-2 mb-3 text-sm">
+						Runs in a shell at the folder root. <code class="bg-surface-200-800 rounded px-1">{'{main}'}</code> expands to your main file. Saved
+						for this folder.
+					</p>
+
+					<!-- quick setup: chips reflect the command when recognizable, and regenerate it on click -->
+					<div class="mb-2 flex flex-wrap items-center gap-2 text-sm">
+						<span class="text-surface-500 text-xs">Engine</span>
+						{#each ['pdflatex', 'lualatex', 'xelatex'] as const as eng (eng)}
+							<button
+								type="button"
+								class="rounded-base border px-2 py-0.5 text-xs {draftEngine === eng
+									? 'border-primary-500 bg-primary-500/10 text-primary-600-400 font-medium'
+									: 'border-surface-300-700 text-surface-600-300 hover:preset-tonal'}"
+								onclick={() => applyEngine(eng)}
+							>
+								{eng}
+							</button>
+						{/each}
+						{#if draftEngine === null && compileDraft.trim()}
+							<span class="text-surface-400 text-xs italic">custom</span>
+						{/if}
+						<label class="text-surface-600-300 ml-auto inline-flex items-center gap-1.5 text-xs">
+							<input type="checkbox" class="checkbox" checked={draftLatexmk} onchange={(e) => applyLatexmk(e.currentTarget.checked)} />
+							use latexmk
 						</label>
 					</div>
+
+					<!-- svelte-ignore a11y_autofocus -->
+					<input
+						class="input w-full font-mono text-sm"
+						bind:value={compileDraft}
+						placeholder={DEFAULT_COMPILE_COMMAND}
+						spellcheck="false"
+						autofocus
+						onkeydown={(e) => {
+							if (e.key === 'Enter' && !(compileDraft.includes('{main}') && !$mainFile)) saveCompileCommand(true);
+							else if (e.key === 'Escape') compileModalOpen = false;
+						}}
+					/>
+					<div class="mt-4 flex items-center justify-between gap-4">
+						<span class="text-sm">Compile completion marker</span>
+						<Switch checked={$settings.compileSentinel} onCheckedChange={(d) => updateSettings({ compileSentinel: d.checked })}>
+							<Switch.Control><Switch.Thumb /></Switch.Control>
+							<Switch.HiddenInput />
+						</Switch>
+					</div>
+					<p class="text-surface-500 mt-1 text-xs">
+						Appends a marker echo after the compile command so the editor knows when it finishes. Turn off if it interferes with your shell
+						or compile command.
+					</p>
+				{/if}
+
+				{#if !$settings.draftMode}
+					<button
+						type="button"
+						class="text-surface-500 hover:text-surface-950-50 mt-4 inline-flex items-center gap-1 text-xs"
+						onclick={() => (advancedOpen = !advancedOpen)}
+					>
+						<ChevronDown class="size-3.5 transition-transform {advancedOpen ? '' : '-rotate-90'}" /> Advanced: output paths
+					</button>
+					{#if advancedOpen}
+						<div class="mt-2 space-y-3">
+							<p class="text-surface-500 text-xs">
+								The exact file your command produces, one each. Override only if auto-detection guesses wrong (a custom
+								<code class="bg-surface-200-800 rounded px-1">-jobname</code> or unusual output layout). SyncTeX follows the PDF. Paths are relative
+								to the folder root.
+							</p>
+							<div>
+								<div class="mb-1 flex items-center justify-between gap-2">
+									<span class="text-surface-600-300 text-xs font-medium">Compiled PDF file</span>
+									{#if pdfPathWarning}<span class="text-warning-600-400 text-xs">{pdfPathWarning}</span>{/if}
+								</div>
+								<div class="flex gap-2">
+									<input
+										class="input flex-1 font-mono text-sm"
+										bind:value={compileOutputsDraft.pdf}
+										placeholder="Auto detected from command"
+										spellcheck="false"
+									/>
+									<button
+										type="button"
+										class="btn btn-sm hover:preset-tonal shrink-0"
+										onclick={() => (compileOutputsDraft.pdf = '')}
+										disabled={!compileOutputsDraft.pdf}
+										title="Clear and auto-detect from the command"
+									>
+										Auto
+									</button>
+								</div>
+							</div>
+							<div>
+								<div class="mb-1 flex items-center justify-between gap-2">
+									<span class="text-surface-600-300 text-xs font-medium">Log file</span>
+									{#if logPathWarning}<span class="text-warning-600-400 text-xs">{logPathWarning}</span>{/if}
+								</div>
+								<div class="flex gap-2">
+									<input
+										class="input flex-1 font-mono text-sm"
+										bind:value={compileOutputsDraft.log}
+										placeholder="Auto detected from command"
+										spellcheck="false"
+									/>
+									<button
+										type="button"
+										class="btn btn-sm hover:preset-tonal shrink-0"
+										onclick={() => (compileOutputsDraft.log = '')}
+										disabled={!compileOutputsDraft.log}
+										title="Clear and auto-detect from the command"
+									>
+										Auto
+									</button>
+								</div>
+							</div>
+						</div>
+					{/if}
 				{/if}
 
 				<div class="mt-4 flex items-center justify-between gap-3">
 					<span class="text-surface-500 text-xs">
-						{#if compileDraft.includes('{main}') && !$mainFile}Pick a main file to run.{/if}
+						{#if !$mainFile}Pick a main file to run.{/if}
 					</span>
 					<div class="flex gap-2">
 						<button class="btn btn-sm hover:preset-tonal" onclick={() => (compileModalOpen = false)}>Cancel</button>
-						<button class="btn btn-sm hover:preset-tonal" onclick={() => saveCompileCommand(false)}>Save</button>
-						<button
-							class="btn btn-sm preset-tonal-primary gap-1.5"
-							onclick={useDefaultCommand}
-							disabled={DEFAULT_COMPILE_COMMAND.includes('{main}') && !$mainFile}
-							title="Use the default command and run"
-						>
-							<Play class="size-4" /> Use default
-						</button>
-						<button
-							class="btn btn-sm preset-filled-primary-500 gap-1.5"
-							onclick={() => saveCompileCommand(true)}
-							disabled={compileDraft.includes('{main}') && !$mainFile}
-						>
-							<Play class="size-4" /> Save &amp; run
-						</button>
+						{#if $settings.draftMode}
+							<button
+								class="btn btn-sm preset-filled-primary-500 gap-1.5"
+								onclick={() => {
+									compileModalOpen = false;
+									runCompile();
+								}}
+								disabled={!$mainFile}
+							>
+								<Play class="size-4" /> Run preview
+							</button>
+						{:else}
+							<button class="btn btn-sm hover:preset-tonal" onclick={() => saveCompileCommand(false)}>Save</button>
+							<button
+								class="btn btn-sm preset-tonal-primary gap-1.5"
+								onclick={useDefaultCommand}
+								disabled={DEFAULT_COMPILE_COMMAND.includes('{main}') && !$mainFile}
+								title="Use the default command and run"
+							>
+								<Play class="size-4" /> Use default
+							</button>
+							<button
+								class="btn btn-sm preset-filled-primary-500 gap-1.5"
+								onclick={() => saveCompileCommand(true)}
+								disabled={compileDraft.includes('{main}') && !$mainFile}
+							>
+								<Play class="size-4" /> Save &amp; run
+							</button>
+						{/if}
 					</div>
 				</div>
 			</div>

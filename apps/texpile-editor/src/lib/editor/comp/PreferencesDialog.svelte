@@ -23,10 +23,10 @@
 
 <svelte:window onkeydown={(e) => open && e.key === 'Escape' && (open = false)} />
 
-{#snippet toggle(label: string, checked: boolean, onChange: (v: boolean) => void)}
-	<div class="flex items-center justify-between gap-4">
-		<span class="text-sm">{label}</span>
-		<Switch {checked} onCheckedChange={(d) => onChange(d.checked)}>
+{#snippet toggle(label: string, checked: boolean, onChange: (v: boolean) => void, disabled = false, hint = '')}
+	<div class="flex items-center justify-between gap-4" title={hint}>
+		<span class="text-sm {disabled ? 'text-surface-400' : ''}">{label}</span>
+		<Switch {checked} {disabled} onCheckedChange={(d) => onChange(d.checked)}>
 			<Switch.Control><Switch.Thumb /></Switch.Control>
 			<Switch.HiddenInput />
 		</Switch>
@@ -66,9 +66,19 @@
 				</div>
 
 				<div>
-					{@render toggle('Autosave', $settings.autosave, (v) => updateSettings({ autosave: v }))}
+					{@render toggle(
+						'Autosave',
+						$settings.draftMode || $settings.autosave,
+						(v) => updateSettings({ autosave: v }),
+						$settings.draftMode,
+						$settings.draftMode ? 'Live mode requires autosave' : ''
+					)}
 					<p class="text-surface-500 mt-1 text-xs">
-						When off, changes save only when you press Save, and you're warned before switching files.
+						{#if $settings.draftMode}
+							Live mode keeps this on so the live preview always reflects your saved file.
+						{:else}
+							When off, changes save only when you press Save, and you're warned before switching files.
+						{/if}
 					</p>
 				</div>
 				{@render toggle('Reopen last folder on launch', $settings.reopenLastFolder, (v) => updateSettings({ reopenLastFolder: v }))}

@@ -23,7 +23,7 @@
 		const author = Array.isArray(ref.author) ? ref.author.join(', ') : ref.author;
 		let s = author || ref.key || '';
 		if (ref.year) s += ` (${ref.year})`;
-		if (ref.title) s += ` — ${ref.title}`;
+		if (ref.title) s += `: ${ref.title}`;
 		return s.length > 70 ? s.slice(0, 69).trimEnd() + '…' : s;
 	}
 
@@ -124,7 +124,7 @@
 					<select bind:value={variant} class="input mt-1.5 w-full text-sm">
 						{#each variantOptions as opt}
 							<option value={opt.value}>
-								{opt.label} — {opt.desc}
+								{opt.label}: {opt.desc}
 							</option>
 						{/each}
 					</select>

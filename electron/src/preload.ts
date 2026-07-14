@@ -13,6 +13,8 @@ contextBridge.exposeInMainWorld('texpileNative', {
 	getSettings: () => ipcRenderer.invoke('settings:get'),
 	/** merges a partial update into settings; resolves to the updated settings. */
 	setSettings: (partial: Record<string, unknown>) => ipcRenderer.invoke('settings:set', partial),
+	/** set the whole-window zoom factor (clamped 0.5..2.5); resolves to the applied factor. */
+	setZoomFactor: (factor: number) => ipcRenderer.invoke('window:setZoom', factor),
 	/** subscribe to "open this .tex" requests from the OS; returns an unsubscribe fn. */
 	onOpenPath: (cb: (filePath: string) => void) => {
 		const h = (_e: unknown, filePath: string) => cb(filePath);
@@ -38,6 +40,15 @@ contextBridge.exposeInMainWorld('texpileNative', {
 	/** reindent via latexindent -> { formatted }; throws if latexindent isn't on PATH. */
 	fsFormatLatex: (path: string, text: string) => invokeFs('fs:formatLatex', path, text),
 	synctex: (body: Record<string, unknown>) => invokeFs('synctex:call', body),
+	/** Draft-mode compile: runs lualatex with the per-page extractor hook -> the real
+	 * engine's exact per-page positioned records. -> { ok, pages, paperW, paperH, ... }. */
+	draftCompile: (body: { root: string; mainFile: string }) => invokeFs('draft:compile', body),
+	/** Draft-mode instant path: typeset ONE paragraph on the warm daemon (~1-2ms). */
+	draftTypeset: (body: { root: string; mainFile: string; text: string; hsize?: number }) => invokeFs('draft:typeset', body),
+	/** Stop the warm daemon (draft mode off / preview closed) so it stops holding memory. */
+	draftStop: () => invokeFs('draft:stop', {}),
+	/** Save the live preview's reconcile PDF via a save dialog -> { saved, path? }. */
+	draftSavePdf: (body: { root: string; defaultName: string; to?: string }) => invokeFs('draft:savePdf', body),
 
 	/** per-file git status + branch -> { ok, branch?, entries? }. */
 	gitStatus: (root: string) => invokeFs('git:status', root),

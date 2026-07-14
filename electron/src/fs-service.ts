@@ -4,9 +4,11 @@ import { join, dirname, basename, extname, relative, sep, isAbsolute, normalize,
 import { existsSync } from 'node:fs';
 import { execFile } from 'node:child_process';
 
-const SCAN_IGNORE_DIRS = new Set(['node_modules', '.git', '.svelte-kit', 'build', 'dist', 'out', '.cache']);
-const TREE_IGNORE_DIRS = new Set(['node_modules', '.git', '.svelte-kit', '.cache']);
-const SEARCH_IGNORE_DIRS = new Set(['node_modules', '.git', '.svelte-kit', '.cache', '.vscode']);
+// '_draft' holds Draft-mode's transient compile artifacts (page records, daemon wrapper,
+// draft.pdf) -- never surface them in the tree, scan, or search.
+const SCAN_IGNORE_DIRS = new Set(['node_modules', '.git', '.svelte-kit', 'build', 'dist', 'out', '.cache', '_draft']);
+const TREE_IGNORE_DIRS = new Set(['node_modules', '.git', '.svelte-kit', '.cache', '_draft']);
+const SEARCH_IGNORE_DIRS = new Set(['node_modules', '.git', '.svelte-kit', '.cache', '.vscode', '_draft']);
 
 export const MIME: Record<string, string> = {
 	'.png': 'image/png',
@@ -335,6 +337,26 @@ function firstFields(out: string): Record<string, string> {
 	return map;
 }
 
+// all result records ('Page:' starts a new one). Draft mode's instant patch needs every
+// line box of the paragraph, not just the best match. Lowercase h/v are the BOX's own
+// left/baseline (x/y are the sync point, which can sit mid-line); bl = box left, the
+// column-exact anchor for the instant patch.
+function allBoxes(out: string): { page: number; x: number; y: number; W: number; H: number; bl?: number }[] {
+	const boxes: { page: number; x: number; y: number; W: number; H: number; bl?: number }[] = [];
+	let cur: Record<string, number> | null = null;
+	for (const line of out.split(/\r?\n/)) {
+		const m = line.match(/^(Page|x|y|W|H|h):(.+)$/);
+		if (!m) continue;
+		if (m[1] === 'Page') {
+			if (cur) boxes.push({ page: cur.Page, x: cur.x, y: cur.y, W: cur.W, H: cur.H, bl: cur.bl });
+			cur = {};
+		}
+		if (cur) cur[m[1] === 'h' ? 'bl' : m[1]] = parseFloat(m[2]);
+	}
+	if (cur && cur.Page !== undefined) boxes.push({ page: cur.Page, x: cur.x, y: cur.y, W: cur.W, H: cur.H, bl: cur.bl });
+	return boxes.filter((b) => Number.isFinite(b.page) && Number.isFinite(b.y));
+}
+
 export interface SynctexBody {
 	action?: string;
 	pdf?: string;
@@ -354,7 +376,8 @@ export async function synctex(body: SynctexBody): Promise<Record<string, unknown
 			const tex = String(body.tex ?? '');
 			const line = Number(body.line ?? 0);
 			const col = Number(body.column ?? 0);
-			const f = firstFields(await runSynctex(['view', '-i', `${line}:${col}:${tex}`, '-o', pdf]));
+			const out = await runSynctex(['view', '-i', `${line}:${col}:${tex}`, '-o', pdf]);
+			const f = firstFields(out);
 			if (!f.Page) return { ok: false, error: 'No SyncTeX match. Compile with -synctex=1 first.' };
 			return {
 				ok: true,
@@ -364,7 +387,10 @@ export async function synctex(body: SynctexBody): Promise<Record<string, unknown
 				h: Number(f.h),
 				v: Number(f.v),
 				width: Number(f.W),
-				height: Number(f.H)
+				height: Number(f.H),
+				// every result record; Draft mode's instant patch needs the paragraph's full
+				// extent (line boxes), not just the best match
+				boxes: allBoxes(out)
 			};
 		}
 		if (body.action === 'edit') {

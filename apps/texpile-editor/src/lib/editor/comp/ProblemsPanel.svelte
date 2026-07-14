@@ -61,7 +61,9 @@
 				{#each rows as e, i (i)}
 					{@const t = target(e)}
 					<button
-						class="hover:preset-tonal-surface flex w-full items-start gap-2 px-2 py-1.5 text-left {t ? '' : 'cursor-default opacity-60'}"
+						class="flex w-full items-start gap-2 px-2 py-1.5 text-left {t
+							? 'hover:bg-surface-200-800 cursor-pointer'
+							: 'cursor-default opacity-60'}"
 						onclick={() => t && onJump(t.file, t.line)}
 					>
 						{#if e.level === 'error'}

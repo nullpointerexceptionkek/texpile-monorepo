@@ -38,6 +38,13 @@ extraResources:
     to: app-dist
     filter:
       - '**/*'
+  # Draft-mode engine (walker.lua / page-extract.lua). Ships OUTSIDE the asar so the
+  # user's spawned lualatex can read them by absolute path (reads aren't sandboxed;
+  # only writes are). Resolved at runtime via process.resourcesPath/lua.
+  - from: electron/lua
+    to: lua
+    filter:
+      - '**/*.lua'
 
 # node-pty is rebuilt for Electron's ABI in the `dist` script (pnpm electron:rebuild), so
 # electron-builder must not try (and overwrite) it here

@@ -47,6 +47,21 @@ export async function detectMainFile(files: TexFile[]): Promise<string | null> {
 	return roots[0].path;
 }
 
+/** the subset of files whose (decommented) text has a real \begin{document}. */
+export async function findDocRoots(files: TexFile[]): Promise<Set<string>> {
+	const out = new Set<string>();
+	await Promise.all(
+		files.map(async (f) => {
+			try {
+				if (BEGIN_DOC.test(decomment(await readTextFile(f.path)))) out.add(f.path);
+			} catch {
+				/* unreadable, not a root */
+			}
+		})
+	);
+	return out;
+}
+
 // macro-bearing refs followed out of a preamble; a standard package won't resolve
 // to a project-local file and is skipped
 const INCLUDE_RE = /\\(?:input|include|subfile|subfileinclude)\s*\{([^}]+)\}/g;

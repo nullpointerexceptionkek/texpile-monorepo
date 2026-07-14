@@ -3,14 +3,14 @@
 	import { Switch } from '@skeletonlabs/skeleton-svelte';
 	import { settings, updateSettings } from '$lib/settings';
 
-	let { open = $bindable(false), version }: { open: boolean; version: string } = $props();
+	let { open = $bindable(false), version, notes }: { open: boolean; version: string; notes?: string[] } = $props();
 
 	function close() {
 		open = false;
 	}
 	function viewDownloadPage() {
 		close();
-		window.open('https://desktop.texpile.com/download', '_blank', 'noopener,noreferrer');
+		window.open('https://texpile.com/download', '_blank', 'noopener,noreferrer');
 	}
 </script>
 
@@ -30,6 +30,13 @@
 				</button>
 			</div>
 			<p class="text-surface-600-300 mb-4 text-sm">Texpile v{version} is available.</p>
+			{#if notes?.length}
+				<ul class="text-surface-600-300 mb-4 list-disc space-y-1 pl-5 text-sm">
+					{#each notes as note (note)}
+						<li>{note}</li>
+					{/each}
+				</ul>
+			{/if}
 			<div class="mb-4 flex items-center justify-between gap-4">
 				<span class="text-sm">Check for updates on launch</span>
 				<Switch checked={$settings.checkForUpdates} onCheckedChange={(d) => updateSettings({ checkForUpdates: d.checked })}>

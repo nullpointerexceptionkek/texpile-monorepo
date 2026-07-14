@@ -11,4 +11,4 @@ export {
 	type PdfViewerContext
 } from './pdf-viewer/context.js';
 
-export { destroyPdfJs } from './pdf-viewer/pdfjs-singleton.js';
+export { getPdfJs, destroyPdfJs } from './pdf-viewer/pdfjs-singleton.js';

@@ -11,6 +11,8 @@ const gitignorePath = fileURLToPath(new URL('./.gitignore', import.meta.url));
 
 export default ts.config(
 	includeIgnoreFile(gitignorePath),
+	// vendored pdf.js modules keep upstream style (see src/lib/draft/type1/README.md)
+	{ ignores: ['src/lib/draft/type1/*.js'] },
 	js.configs.recommended,
 	...ts.configs.recommended,
 	// eslint-plugin-svelte 2.x: flat-config presets live under 'flat/*'; 'recommended' is the

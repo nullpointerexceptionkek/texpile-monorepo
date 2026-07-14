@@ -1,0 +1,2 @@
+# vendored pdf.js modules keep upstream style (see src/lib/draft/type1/README.md)
+src/lib/draft/type1/*.js

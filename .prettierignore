@@ -1,0 +1,2 @@
+# vendored pdf.js modules keep upstream style (see the dir's README.md)
+apps/texpile-editor/src/lib/draft/type1/*.js

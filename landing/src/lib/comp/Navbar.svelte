@@ -40,7 +40,7 @@
 
 			<div class="flex items-center">
 				<a
-					href="https://github.com/nullpointerexceptionkek/texpile-monorepo"
+					href="https://github.com/texpile/texpile"
 					target="_blank"
 					rel="noopener noreferrer"
 					class="text-surface-600 hover:text-surface-950 flex items-center transition-colors"

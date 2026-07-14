@@ -4,6 +4,8 @@ import * as fs from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import * as fsService from './fs-service';
 import * as gitService from './git-service';
+import * as draftService from './draft-service';
+import * as draftDaemon from './draft-daemon';
 
 const isDev = !app.isPackaged;
 
@@ -81,6 +83,13 @@ function bundleDir(): string {
 	return path.join(process.resourcesPath, 'app-dist');
 }
 
+// Draft-mode engine .lua files. Shipped outside the asar via extraResources (see
+// electron-builder.yml). In dev, __dirname is electron/dist, so the repo's electron/lua
+// is one level up.
+function luaDir(): string {
+	return isDev ? path.join(__dirname, '..', 'lua') : path.join(process.resourcesPath, 'lua');
+}
+
 function registerProtocolHandlers(): void {
 	protocol.handle('app', async (request) => {
 		const url = new URL(request.url);
@@ -140,6 +149,9 @@ function createWindow(url: string): void {
 	});
 	mainWindow.loadURL(url);
 	mainWindow.webContents.on('did-finish-load', () => {
+		// restore the saved whole-window zoom before the first paint the user sees
+		const z = Number(readSettings().uiZoom);
+		if (Number.isFinite(z) && z > 0) mainWindow?.webContents.setZoomFactor(z);
 		if (pendingOpenPath) {
 			mainWindow?.webContents.send('main:open-path', pendingOpenPath);
 			pendingOpenPath = null;
@@ -200,6 +212,34 @@ handleFs('fs:search', fsService.search);
 handleFs('fs:stat', fsService.statFile);
 handleFs('fs:formatLatex', fsService.formatLatex);
 handleFs('synctex:call', fsService.synctex);
+handleFs('draft:compile', (body: { root: string; mainFile: string }) => draftService.compileDraft({ ...body, engineDir: luaDir() }));
+handleFs('draft:typeset', (body: { root: string; mainFile: string; text: string; hsize?: number }) =>
+	draftDaemon.typesetParagraph({ ...body, engineDir: luaDir() })
+);
+// stop the warm engine when draft mode is switched off / the preview closes, so we don't
+// leave an idle lualatex process holding memory for the rest of the session
+handleFs('draft:stop', async () => {
+	draftDaemon.stopDaemon();
+	return { ok: true };
+});
+// save the reconcile PDF (the document the live preview mirrors) where the user picks;
+// `to` skips the dialog (tests)
+handleFs('draft:savePdf', async (body: { root: string; defaultName: string; to?: string }) => {
+	const src = path.join(body.root, '_draft', 'draft.pdf');
+	if (!fs.existsSync(src)) throw new Error('No compiled PDF yet.');
+	let dest = body.to;
+	if (!dest) {
+		const res = await dialog.showSaveDialog(mainWindow ?? undefined!, {
+			title: 'Save PDF',
+			defaultPath: path.join(body.root, body.defaultName),
+			filters: [{ name: 'PDF', extensions: ['pdf'] }]
+		});
+		if (res.canceled || !res.filePath) return { saved: false };
+		dest = res.filePath;
+	}
+	fs.copyFileSync(src, dest);
+	return { saved: true, path: dest };
+});
 handleFs('git:status', gitService.gitStatus);
 handleFs('git:show', gitService.gitShowHead);
 handleFs('git:init', gitService.gitInit);
@@ -224,7 +264,9 @@ const DEFAULT_SETTINGS = {
 	pdfPaneWidth: 480,
 	pdfPaneOpen: false,
 	pdfDarkPages: true, // in dark mode, render PDF pages inverted
-	checkForUpdates: true
+	draftMode: false, // preview via the incremental per-page engine instead of the terminal command
+	checkForUpdates: true,
+	uiZoom: 1 // whole-window zoom factor (webContents.setZoomFactor); the View menu adjusts it
 };
 const settingsFile = () => path.join(app.getPath('userData'), 'settings.json');
 function readSettings(): Record<string, unknown> {
@@ -245,6 +287,13 @@ function writeSettings(partial: Record<string, unknown> | undefined): Record<str
 }
 ipcMain.handle('settings:get', () => readSettings());
 ipcMain.handle('settings:set', (_e, partial: Record<string, unknown>) => writeSettings(partial));
+// whole-window zoom: setZoomFactor scales the entire renderer (editor, sidebar, toolbars,
+// panels) crisply, unlike a CSS transform. The renderer persists the value in settings.
+ipcMain.handle('window:setZoom', (_e, factor: number) => {
+	const f = Math.min(2.5, Math.max(0.5, Number(factor) || 1));
+	mainWindow?.webContents.setZoomFactor(f);
+	return f;
+});
 
 // node-pty is a native module: if it isn't built for this Electron ABI the require throws,
 // so guard it and let the renderer show the terminal as unavailable
@@ -255,7 +304,7 @@ try {
 	// eslint-disable-next-line @typescript-eslint/no-require-imports
 	pty = require('node-pty');
 } catch (e) {
-	console.error('node-pty unavailable — run `pnpm electron:rebuild`:', e instanceof Error ? e.message : e);
+	console.error('node-pty unavailable, run `pnpm electron:rebuild`:', e instanceof Error ? e.message : e);
 }
 const ptys = new Map<string, IPty>();
 
@@ -381,12 +430,13 @@ app.whenReady().then(() => {
 	registerProtocolHandlers();
 	if (!pendingOpenPath) pendingOpenPath = fileFromArgv(process.argv);
 
-	// the menu bar lives in the renderer; keep a minimal role-based one in the macOS system bar,
-	// drop the native menu everywhere else
+	// The real menu bar lives in the renderer (WorkspaceMenuBar). On macOS the system bar can't
+	// be removed entirely without breaking Cmd+Q and copy/paste in native inputs, so keep ONLY
+	// the app menu (Quit/Hide/About) and Edit (undo/cut/copy/paste/selectAll). The old template
+	// also carried View and Window, whose items duplicated and drifted out of sync with the
+	// in-app menus; those are dropped. Everywhere else the native menu is removed outright.
 	if (process.platform === 'darwin') {
-		Menu.setApplicationMenu(
-			Menu.buildFromTemplate([{ role: 'appMenu' }, { role: 'editMenu' }, { role: 'viewMenu' }, { role: 'windowMenu' }])
-		);
+		Menu.setApplicationMenu(Menu.buildFromTemplate([{ role: 'appMenu' }, { role: 'editMenu' }]));
 	} else {
 		Menu.setApplicationMenu(null);
 	}
@@ -411,4 +461,5 @@ app.on('before-quit', () => {
 		}
 	}
 	ptys.clear();
+	draftDaemon.stopDaemon();
 });

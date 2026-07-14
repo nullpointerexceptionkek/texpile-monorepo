@@ -2,6 +2,9 @@ declare global {
 	/** injected by Vite `define` from package.json. */
 	const __APP_VERSION__: string;
 
+	/** injected by Vite `define`: the latest CHANGELOG.md entry, or null before the first release. */
+	const __WHATS_NEW__: { version: string; date?: string; notes: string[] } | null;
+
 	namespace App {
 		interface DocMeta {
 			title: string;

@@ -5,6 +5,8 @@
   <img alt="Texpile" src="apps/texpile-editor/src/lib/assets/logo/Logo-dark.svg" width="320" />
 </picture>
 
+&nbsp;
+
 Texpile is a modern, local, offline LaTeX editor for Windows, macOS, and Linux. Its visual editor shows your document as formatted text, math, tables, and figures while you write, and a live preview compiled by your own TeX distribution updates as you type. Drop into source view whenever you want. No account, no cloud, nothing leaves your machine.
 
 </div>

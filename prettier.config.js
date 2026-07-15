@@ -15,5 +15,7 @@ export default {
 	printWidth: 140,
 	singleQuote: true,
 	useTabs: true,
-	trailingComma: 'none'
+	trailingComma: 'none',
+	// keep each file's existing line endings; autocrlf checkouts are CRLF on Windows
+	endOfLine: 'auto'
 };

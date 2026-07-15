@@ -21,8 +21,16 @@ describe('what’s new selection', () => {
 		expect(unseenEntries(ALL, '0.13.1')).toEqual([]);
 	});
 
-	it('shows only the newest on a fresh install, not the whole history', () => {
-		expect(unseenEntries(ALL, '').map((e) => e.version)).toEqual(['0.13.1']);
+	it('empty marker (fresh install or pre-marker upgrade) shows everything, oldest first', () => {
+		expect(unseenEntries(ALL, '').map((e) => e.version)).toEqual(['0.12.0', '0.13.0', '0.13.1']);
+	});
+
+	it('caps the empty-marker view at the newest entries', () => {
+		const many = Array.from({ length: 12 }, (_, i) => ({ version: `0.${20 - i}.0`, notes: ['x'] }));
+		const shown = unseenEntries(many, '').map((e) => e.version);
+		expect(shown).toHaveLength(8);
+		expect(shown[shown.length - 1]).toBe('0.20.0');
+		expect(shown[0]).toBe('0.13.0');
 	});
 
 	it('handles an empty changelog', () => {

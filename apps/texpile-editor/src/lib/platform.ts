@@ -15,9 +15,3 @@ export const modLabel = isMac ? '⌘' : 'Ctrl';
 export function modKey(...rest: string[]): string {
 	return [modLabel, ...rest].join('+');
 }
-
-export function downloadKey(): 'mac' | 'linux' | 'windows' {
-	if (isMac) return 'mac';
-	if (browser && /Linux/i.test(navigator.userAgent) && !/Android/i.test(navigator.userAgent)) return 'linux';
-	return 'windows';
-}

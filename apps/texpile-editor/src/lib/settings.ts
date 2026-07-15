@@ -31,7 +31,7 @@ export interface AppSettings {
 	/** Draft mode: preview via the incremental per-page engine extractor instead of the
 	 *  terminal compile command. Requires lualatex. */
 	draftMode: boolean;
-	/** check updates.texpile.com for a newer version (and its release notes) on launch. */
+	/** check the update feed (updates.texpile.com) for a newer version on launch; downloads stay click-only. */
 	checkForUpdates: boolean;
 	/** whole-window zoom factor (1 = 100%), applied via webContents.setZoomFactor. */
 	uiZoom: number;

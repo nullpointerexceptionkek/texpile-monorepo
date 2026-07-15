@@ -19,8 +19,8 @@
 		"electron:build": "tsc -p electron",
 		"electron:dev": "concurrently -k -n vite,electron \"pnpm --filter=texpile-editor dev\" \"pnpm electron:build && wait-on tcp:5173 && cross-env ELECTRON_START_URL=http://localhost:5173 electron .\"",
 		"electron:rebuild": "electron-rebuild -f -w node-pty",
-		"dist": "pnpm app:build && electron-builder",
-		"dist:linux": "pnpm app:build && electron-builder --linux",
+		"dist": "pnpm app:build && electron-builder --publish never",
+		"dist:linux": "pnpm app:build && electron-builder --linux --publish never",
 		"dist:dir": "pnpm app:build && electron-builder --dir",
 		"format": "prettier --write .",
 		"electron:build:prod": "tsc -p electron --noEmit && node scripts/build-electron.mjs"
@@ -32,6 +32,7 @@
 		"cross-env": "^7.0.3",
 		"electron": "^33.2.0",
 		"electron-builder": "^25.1.8",
+		"electron-updater": "^6.3.9",
 		"esbuild": "^0.28.1",
 		"prettier": "^3.6.2",
 		"prettier-plugin-svelte": "^4.0.0",

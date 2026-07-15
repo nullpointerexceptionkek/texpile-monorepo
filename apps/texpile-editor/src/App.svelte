@@ -4,42 +4,40 @@
 	import { native, scanTexFiles, dirname } from '$lib/workspace/fileSystem';
 	import { workspaceRoot, texFiles, activeFilePath, addRecentFolder } from '$lib/workspace/workspaceStore';
 	import { updateSettings, loadSettings } from '$lib/settings';
-	import { checkForUpdate } from '$lib/updateCheck';
+	import { checkForUpdate, updateModalOpen } from '$lib/updates';
 	import UpdateAvailableModal from '$lib/components/UpdateAvailableModal.svelte';
 	import WhatsNewModal from '$lib/components/WhatsNewModal.svelte';
+	import { unseenEntries, type ChangelogEntry } from '$lib/whatsNew';
 
-	// the latest CHANGELOG.md entry, injected at build (vite.config); null before the first release
+	// every released CHANGELOG.md entry, injected at build (vite.config)
 	const whatsNew = __WHATS_NEW__;
 
 	import StartView from './views/StartView.svelte';
 	import WorkspaceView from './views/WorkspaceView.svelte';
 	import ErrorView from './views/ErrorView.svelte';
 
-	let updateVersion = $state<string | null>(null);
-	let updateNotes = $state<string[] | undefined>(undefined);
-	let updateModalOpen = $state(false);
 	let whatsNewOpen = $state(false);
+	let whatsNewEntries = $state<ChangelogEntry[]>([]);
 	let updatePending = false;
 
 	onMount(async () => {
 		const s = await loadSettings();
-		// one-time What's New for this build's newest changelog entry
-		if (whatsNew && s.whatsNewSeen !== whatsNew.version) whatsNewOpen = true;
+		// every release the user skipped, so upgrading across versions doesn't swallow what's between
+		whatsNewEntries = unseenEntries(whatsNew, s.whatsNewSeen);
+		if (whatsNewEntries.length) whatsNewOpen = true;
 		if (!s.checkForUpdates) return;
-		const info = await checkForUpdate();
-		if (info) {
-			updateVersion = info.version;
-			updateNotes = info.notes;
+		// a failed silent check stays silent; the manual Help-menu check surfaces errors
+		if ((await checkForUpdate()) === 'update') {
 			// don't stack modals: hold the update notice until What's New is dismissed
 			if (whatsNewOpen) updatePending = true;
-			else updateModalOpen = true;
+			else updateModalOpen.set(true);
 		}
 	});
 
 	function onWhatsNewClose() {
 		if (updatePending) {
 			updatePending = false;
-			updateModalOpen = true;
+			updateModalOpen.set(true);
 		}
 	}
 
@@ -96,12 +94,10 @@
 	<ErrorView status={404} />
 {/if}
 
-{#if whatsNew}
-	<WhatsNewModal bind:open={whatsNewOpen} entry={whatsNew} onClose={onWhatsNewClose} />
+{#if whatsNewEntries.length}
+	<WhatsNewModal bind:open={whatsNewOpen} entries={whatsNewEntries} onClose={onWhatsNewClose} />
 {/if}
-{#if updateVersion}
-	<UpdateAvailableModal bind:open={updateModalOpen} version={updateVersion} notes={updateNotes} />
-{/if}
+<UpdateAvailableModal />
 
 <noscript>
 	<div class="fixed inset-x-0 bottom-0 border-t-4 border-red-500 bg-gray-100 p-4 text-red-700" role="alert">

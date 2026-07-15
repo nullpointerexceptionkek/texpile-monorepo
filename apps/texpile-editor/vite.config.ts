@@ -3,7 +3,7 @@ import { defineConfig } from 'vitest/config';
 import tailwindcss from '@tailwindcss/vite';
 import { createRequire } from 'node:module';
 import path from 'node:path';
-import { latestReleased } from './scripts/changelog.mjs';
+import { readChangelog } from './scripts/changelog.mjs';
 
 // pre-bundle every runtime dependency up front: lazy discovery re-optimizes mid-session and
 // forces a full page reload (mathlive and the CodeMirror language modes are the usual offenders)
@@ -29,12 +29,16 @@ export default defineConfig({
 	// so the bundle must not assume a server root
 	base: './',
 
-	// injected at build time (importing package.json fails Vite's dev fs-allow list). Only the
-	// latest changelog entry is bundled (the What's New modal); the full history stays in
-	// CHANGELOG.md, read by the release scripts, never shipped.
+	// injected at build time (importing package.json fails Vite's dev fs-allow list). Every released
+	// changelog entry is bundled: the What's New modal shows each release the user skipped, so an
+	// upgrade across several versions doesn't silently swallow the features in between.
 	define: {
 		__APP_VERSION__: JSON.stringify(rootPkg.version ?? '0.0.0'),
-		__WHATS_NEW__: JSON.stringify(latestReleased())
+		__WHATS_NEW__: JSON.stringify(
+			readChangelog()
+				.filter((e) => e.released)
+				.map(({ version, date, notes }) => ({ version, date, notes }))
+		)
 	},
 	test: {
 		// unit tests live under tests/unit/ (mirroring src/); playwright's tests/integration/

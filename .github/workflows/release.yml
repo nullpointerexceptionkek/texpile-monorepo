@@ -1,4 +1,6 @@
 # Build Texpile installers for all three OSes; a version tag (v*) also attaches them to a draft release.
+# publish-r2 also ships the electron-updater feed: latest*.yml at the bucket root (served by
+# updates.texpile.com) with file urls pointing at the immutable v<version>/ binaries + blockmaps.
 #
 # node-pty ships win/mac prebuilds but no linux ones, so Linux rebuilds it for Electron's ABI.
 # Windows always signs with Azure Trusted Signing (AZURE_* repo variables + secrets); macOS always
@@ -30,19 +32,25 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
+        # latest*.yml + the mac zip + the blockmaps feed electron-updater (see publish-r2);
+        # AppImage embeds its blockmap, so Linux ships no separate one
         include:
           - os: windows-latest
             artifacts: |
               release/*.exe
               release/*.blockmap
+              release/latest.yml
           - os: macos-latest
             artifacts: |
               release/*.dmg
+              release/*.zip
               release/*.blockmap
+              release/latest-mac.yml
           - os: ubuntu-latest
             artifacts: |
               release/*.AppImage
               release/*.deb
+              release/latest-linux.yml
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
@@ -65,6 +73,11 @@ jobs:
         run: echo "v=$(node -p "require('./package.json').version")" >> "$GITHUB_OUTPUT"
         shell: bash
 
+      # newest CHANGELOG entry -> latest*.yml releaseNotes (shown in the in-app update modal)
+      - name: Write release notes for the updater feed
+        run: node apps/texpile-editor/scripts/release-notes.mjs > release-notes.md
+        shell: bash
+
       # the PowerShell module electron-builder uses for Azure Trusted Signing; a named up-front step
       # turns a PSGallery hiccup into an obvious failure. RequiredVersion matches electron-builder@25.1.8.
       - name: Set up Azure Trusted Signing (Windows)
@@ -85,6 +98,7 @@ jobs:
         shell: pwsh
         run: >
           pnpm dist
+          --config.releaseInfo.releaseNotesFile=release-notes.md
           --config.win.azureSignOptions.endpoint=${{ vars.AZURE_ENDPOINT }}
           --config.win.azureSignOptions.codeSigningAccountName=${{ vars.AZURE_CODE_SIGNING_ACCOUNT }}
           --config.win.azureSignOptions.certificateProfileName=${{ vars.AZURE_CERT_PROFILE }}
@@ -103,7 +117,7 @@ jobs:
         run: |
           echo "$APPLE_API_KEY_BASE64" | base64 --decode > "$RUNNER_TEMP/apple_api_key.p8"
           export APPLE_API_KEY="$RUNNER_TEMP/apple_api_key.p8"
-          pnpm dist
+          pnpm dist --config.releaseInfo.releaseNotesFile=release-notes.md
         env:
           CSC_LINK: ${{ secrets.MACOS_CSC_LINK }}
           CSC_KEY_PASSWORD: ${{ secrets.MACOS_CSC_PASSWORD }}
@@ -114,7 +128,7 @@ jobs:
       # Linux always builds unsigned (no distribution-wide signing convention there)
       - name: Build installer (Linux, unsigned)
         if: runner.os == 'Linux'
-        run: pnpm dist
+        run: pnpm dist --config.releaseInfo.releaseNotesFile=release-notes.md
 
       - uses: actions/upload-artifact@v4
         with:
@@ -148,24 +162,24 @@ jobs:
           merge-multiple: true
           path: dist
 
-      - name: Rename to versioned download names
+      # artifact names are pinned in electron-builder.yml (they're recorded inside latest*.yml,
+      # so nothing may be renamed here); point the ymls' file urls at the immutable v<version>/ copies.
+      # The presence check runs BEFORE any R2 write: the uploads aren't atomic, so a missing
+      # artifact must fail the job here, not halfway through publishing
+      - name: Verify artifacts and rewrite updater feed urls
         run: |
           VERSION=$(node -p "require('./package.json').version")
           echo "VERSION=$VERSION" >> "$GITHUB_ENV"
-          cd dist
-          # electron-builder's artifact names vary by target; normalize to the canonical download
-          # name, skipping the move when it already matches (mv errors on same-file)
-          rename_one() {
-            local src
-            src=$(ls $1 2>/dev/null | head -1)
-            if [ -z "$src" ]; then echo "::error::no artifact matched $1"; exit 1; fi
-            if [ "$src" != "$2" ]; then mv -f -- "$src" "$2"; fi
-          }
-          rename_one '*.exe' "Texpile-Setup-$VERSION.exe"
-          rename_one '*.dmg' "Texpile-$VERSION.dmg"
-          rename_one '*.AppImage' "Texpile-$VERSION.AppImage"
-          rename_one '*.deb' "texpile-$VERSION.deb"
-          ls -la
+          missing=0
+          for f in "Texpile-Setup-$VERSION.exe" "Texpile-Setup-$VERSION.exe.blockmap" \
+                   "Texpile-$VERSION.dmg" "Texpile-$VERSION.zip" "Texpile-$VERSION.zip.blockmap" \
+                   "Texpile-$VERSION.AppImage" "texpile-$VERSION.deb" \
+                   latest.yml latest-mac.yml latest-linux.yml; do
+            [ -f "dist/$f" ] || { echo "::error::missing artifact dist/$f"; missing=1; }
+          done
+          [ "$missing" = 0 ]
+          node apps/texpile-editor/scripts/update-yml.mjs dist/latest.yml dist/latest-mac.yml dist/latest-linux.yml
+          ls -la dist
 
       # the landing fetches this to link the versioned files and show the version; the updates
       # worker serves its `version` + `notes` (from the newest CHANGELOG.md entry) to the app
@@ -175,7 +189,10 @@ jobs:
           cat dist/latest.json
 
       # each release lands twice: an immutable copy under v<version>/, plus the stable root names
-      # (overwritten every release, the landing's no-JS fallback links)
+      # (overwritten every release, the landing's no-JS fallback links). The updater files ship
+      # too: mac zip + blockmaps under v<version>/ (differential downloads fetch old-version
+      # blockmaps by path, so v-prefixed copies must stay forever), latest*.yml at the root
+      # (served to the app by updates.texpile.com from this same bucket).
       - name: Upload to R2
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
@@ -186,10 +203,16 @@ jobs:
           put "v$VERSION/Texpile-$VERSION.dmg" "dist/Texpile-$VERSION.dmg" application/octet-stream
           put "v$VERSION/Texpile-$VERSION.AppImage" "dist/Texpile-$VERSION.AppImage" application/octet-stream
           put "v$VERSION/texpile-$VERSION.deb" "dist/texpile-$VERSION.deb" application/octet-stream
+          put "v$VERSION/Texpile-$VERSION.zip" "dist/Texpile-$VERSION.zip" application/zip
+          put "v$VERSION/Texpile-Setup-$VERSION.exe.blockmap" "dist/Texpile-Setup-$VERSION.exe.blockmap" application/octet-stream
+          put "v$VERSION/Texpile-$VERSION.zip.blockmap" "dist/Texpile-$VERSION.zip.blockmap" application/octet-stream
           put "Texpile-Setup.exe" "dist/Texpile-Setup-$VERSION.exe" application/octet-stream
           put "Texpile.dmg" "dist/Texpile-$VERSION.dmg" application/octet-stream
           put "Texpile.AppImage" "dist/Texpile-$VERSION.AppImage" application/octet-stream
           put "texpile.deb" "dist/texpile-$VERSION.deb" application/octet-stream
+          put "latest.yml" "dist/latest.yml" "text/yaml; charset=utf-8"
+          put "latest-mac.yml" "dist/latest-mac.yml" "text/yaml; charset=utf-8"
+          put "latest-linux.yml" "dist/latest-linux.yml" "text/yaml; charset=utf-8"
           put "latest.json" "dist/latest.json" application/json
 
       # cumulative manifest for the landing's version history (latest.json only describes the

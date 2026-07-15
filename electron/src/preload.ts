@@ -64,6 +64,33 @@ contextBridge.exposeInMainWorld('texpileNative', {
 	gitCommit: (root: string, message: string) => invokeFs('git:commit', root, message)
 });
 
+// in-app updates: check/download are explicit renderer calls, events stream back per channel
+contextBridge.exposeInMainWorld('texpileUpdates', {
+	/** ask the feed for a newer version -> { status: 'update' | 'none' | 'error' | 'unsupported', ... }.
+	 *  `manual` skips the check counter. */
+	check: (manual = false) => ipcRenderer.invoke('update:check', manual),
+	/** start downloading the update found by check(); progress arrives via onProgress, and the
+	 *  downloaded update installs at next quit (or immediately via install()). */
+	download: () => invokeFs('update:download'),
+	/** quit and install the downloaded update (relaunches). */
+	install: () => ipcRenderer.invoke('update:install'),
+	onProgress: (cb: (p: { percent: number; transferred: number; total: number }) => void) => {
+		const h = (_e: unknown, p: { percent: number; transferred: number; total: number }) => cb(p);
+		ipcRenderer.on('update:progress', h);
+		return () => ipcRenderer.removeListener('update:progress', h);
+	},
+	onDownloaded: (cb: (info: { version: string }) => void) => {
+		const h = (_e: unknown, info: { version: string }) => cb(info);
+		ipcRenderer.on('update:downloaded', h);
+		return () => ipcRenderer.removeListener('update:downloaded', h);
+	},
+	onError: (cb: (err: { message: string }) => void) => {
+		const h = (_e: unknown, err: { message: string }) => cb(err);
+		ipcRenderer.on('update:error', h);
+		return () => ipcRenderer.removeListener('update:error', h);
+	}
+});
+
 // terminal bridge to the node-pty shells in the main process, keyed by a string `id`
 contextBridge.exposeInMainWorld('texpileTerminal', {
 	/** whether node-pty loaded (false if it needs `pnpm electron:rebuild`). */

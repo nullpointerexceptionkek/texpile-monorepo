@@ -9,9 +9,13 @@ fileAssociations:
     role: Editor
     mimeType: text/x-tex
 
-# never self-publish: electron-builder auto-detects CI and tries to push artifacts to a GitHub
-# release (failing without GH_TOKEN); the release workflow attaches artifacts itself
-publish: null
+# generic provider = electron-updater feed only: it makes electron-builder emit latest*.yml and
+# stamp resources/app-update.yml, and it cannot self-upload (release.yml pushes everything to R2).
+# The feed host serves the ymls from the releases bucket and counts checks; the ymls' file urls
+# are rewritten to dl.texpile.com by scripts/update-yml.mjs before upload.
+publish:
+  provider: generic
+  url: https://updates.texpile.com
 
 directories:
   output: release
@@ -59,12 +63,24 @@ linux:
   synopsis: A local, offline LaTeX editor
   icon: electron/icon.png
 
+# built names are the download names here too (latest-linux.yml records them, see mac note)
+appImage:
+  artifactName: ${productName}-${version}.${ext}
+deb:
+  artifactName: texpile-${version}.${ext}
+
 mac:
   # one universal (x64 + arm64) dmg so Intel Macs are covered; a host-arch build on the arm64
   # runner ships an arm64-only dmg. node-pty has both darwin prebuilds, so the merge succeeds.
+  # The zip exists only for the updater (Squirrel.Mac consumes it; latest-mac.yml needs it).
   target:
     - target: dmg
       arch: universal
+    - target: zip
+      arch: universal
+  # built names ARE the download names. latest-mac.yml records these exact filenames, so a
+  # CI-side rename would break the updater feed; keep them canonical at the source.
+  artifactName: ${productName}-${version}.${ext}
   category: public.app-category.productivity
   icon: electron/icon.png
 

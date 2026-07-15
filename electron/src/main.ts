@@ -6,6 +6,7 @@ import * as fsService from './fs-service';
 import * as gitService from './git-service';
 import * as draftService from './draft-service';
 import * as draftDaemon from './draft-daemon';
+import * as updates from './updates';
 
 const isDev = !app.isPackaged;
 
@@ -287,6 +288,11 @@ function writeSettings(partial: Record<string, unknown> | undefined): Record<str
 }
 ipcMain.handle('settings:get', () => readSettings());
 ipcMain.handle('settings:set', (_e, partial: Record<string, unknown>) => writeSettings(partial));
+
+// in-app updates; progress/downloaded/error stream back over update:* webContents events
+ipcMain.handle('update:check', (_e, manual: boolean) => updates.check(!!manual));
+handleFs('update:download', () => updates.download().then(() => ({ ok: true })));
+ipcMain.handle('update:install', () => updates.install());
 // whole-window zoom: setZoomFactor scales the entire renderer (editor, sidebar, toolbars,
 // panels) crisply, unlike a CSS transform. The renderer persists the value in settings.
 ipcMain.handle('window:setZoom', (_e, factor: number) => {

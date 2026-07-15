@@ -19,6 +19,8 @@
 	import { startImageUpload } from '$lib/editor/extensions/image';
 	import { createLocalImageSettings } from '$lib/editor/extensions/image/imageplugin.svelte';
 	import { run, insertNode, activeCm, cmReplace, editSelect, formatSelect } from './menuBarCommands';
+	import { checkForUpdate, updateModalOpen, updateState } from '$lib/updates';
+	import { toaster } from '$lib/modals/toaster-svelte';
 	import type { Node as PMNode } from 'prosemirror-model';
 
 	interface Props {
@@ -117,7 +119,22 @@
 		else if (value === 'support') {
 			copied = false;
 			supportOpen = true;
+		} else if (value === 'updates') void checkUpdates();
+	}
+
+	async function checkUpdates() {
+		// a check while a download is in flight would reset the state; just reopen the modal
+		const phase = get(updateState).phase;
+		if (phase === 'downloading' || phase === 'downloaded') {
+			updateModalOpen.set(true);
+			return;
 		}
+		const status = await checkForUpdate(true);
+		if (status === 'update') updateModalOpen.set(true);
+		else if (status === 'none') toaster.info({ title: 'No update available', description: `Texpile v${appVersion} is the latest version.` });
+		else if (status === 'error')
+			toaster.error({ title: 'Could not check for updates', description: 'Check your internet connection and try again.' });
+		else toaster.info({ title: 'Updates are not available in this build' });
 	}
 	async function copyEmail() {
 		try {
@@ -555,7 +572,13 @@
 	{/if}
 
 	<Menu onSelect={(d) => (d.value === 'tutorial' ? onOpenTutorial?.() : helpSelect(d.value))}>
-		<Menu.Trigger class={triggerClass}>Help</Menu.Trigger>
+		<Menu.Trigger class={triggerClass}>
+			Help
+			{#if $updateState.phase === 'downloaded'}
+				<!-- an update finished downloading in the background; the menu item installs it -->
+				<span class="bg-primary-500 mb-1.5 ml-0.5 inline-block size-1.5 rounded-full" title="Update ready"></span>
+			{/if}
+		</Menu.Trigger>
 		<Portal>
 			<Menu.Positioner>
 				<Menu.Content class={contentClass}>
@@ -567,6 +590,12 @@
 					<Menu.Item value="discord" class={itemClass}><Menu.ItemText>Join Discord</Menu.ItemText></Menu.Item>
 					<Menu.Item value="support" class={itemClass}><Menu.ItemText>Contact support</Menu.ItemText></Menu.Item>
 					<Menu.Separator class="border-surface-200-800 my-1 border-t" />
+					<Menu.Item value="updates" class={itemClass}>
+						<Menu.ItemText>Check for updates</Menu.ItemText>
+						{#if $updateState.phase === 'downloaded'}
+							<span class="bg-primary-500 inline-block size-1.5 rounded-full"></span>
+						{/if}
+					</Menu.Item>
 					<div class="text-surface-500 px-2.5 py-1 text-xs">Texpile v{appVersion}</div>
 				</Menu.Content>
 			</Menu.Positioner>

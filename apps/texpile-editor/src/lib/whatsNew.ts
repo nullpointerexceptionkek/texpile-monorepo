@@ -15,14 +15,23 @@ function isNewer(a: string, b: string): boolean {
 	return false;
 }
 
-// bounds the empty-marker view as releases accumulate; old sections age out newest-first
+// bounds an upgrade that skipped many releases; the newest sections win
 const MAX_SHOWN = 8;
+
+function sameMinor(a: string, b: string): boolean {
+	const x = a.split('.');
+	const y = b.split('.');
+	return x[0] === y[0] && x[1] === y[1];
+}
 
 /** releases the user hasn't seen, oldest first (the modal renders them in order). `all` arrives
  *  newest-first from the changelog. An empty `seen` means a fresh install or an upgrade from
- *  before the marker existed (pre-0.13.0): both get everything since the changelog epoch, so the
- *  0.13.0 live-mode showcase reaches everyone exactly once. */
+ *  before the marker existed (pre-0.13.0): both get the current minor series (0.13.x while 0.13
+ *  is current), so each minor's showcase reaches everyone once and retires at the next minor. */
 export function unseenEntries(all: ChangelogEntry[], seen: string): ChangelogEntry[] {
-	const picked = seen ? all.filter((e) => isNewer(e.version, seen)) : all;
-	return picked.slice(0, MAX_SHOWN).reverse();
+	if (!all.length) return [];
+	const picked = seen
+		? all.filter((e) => isNewer(e.version, seen)).slice(0, MAX_SHOWN)
+		: all.filter((e) => sameMinor(e.version, all[0].version));
+	return picked.reverse();
 }

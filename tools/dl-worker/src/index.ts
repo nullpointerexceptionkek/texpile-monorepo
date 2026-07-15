@@ -24,7 +24,8 @@ interface Env {
 	ANALYTICS_TOKEN?: string;
 }
 
-const INSTALLER = /\.(exe|dmg|appimage|deb)$/i;
+// zip is the mac auto-update artifact (Squirrel.Mac); the others serve both web and updater
+const INSTALLER = /\.(exe|dmg|appimage|deb|zip)$/i;
 
 const PLATFORM_ALIAS: Record<string, string> = {
 	windows: 'windows',
@@ -38,7 +39,7 @@ const PLATFORM_ALIAS: Record<string, string> = {
 
 function platformOf(key: string): string {
 	const ext = key.toLowerCase().split('.').pop();
-	return ext === 'exe' ? 'windows' : ext === 'dmg' ? 'mac' : ext === 'appimage' ? 'linux-appimage' : 'linux-deb';
+	return ext === 'exe' ? 'windows' : ext === 'dmg' || ext === 'zip' ? 'mac' : ext === 'appimage' ? 'linux-appimage' : 'linux-deb';
 }
 
 // Version from the immutable path (v0.10.0/...) or the filename; root aliases fall back to 'root'.
@@ -77,6 +78,9 @@ const STATS_QUERIES: Record<string, string> = {
 		'SELECT blob3 AS name, SUM(_sample_interval) AS downloads FROM texpile_downloads GROUP BY name ORDER BY downloads DESC LIMIT 12 FORMAT JSON',
 	agents:
 		'SELECT blob5 AS name, SUM(_sample_interval) AS downloads FROM texpile_downloads GROUP BY name ORDER BY downloads DESC FORMAT JSON',
+	// rows written before the channel blob existed have blob7 = '' and show up as 'web' here
+	channels:
+		"SELECT if(blob7 = '', 'web', blob7) AS name, SUM(_sample_interval) AS downloads FROM texpile_downloads GROUP BY name ORDER BY downloads DESC FORMAT JSON",
 	daily:
 		"SELECT toStartOfInterval(timestamp, INTERVAL '1' DAY) AS name, SUM(_sample_interval) AS downloads FROM texpile_downloads WHERE timestamp > NOW() - INTERVAL '30' DAY GROUP BY name ORDER BY name FORMAT JSON"
 };
@@ -121,10 +125,11 @@ async function statsPage(env: Env): Promise<Response> {
 		);
 	}
 	try {
-		const [platforms, versions, agents, daily] = await Promise.all([
+		const [platforms, versions, agents, channels, daily] = await Promise.all([
 			sqlQuery(env, STATS_QUERIES.platforms),
 			sqlQuery(env, STATS_QUERIES.versions),
 			sqlQuery(env, STATS_QUERIES.agents),
+			sqlQuery(env, STATS_QUERIES.channels),
 			sqlQuery(env, STATS_QUERIES.daily)
 		]);
 		return statsJson({
@@ -134,6 +139,8 @@ async function statsPage(env: Env): Promise<Response> {
 			platforms,
 			versions,
 			agents,
+			// web = site downloads, updater = in-app updates (full or differential first chunk)
+			channels,
 			daily: daily.map((r) => ({ ...r, name: r.name.slice(0, 10) }))
 		});
 	} catch (err) {
@@ -227,9 +234,12 @@ export default {
 		if (INSTALLER.test(key) && countable(request)) {
 			const ua = request.headers.get('user-agent') ?? '';
 			const country = ((request as unknown as { cf?: { country?: string } }).cf?.country ?? '').toString();
+			// the in-app updater stamps x-texpile-version on every request (electron/src/updates.ts),
+			// splitting update traffic from real acquisition downloads
+			const channel = request.headers.has('x-texpile-version') ? 'updater' : 'web';
 			// fire-and-forget; the runtime buffers and ships data points itself
 			env.DOWNLOADS?.writeDataPoint({
-				blobs: [key, platformOf(key), versionOf(key), country, agentFamily(ua), ua.slice(0, 96)],
+				blobs: [key, platformOf(key), versionOf(key), country, agentFamily(ua), ua.slice(0, 96), channel],
 				doubles: [1],
 				indexes: [platformOf(key)]
 			});

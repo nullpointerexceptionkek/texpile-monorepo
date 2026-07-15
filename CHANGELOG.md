@@ -5,6 +5,8 @@ Release notes for Texpile Desktop. Add notes under `## [Unreleased]` as you work
 
 ## [Unreleased]
 
+## [0.13.1] - 2026-07-15
+
 - fix: applying a highlight or text color to selected text froze the app
 - feat: updates now download and install from inside the app
 

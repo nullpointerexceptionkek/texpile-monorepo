@@ -7,6 +7,8 @@
 	import type { EditorState, TransactionSpec } from '@codemirror/state';
 	import { sourceCmView } from '$lib/stores/editorStore';
 	import { computeToggleWrap, computeWrapBlock } from '$lib/editor/extensions/intellisense/shortcuts';
+	import SourceTableDropdown from './SourceTableDropdown.svelte';
+	import SourceMathDropdown from './SourceMathDropdown.svelte';
 
 	function run(build: (state: EditorState) => TransactionSpec) {
 		return (e: MouseEvent) => {
@@ -99,7 +101,7 @@
 		{/each}
 	</ul>
 
-	<ul class="flex items-center gap-1 sm:gap-1.5">
+	<ul class="border-surface-300-700 flex items-center gap-1 border-r pr-1.5 sm:gap-1.5 sm:pr-2">
 		<li class="toolbarButton hover:preset-tonal">
 			<button
 				onclick={run((s) => computeWrapBlock(s, '\\begin{quote}\n', '\n\\end{quote}'))}
@@ -130,6 +132,11 @@
 				<Sigma class="h-4.5 w-4.5" />
 			</button>
 		</li>
+	</ul>
+
+	<ul class="flex items-center gap-1 sm:gap-1.5">
+		<li><SourceTableDropdown /></li>
+		<li><SourceMathDropdown /></li>
 	</ul>
 </div>
 

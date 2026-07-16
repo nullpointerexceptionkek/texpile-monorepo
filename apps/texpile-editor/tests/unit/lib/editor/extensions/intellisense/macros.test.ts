@@ -41,3 +41,38 @@ describe('macro completion: static CTAN DB + user-defined \\newcommand scan', ()
 		expect(() => macroOptions('\\newcommand{\\incomplete')).not.toThrow();
 	});
 });
+
+describe('vendored LaTeX Workshop defaults merged into the static set', () => {
+	it('completes \\begin and \\end (missing from the CTAN DB, which treats them as env delimiters)', () => {
+		const options = macroOptions('');
+		for (const label of ['\\begin', '\\end']) {
+			const found = options.find((o) => o.label === label);
+			expect(found, label).toBeTruthy();
+			expect(typeof found?.apply, `${label} chains via a custom apply`).toBe('function');
+		}
+	});
+
+	it('completes greek letters, math symbols, and the \\left( family', () => {
+		const options = macroOptions('');
+		for (const label of ['\\alpha', '\\infty', '\\left(', '\\left|', '\\section*', '\\Huge']) {
+			expect(
+				options.some((o) => o.label === label),
+				label
+			).toBe(true);
+		}
+	});
+
+	it('never yields duplicate labels across the CTAN DB, the LW set, and \\end', () => {
+		const labels = macroOptions('').map((o) => o.label);
+		expect(new Set(labels).size).toBe(labels.length);
+	});
+
+	it('macroLookup (hover) resolves a vendored macro', () => {
+		expect(macroLookup('', 'alpha')).not.toBeNull();
+	});
+
+	it('a user redefining a vendored name does not create a second entry', () => {
+		const options = macroOptions('\\renewcommand{\\alpha}{a}');
+		expect(options.filter((o) => o.label === '\\alpha')).toHaveLength(1);
+	});
+});

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { EditorState } from '@codemirror/state';
+import { EditorState, Transaction, type TransactionSpec } from '@codemirror/state';
 import { CompletionContext } from '@codemirror/autocomplete';
 import { environmentCompletionSource } from '../../../../../../src/lib/editor/extensions/intellisense/completion/environments';
 
@@ -34,5 +34,33 @@ describe('environment completion: ForBegin + close-environment', () => {
 	it('still completes plain names inside \\end{…}', () => {
 		const r = completeAt('\\end{item');
 		expect(r?.options.some((o) => o.label === 'itemize')).toBe(true);
+	});
+
+	it('includes the LaTeX Workshop default envs the CTAN DB misses', () => {
+		const r = completeAt('\\begin{');
+		for (const name of ['center', 'quote', 'verbatim', 'flushright', 'titlepage']) {
+			expect(
+				r?.options.some((o) => o.label === name),
+				name
+			).toBe(true);
+		}
+	});
+
+	it('list envs open with their first \\item in the ForBegin block', () => {
+		const doc = '\\begin{itemize';
+		const r = completeAt(doc);
+		const itemize = r!.options.find((o) => o.label === 'itemize')!;
+		let state = EditorState.create({ doc });
+		const view = {
+			get state() {
+				return state;
+			},
+			dispatch(spec: Transaction | TransactionSpec) {
+				state = spec instanceof Transaction ? spec.state : state.update(spec).state;
+			}
+		};
+		(itemize.apply as (view: unknown, completion: unknown, from: number, to: number) => void)(view, itemize, r!.from, doc.length);
+		// \t in the snippet becomes the state's indent unit on apply
+		expect(state.doc.toString()).toMatch(/^\\begin\{itemize\}\n\s+\\item \n\\end\{itemize\}$/);
 	});
 });

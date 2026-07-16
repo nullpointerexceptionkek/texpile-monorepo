@@ -4,6 +4,7 @@ import { autocompletion } from '@codemirror/autocomplete';
 import { tooltips } from '@codemirror/view';
 import type { Extension } from '@codemirror/state';
 import { latexCompletionSource, bibFileCompletionSource } from './completion/dispatch';
+import { frecencyTracker } from './completion/frecency';
 import { formatShortcuts } from './shortcuts';
 import { latexHover } from './hover';
 import { latexFolding } from './fold';
@@ -21,7 +22,7 @@ interface IntellisenseOptions {
 /** completion only — used inside the WYSIWYG editor's raw/inline LaTeX node views. */
 export function latexAutocomplete(opts: IntellisenseOptions = {}): Extension {
 	const source = opts.bib ? bibFileCompletionSource : latexCompletionSource;
-	const ext: Extension[] = [autocompletion({ override: [source], activateOnTyping: true, icons: false })];
+	const ext: Extension[] = [autocompletion({ override: [source], activateOnTyping: true, icons: false }), frecencyTracker()];
 	if (opts.tooltipsInBody) ext.push(tooltips({ parent: document.body }));
 	return ext;
 }

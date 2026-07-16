@@ -1,5 +1,5 @@
 // helpers shared across completion/*.ts sources.
-import { snippetCompletion, startCompletion, type Completion, type CompletionResult } from '@codemirror/autocomplete';
+import { pickedCompletion, snippetCompletion, startCompletion, type Completion, type CompletionResult } from '@codemirror/autocomplete';
 import type { EditorView } from '@codemirror/view';
 
 /** render an xparse signature ("o m") as the shape users actually recognize ("[]{}"). */
@@ -27,13 +27,18 @@ export function needsAutoChain(name: string): boolean {
 }
 
 /** wraps a completion's apply so accepting it reopens the completion dropdown one tick later. */
-function withAutoChain(completion: Completion): Completion {
+export function withAutoChain(completion: Completion): Completion {
 	const baseApply = completion.apply;
 	return {
 		...completion,
 		apply(view: EditorView, comp: Completion, from: number, to: number) {
 			if (typeof baseApply === 'function') baseApply(view, comp, from, to);
-			else view.dispatch({ changes: { from, to, insert: comp.label }, selection: { anchor: from + comp.label.length } });
+			else
+				view.dispatch({
+					changes: { from, to, insert: comp.label },
+					selection: { anchor: from + comp.label.length },
+					annotations: pickedCompletion.of(comp) // keep the frecency tracker seeing this accept
+				});
 			// let the insert transaction settle before reopening, same tick would race CM's own state update
 			setTimeout(() => startCompletion(view), 0);
 		}

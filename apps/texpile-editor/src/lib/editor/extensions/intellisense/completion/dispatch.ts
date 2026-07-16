@@ -16,9 +16,10 @@ import { bibFileCompletionSource } from './bibFile';
 
 const MACRO_TRIGGER = /\\[a-zA-Z]*$/;
 
+// fires on the bare backslash too: LaTeX Workshop registers "\" as a trigger character
 function macroCompletionSource(ctx: CompletionContext): CompletionResult | null {
 	const macro = ctx.matchBefore(MACRO_TRIGGER);
-	if (macro && (macro.to - macro.from > 1 || ctx.explicit)) {
+	if (macro) {
 		return { from: macro.from, options: macroOptions(ctx.state.doc.toString()), validFor: /^\\[a-zA-Z]*$/ };
 	}
 	return null;

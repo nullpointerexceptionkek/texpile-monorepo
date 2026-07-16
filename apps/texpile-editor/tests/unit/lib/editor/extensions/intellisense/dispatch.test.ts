@@ -24,8 +24,8 @@ describe('latex completion source', () => {
 		expect(labels(r)).toContain('\\subsection');
 	});
 
-	it('does not fire on a lone backslash unless explicit', () => {
-		expect(completeAt('\\')).toBeNull();
+	it('fires on a lone backslash, like LaTeX Workshop', () => {
+		expect(labels(completeAt('\\'))).toContain('\\textbf');
 		expect(labels(completeAt('\\', true))).toContain('\\textbf');
 	});
 

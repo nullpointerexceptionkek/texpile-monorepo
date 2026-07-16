@@ -4,6 +4,7 @@
 import { snippetCompletion, type Completion, type CompletionContext, type CompletionResult } from '@codemirror/autocomplete';
 import { environmentInfo } from '@unified-latex/unified-latex-ctan';
 import { renderSignature } from './shared';
+import { withFrecency } from './frecency';
 
 type InfoMap = Record<string, Record<string, { signature?: string }>>;
 
@@ -27,7 +28,31 @@ const EXTRA_ENVS: Record<string, string> = {
 	'equation*': '',
 	matrix: '',
 	pmatrix: '',
-	bmatrix: ''
+	bmatrix: '',
+	// LaTeX Workshop's default environment list beyond the CTAN DB
+	subarray: '',
+	eqnarray: '',
+	subequations: '',
+	'subequations*': '',
+	gathered: '',
+	alignedat: '',
+	xalignat: '',
+	'xalignat*': '',
+	center: '',
+	flushleft: '',
+	flushright: '',
+	quotation: '',
+	quote: '',
+	verbatim: '',
+	verse: '',
+	titlepage: ''
+};
+
+// LW body snippets: list envs start with their first \item instead of an empty line
+const ENV_BODY: Record<string, string> = {
+	itemize: '\n\t\\item ${0}',
+	enumerate: '\n\t\\item ${0}',
+	description: '\n\t\\item[${1}] ${0}'
 };
 
 const ENV_SIGNATURE_MAP = collectSignatures(environmentInfo as InfoMap, EXTRA_ENVS);
@@ -42,7 +67,7 @@ const AS_NAME_OPTIONS: Completion[] = ENV_NAMES.map((name) => ({
 
 /** accepting this immediately builds \begin{name}\n\t$0\n\end{name} — used for a fresh \begin{. */
 const FOR_BEGIN_OPTIONS: Completion[] = ENV_NAMES.map((name) =>
-	snippetCompletion(`${name}}\n\t\${0}\n\\end{${name}}`, {
+	snippetCompletion(`${name}}${ENV_BODY[name] ?? '\n\t${0}'}\n\\end{${name}}`, {
 		label: name,
 		type: 'class',
 		detail: renderSignature(ENV_SIGNATURE_MAP.get(name) ?? '')
@@ -72,5 +97,5 @@ export function environmentCompletionSource(ctx: CompletionContext): CompletionR
 	// plain name instead of duplicating a \end.
 	const afterCursor = ctx.state.sliceDoc(ctx.pos, ctx.state.doc.lineAt(ctx.pos).to);
 	const isFresh = isBegin && /^\*?\}?\s*$/.test(afterCursor);
-	return { from, options: isFresh ? FOR_BEGIN_OPTIONS : AS_NAME_OPTIONS, validFor: /^[a-zA-Z*]*$/ };
+	return { from, options: withFrecency(isFresh ? FOR_BEGIN_OPTIONS : AS_NAME_OPTIONS), validFor: /^[a-zA-Z*]*$/ };
 }

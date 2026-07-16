@@ -193,7 +193,7 @@
 								<span class="font-medium">LaTeX code</span>
 								<span class="text-surface-500 hidden sm:inline">write LaTeX code directly here</span>
 							</div>
-						{:else if isMathfieldActive || mathToolbarState.aiInputActive}
+						{:else if isMathfieldActive || mathToolbarState.aiInputActive || mathToolbarState.paletteOpen}
 							<MathToolbar />
 						{:else}
 							<ul class="flex items-center gap-4 2xl:gap-6">

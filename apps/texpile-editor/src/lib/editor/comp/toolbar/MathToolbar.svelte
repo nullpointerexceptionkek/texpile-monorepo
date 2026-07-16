@@ -1,5 +1,8 @@
 <script lang="ts" module>
-	export const mathToolbarState = $state({ aiInputActive: false });
+	// paletteOpen keeps Toolbar from unmounting us: Zag hands focus to the closing popover's trigger
+	// on the next frame, which blurs the mathfield, and Toolbar drops this toolbar the instant a
+	// mathfield isn't focused. Without it the palette vanishes under the user's cursor mid-click.
+	export const mathToolbarState = $state({ aiInputActive: false, paletteOpen: false });
 </script>
 
 <script lang="ts">
@@ -353,6 +356,12 @@
 
 	let openGroup = $state<string | null>(null);
 
+	// derived in one place so no assignment site can forget it
+	$effect(() => {
+		mathToolbarState.paletteOpen = openGroup !== null;
+		return () => (mathToolbarState.paletteOpen = false);
+	});
+
 	// mousedown fires before focus changes, so preventDefault keeps the mathfield focused
 	function preventFocusLoss(e: MouseEvent | PointerEvent) {
 		e.preventDefault();
@@ -380,6 +389,10 @@
 		const isClosing = openGroup === groupId;
 		openGroup = isClosing ? null : groupId;
 
+		// Only on close. While a palette is open focus legitimately sits on the trigger (zag's
+		// setFinalFocus puts it there), and pulling it back to the mathfield reads as an outside
+		// interaction and dismisses the palette. mathToolbarState.paletteOpen is what keeps this
+		// toolbar mounted through that blur.
 		if (isClosing && activeMathfieldRef) {
 			setTimeout(() => {
 				activeMathfieldRef?.focus();
@@ -448,8 +461,10 @@
 			<Popover
 				open={openGroup === group.id}
 				onOpenChange={(e) => {
-					// only update when it's not a close triggered by our own insertSymbol
-					if (!e.open) {
+					// Every popover reports its own close, including the outgoing one when the user switches
+					// straight from one group to another. Only the group that is still open may clear the
+					// state: otherwise the closing group wipes the one just opened and it never renders.
+					if (!e.open && openGroup === group.id) {
 						openGroup = null;
 					}
 				}}

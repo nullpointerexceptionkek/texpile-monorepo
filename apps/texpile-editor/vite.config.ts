@@ -22,7 +22,7 @@ const NO_PREBUNDLE = new Set([
 
 const prebundle = Object.keys(pkg.dependencies ?? {}).filter((d) => !NO_PREBUNDLE.has(d));
 
-export default defineConfig({
+export default defineConfig(({ mode }) => ({
 	plugins: [tailwindcss(), svelte()],
 
 	// relative asset URLs: the packaged app is served from the app:// scheme (electron/src/main.ts),
@@ -44,9 +44,14 @@ export default defineConfig({
 		// unit tests live under tests/unit/ (mirroring src/); playwright's tests/integration/
 		// tree is deliberately outside this glob
 		include: ['tests/unit/**/*.{test,spec}.{js,ts}']
+		// node by default (most tests are pure logic); component tests opt in per file with
+		// a `// @vitest-environment jsdom` docblock
 	},
 
 	resolve: {
+		// vitest would otherwise resolve svelte's server export, where mount() throws. scoped to
+		// test mode so the real build's condition resolution is untouched.
+		...(mode === 'test' ? { conditions: ['browser'] } : {}),
 		// 90+ source files (and the vitest suite) import through $lib, so keep it as a plain alias
 		alias: {
 			$lib: path.resolve(__dirname, 'src/lib')
@@ -85,4 +90,4 @@ export default defineConfig({
 	esbuild: {
 		legalComments: 'inline'
 	}
-});
+}));

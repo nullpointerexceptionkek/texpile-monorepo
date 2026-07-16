@@ -1,3 +1,5 @@
+// @vitest-environment jsdom
+// hover.ts reaches mathlive, whose browser build touches HTMLElement as it loads
 import { describe, it, expect } from 'vitest';
 import { tokenAt, findLabelOffset } from '../../../../../../src/lib/editor/extensions/intellisense/hover';
 

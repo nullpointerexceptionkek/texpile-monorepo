@@ -80,15 +80,19 @@ jobs:
         shell: bash
 
       # the PowerShell module electron-builder uses for Azure Trusted Signing; a named up-front step
-      # turns a PSGallery hiccup into an obvious failure. RequiredVersion matches electron-builder@25.1.8.
+      # turns a PSGallery hiccup into an obvious failure. Version matches electron-builder@25.1.8.
+      # Installed with PSResourceGet, which ships with the runner's PowerShell 7 and reaches the
+      # gallery on its own: PowerShellGet v2 first has to bootstrap a NuGet provider, and when that
+      # fails PSGallery is never registered, so Set-PSRepository dies with "No repository with the
+      # name 'PSGallery' was found" (this is what broke the v0.14.0 build).
       - name: Set up Azure Trusted Signing (Windows)
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
-          try { Install-PackageProvider -Name NuGet -MinimumVersion 2.8.5.201 -Force -Scope CurrentUser -ErrorAction Stop }
-          catch { Write-Host "NuGet provider bootstrap skipped (often already present): $($_.Exception.Message)" }
-          Set-PSRepository -Name PSGallery -InstallationPolicy Trusted
-          Install-Module -Name TrustedSigning -RequiredVersion 0.4.1 -Force -Repository PSGallery -Scope CurrentUser
+          Install-PSResource -Name TrustedSigning -Version 0.4.1 -Repository PSGallery -TrustRepository -Scope CurrentUser -ErrorAction Stop
+          # import here too: a module that installs but won't load should fail this step, not the build
+          Import-Module TrustedSigning -RequiredVersion 0.4.1 -ErrorAction Stop
+          Write-Host "TrustedSigning $((Get-Module TrustedSigning).Version) ready"
 
       # creds come from the AZURE_* secrets, account/profile/endpoint from repo variables. The
       # RFC-3161 timestamp is essential: Trusted Signing certs live ~3 days, so untimestamped

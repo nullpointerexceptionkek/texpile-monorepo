@@ -70,9 +70,11 @@
 	let expanded = $state<Record<string, boolean>>({});
 	let renaming = $state<string | null>(null);
 	let renameValue = $state('');
+	let renameEdited = $state(false);
 	let creatingIn = $state<string | null>(null);
 	let createType = $state<'file' | 'dir' | 'include'>('file');
 	let createValue = $state('');
+	let createEdited = $state(false); // did the user actually type, or is this still our pre-fill?
 
 	let dragging = $state<TreeEntry | null>(null);
 	let dropTarget = $state<string | null>(null); // path of the row being hovered, or ROOT
@@ -140,19 +142,29 @@
 	}
 	const ctxTargetDir = () => (ctxMenu?.entry?.type === 'dir' ? ctxMenu.entry.path : rootPath);
 
-	// focus once on mount and select the base name (keep the extension, like VSCode).
-	// no re-assert loop: re-grabbing focus made the field impossible to leave.
+	// focus on mount and select the base name (keep the extension, like VSCode).
 	function focusSelect(node: HTMLInputElement) {
-		node.focus();
-		const dot = node.value.lastIndexOf('.');
-		if (dot > 0) node.setSelectionRange(0, dot);
-		else node.select();
+		const grab = () => {
+			node.focus();
+			const dot = node.value.lastIndexOf('.');
+			if (dot > 0) node.setSelectionRange(0, dot);
+			else node.select();
+		};
+		grab();
+		// Skeleton's menu (Zag) refocuses its trigger in a queueMicrotask as it closes, which lands
+		// just after we mount and takes the field away before the user can type. Grab it back once,
+		// on the next frame, only if something actually took it. Deliberately NOT a re-assert loop:
+		// that was tried, and it made the field impossible to leave.
+		requestAnimationFrame(() => {
+			if (node.isConnected && document.activeElement !== node) grab();
+		});
 	}
 
 	function startCreate(dir: string, type: 'file' | 'dir' | 'include', defaultName = '') {
 		creatingIn = dir;
 		createType = type;
 		createValue = defaultName;
+		createEdited = false;
 		if (dir !== rootPath) expanded[dir] = true;
 	}
 	/** begins creating a file/folder/include at the workspace root; defaultName pre-fills the input. */
@@ -170,6 +182,12 @@
 		createValue = '';
 		if (v && dir) onCreate(dir, v, createType);
 	}
+	// Blur is not consent. A menu closing hands focus back to its trigger a tick after we mount
+	// (Skeleton/Zag does this), so an untouched field going blurry means the naming step never
+	// started, not that the user accepted our pre-filled name. Leave it open for them instead.
+	function blurCreate() {
+		if (createEdited) commitCreate();
+	}
 	function cancelCreate() {
 		creatingIn = null;
 		createValue = '';
@@ -177,12 +195,17 @@
 	function startRename(e: TreeEntry) {
 		renaming = e.path;
 		renameValue = e.name;
+		renameEdited = false;
 	}
 	function commitRename(e: TreeEntry) {
 		if (renaming !== e.path) return; // guard against Enter + blur double-firing
 		renaming = null;
 		const v = renameValue.trim();
 		if (v && v !== e.name) onRename(e, v);
+	}
+	/** same reasoning as blurCreate: an untouched field losing focus is not the user committing. */
+	function blurRename(e: TreeEntry) {
+		if (renameEdited) commitRename(e);
 	}
 	function confirmDelete(e: TreeEntry) {
 		if (confirm(`Delete "${e.name}"${e.type === 'dir' ? ' and everything inside it' : ''}?`)) onDelete(e);
@@ -208,7 +231,10 @@
 			class="input h-6 flex-1 py-0 text-sm"
 			placeholder={createType === 'dir' ? 'folder name' : createType === 'include' ? 'include file name' : 'file name'}
 			value={createValue}
-			oninput={(e) => (createValue = e.currentTarget.value)}
+			oninput={(e) => {
+				createValue = e.currentTarget.value;
+				createEdited = true;
+			}}
 			use:focusSelect
 			draggable="false"
 			onpointerdown={(e) => e.stopPropagation()}
@@ -216,7 +242,7 @@
 				if (e.key === 'Enter') commitCreate();
 				else if (e.key === 'Escape') cancelCreate();
 			}}
-			onblur={commitCreate}
+			onblur={blurCreate}
 		/>
 	</div>
 {/snippet}
@@ -259,7 +285,10 @@
 					<input
 						class="input h-6 min-w-0 flex-1 py-0 text-sm"
 						value={renameValue}
-						oninput={(e) => (renameValue = e.currentTarget.value)}
+						oninput={(e) => {
+							renameValue = e.currentTarget.value;
+							renameEdited = true;
+						}}
 						use:focusSelect
 						draggable="false"
 						onpointerdown={(e) => e.stopPropagation()}
@@ -268,7 +297,7 @@
 							if (e.key === 'Enter') commitRename(entry);
 							else if (e.key === 'Escape') renaming = null;
 						}}
-						onblur={() => commitRename(entry)}
+						onblur={() => blurRename(entry)}
 					/>
 				{:else}
 					<span class="truncate">{entry.name}</span>

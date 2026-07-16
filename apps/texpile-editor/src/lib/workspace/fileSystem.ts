@@ -215,6 +215,17 @@ export function joinPath(dir: string, rel: string): string {
 	return `${dir.replace(/[\\/]+$/, '')}${sep}${cleanRel}`;
 }
 
+/** untitled.tex -> untitled1.tex when taken, so a pre-filled "New" name can't collide. */
+export function freeName(name: string, taken: Iterable<string>): string {
+	const used = new Set([...taken].map((n) => n.toLowerCase()));
+	if (!used.has(name.toLowerCase())) return name;
+	const dot = name.lastIndexOf('.');
+	const [stem, ext] = dot > 0 ? [name.slice(0, dot), name.slice(dot)] : [name, ''];
+	let i = 1;
+	while (used.has(`${stem}${i}${ext}`.toLowerCase())) i++;
+	return `${stem}${i}${ext}`;
+}
+
 /** recovers the absolute path encoded in a fileUrl(), or null if not one. */
 export function pathFromFileUrl(url: string): string | null {
 	const m = url.match(/^texfile:\/\/local\/?\?path=([^&]+)/);

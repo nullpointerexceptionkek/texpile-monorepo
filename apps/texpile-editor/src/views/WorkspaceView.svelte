@@ -80,6 +80,7 @@
 		fromLf,
 		formatLatexDocument,
 		native,
+		freeName,
 		type Eol,
 		type TreeEntry,
 		type TexFile
@@ -187,7 +188,8 @@
 	// File menu "New": inline create in the tree, pre-named for the chosen type
 	function newFileOfType(ext?: string) {
 		const names: Record<string, string> = { tex: 'untitled.tex', bib: 'references.bib', cls: 'untitled.cls', sty: 'mystyle.sty' };
-		const defaultName = ext ? (names[ext] ?? `untitled.${ext}`) : '';
+		const rootNames = get(fileTree).map((e) => e.name);
+		const defaultName = ext ? freeName(names[ext] ?? `untitled.${ext}`, rootNames) : '';
 		sidebarOpen = true;
 		fileTreeRef?.newAtRoot('file', defaultName);
 	}
@@ -195,11 +197,14 @@
 	async function newTexFile() {
 		const root = get(workspaceRoot);
 		if (!root) return;
-		const existing = new Set(get(texFiles).map((f) => f.relPath.toLowerCase()));
-		let name = 'main.tex';
-		let i = 1;
-		while (existing.has(name.toLowerCase())) name = `main${i++}.tex`;
-		await createInTree(root, name, 'file');
+		await createInTree(
+			root,
+			freeName(
+				'main.tex',
+				get(fileTree).map((e) => e.name)
+			),
+			'file'
+		);
 	}
 
 	// no folder open (e.g. hard navigation): send the user back to the start screen
@@ -419,7 +424,11 @@
 			if (name.toLowerCase().endsWith('.bib')) await loadReferences(get(workspaceRoot) ?? parentDir); // new .bib -> refresh citation keys
 			if (isTex) activeFilePath.set(path);
 		} catch (e) {
-			toaster.error({ title: 'Could not create', description: e instanceof Error ? e.message : String(e) });
+			const msg = e instanceof Error ? e.message : String(e);
+			toaster.error({
+				title: 'Could not create',
+				description: msg.includes('EEXIST') ? `"${name}" already exists in this folder.` : msg
+			});
 		}
 	}
 

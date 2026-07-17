@@ -5,6 +5,8 @@ Release notes for Texpile Desktop. Add notes under `## [Unreleased]` as you work
 
 ## [Unreleased]
 
+## [0.14.1] - 2026-07-17
+
 - fix: the source editor's line numbers sit between the warning and fold columns, so they no longer have a gap beside them
 - fix: double-clicking a line number or a fold arrow no longer selects it
 

@@ -180,6 +180,14 @@
 			items: [{ keys: combo({ alt: true }, 'Enter'), label: 'Compile (Stop if already running)' }]
 		},
 		{
+			group: 'Source editor',
+			items: [
+				{ keys: isMac ? 'F12 / ⌘ Click' : 'F12 / Ctrl+Click', label: 'Go to definition (label, macro, citation, \\input)' },
+				{ keys: isMac ? '⌃Space' : 'Ctrl+Space', label: 'Open suggestions' },
+				{ keys: 'Esc', label: 'Hide the math preview until the cursor leaves math' }
+			]
+		},
+		{
 			group: 'Formatting',
 			items: [
 				{ keys: combo({}, 'B'), label: 'Bold' },

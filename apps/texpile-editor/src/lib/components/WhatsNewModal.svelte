@@ -21,35 +21,40 @@
 	}
 </script>
 
+<svelte:window onkeydown={(e) => open && e.key === 'Escape' && close()} />
+
 {#if open && newest}
 	<div
 		class="fixed inset-0 z-1300 flex items-center justify-center bg-black/40 p-4"
 		role="presentation"
 		onmousedown={(e) => e.target === e.currentTarget && close()}
 	>
-		<div class="card bg-surface-50-950 border-surface-300-700 w-full max-w-2xl border p-5 shadow-2xl">
+		<!-- max-h + scrolling middle: header and Got it stay reachable however long the notes run -->
+		<div class="card bg-surface-50-950 border-surface-300-700 flex max-h-full w-full max-w-2xl flex-col border p-5 shadow-2xl">
 			<div class="mb-3 flex items-center justify-between">
 				<h2 class="text-base font-semibold">What's new in Texpile v{newest.version}</h2>
 				<button class="btn-icon btn-icon-sm hover:preset-tonal" onclick={close} aria-label="Close">
 					<X class="size-4" />
 				</button>
 			</div>
-			{#if video}
-				<video src={video} class="border-surface-300-700 mb-4 w-full rounded border" autoplay loop muted playsinline></video>
-			{/if}
-			<div class="mb-4 space-y-3">
-				{#each entries as entry (entry.version)}
-					<div>
-						{#if entries.length > 1}
-							<div class="text-surface-500 mb-1 text-xs font-semibold">v{entry.version}</div>
-						{/if}
-						<ul class="text-surface-600-300 list-disc space-y-1 pl-5 text-sm">
-							{#each entry.notes as note (note)}
-								<li>{note}</li>
-							{/each}
-						</ul>
-					</div>
-				{/each}
+			<div class="mb-4 min-h-0 overflow-y-auto">
+				{#if video}
+					<video src={video} class="border-surface-300-700 mb-4 w-full rounded border" autoplay loop muted playsinline></video>
+				{/if}
+				<div class="space-y-3">
+					{#each entries as entry (entry.version)}
+						<div>
+							{#if entries.length > 1}
+								<div class="text-surface-500 mb-1 text-xs font-semibold">v{entry.version}</div>
+							{/if}
+							<ul class="text-surface-600-300 list-disc space-y-1 pl-5 text-sm">
+								{#each entry.notes as note (note)}
+									<li>{note}</li>
+								{/each}
+							</ul>
+						</div>
+					{/each}
+				</div>
 			</div>
 			<div class="flex justify-end">
 				<button class="btn btn-sm preset-filled-primary-500" onclick={close}>Got it</button>

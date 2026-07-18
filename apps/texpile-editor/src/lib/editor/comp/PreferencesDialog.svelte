@@ -39,7 +39,7 @@
 		role="presentation"
 		onmousedown={(e) => e.target === e.currentTarget && (open = false)}
 	>
-		<div class="card bg-surface-50-950 border-surface-300-700 w-full max-w-md border p-5 shadow-2xl">
+		<div class="card bg-surface-50-950 border-surface-300-700 flex max-h-full w-full max-w-md flex-col border p-5 shadow-2xl">
 			<div class="mb-4 flex items-center justify-between gap-4">
 				<h2 class="text-base font-semibold">Preferences</h2>
 				<button class="btn-icon btn-icon-sm hover:preset-tonal" aria-label="Close" onclick={() => (open = false)}
@@ -47,7 +47,7 @@
 				>
 			</div>
 
-			<div class="space-y-5">
+			<div class="min-h-0 space-y-5 overflow-y-auto">
 				<div>
 					<div class="text-surface-600-400 mb-1.5 text-sm font-medium">Appearance</div>
 					<div class="bg-surface-200-800 rounded-base flex gap-1 p-0.5">

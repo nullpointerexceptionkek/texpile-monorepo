@@ -5,6 +5,11 @@ Release notes for Texpile Desktop. Add notes under `## [Unreleased]` as you work
 
 ## [Unreleased]
 
+- fix: the What's new, update, and Preferences windows scroll long content instead of pushing their buttons off screen, and Esc closes them
+- fix: arrow keys no longer open autocomplete while moving the cursor
+- feat: automatic update notices wait until a release is 3 hours old; a manual check from the menu shows it right away
+- feat: the keyboard shortcuts window lists the source editor keys (go to definition, suggestions, math preview)
+
 ## [0.14.2] - 2026-07-18
 
 - feat: spell check works in the source editor, checking prose but not commands, math, or comments

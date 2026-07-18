@@ -28,13 +28,16 @@
 	}
 </script>
 
+<svelte:window onkeydown={(e) => $updateModalOpen && e.key === 'Escape' && close()} />
+
 {#if $updateModalOpen && u.phase !== 'idle'}
 	<div
 		class="fixed inset-0 z-1300 flex items-center justify-center bg-black/40 p-4"
 		role="presentation"
 		onmousedown={(e) => e.target === e.currentTarget && close()}
 	>
-		<div class="card bg-surface-50-950 border-surface-300-700 w-full max-w-md border p-5 shadow-2xl">
+		<!-- max-h + a scrolling notes list: the buttons stay reachable on any window size -->
+		<div class="card bg-surface-50-950 border-surface-300-700 flex max-h-full w-full max-w-md flex-col border p-5 shadow-2xl">
 			<div class="mb-3 flex items-center justify-between">
 				<h2 class="flex items-center gap-2 text-base font-semibold">
 					<Download class="text-primary-500 size-5" />
@@ -48,7 +51,7 @@
 			{#if u.phase === 'available'}
 				<p class="text-surface-600-300 mb-4 text-sm">Texpile v{u.version} is available.</p>
 				{#if u.notes?.length}
-					<ul class="text-surface-600-300 mb-4 list-disc space-y-1 pl-5 text-sm">
+					<ul class="text-surface-600-300 mb-4 min-h-0 list-disc space-y-1 overflow-y-auto pl-5 text-sm">
 						{#each u.notes as note (note)}
 							<li>{note}</li>
 						{/each}

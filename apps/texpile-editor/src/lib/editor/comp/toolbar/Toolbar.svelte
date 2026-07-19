@@ -22,6 +22,7 @@
 	import { isReadOnly } from '$lib/stores/permissionStore';
 	import { onMount } from 'svelte';
 	import MobileActionBar from './MobileActionBar.svelte';
+	import { m } from '$lib/paraglide/messages';
 	import 'swiper/css';
 
 	interface Props {
@@ -170,17 +171,17 @@
 					{#if $isReadOnly}
 						<div class="text-surface-500 flex items-center gap-1.5">
 							<Eye class="size-4" />
-							<span class="text-sm font-medium">Read-only</span>
+							<span class="text-sm font-medium">{m.toolbar_read_only()}</span>
 						</div>
 					{:else}
 						<ul class="border-surface-300-700 flex items-center gap-2.5 border-r pr-2.5 sm:gap-4 sm:pr-4 2xl:gap-6 2xl:pr-6">
 							<li class="toolbarButton hover:preset-tonal">
-								<button onclick={keepEditorFocus(undo)} class="flex items-center p-1" aria-label="Undo">
+								<button onclick={keepEditorFocus(undo)} class="flex items-center p-1" aria-label={m.toolbar_undo_aria()}>
 									<Undo class="h-5 w-5" />
 								</button>
 							</li>
 							<li class="toolbarButton hover:preset-tonal">
-								<button onclick={keepEditorFocus(redo)} class="flex items-center p-1" aria-label="Redo">
+								<button onclick={keepEditorFocus(redo)} class="flex items-center p-1" aria-label={m.toolbar_redo_aria()}>
 									<Redo class="h-5 w-5" />
 								</button>
 							</li>
@@ -190,8 +191,8 @@
 							<!-- a raw-LaTeX CM block is focused: prose formatting doesn't apply, show a minimal bar -->
 							<div class="text-surface-600-300 flex min-h-9 items-center gap-2 text-sm">
 								<Code class="size-4" />
-								<span class="font-medium">LaTeX code</span>
-								<span class="text-surface-500 hidden sm:inline">write LaTeX code directly here</span>
+								<span class="font-medium">{m.toolbar_latex_code()}</span>
+								<span class="text-surface-500 hidden sm:inline">{m.toolbar_latex_code_hint()}</span>
 							</div>
 						{:else if isMathfieldActive || mathToolbarState.aiInputActive || mathToolbarState.paletteOpen}
 							<MathToolbar />
@@ -205,7 +206,7 @@
 									<button
 										onclick={keepEditorFocus((s, d) => toggleMark(schema.marks.strong)(s, d))}
 										class="flex items-center p-1"
-										aria-label="Bold"
+										aria-label={m.toolbar_bold_aria()}
 									>
 										<Bold class="h-5 w-5" />
 									</button>
@@ -215,7 +216,7 @@
 									<button
 										onclick={keepEditorFocus((s, d) => toggleMark(schema.marks.u)(s, d))}
 										class="flex items-center p-1"
-										aria-label="Underline"
+										aria-label={m.toolbar_underline_aria()}
 									>
 										<!-- nudged down 1.5px, lucide's U glyph rides high of the other icons' center line -->
 										<Underline class="h-5 w-5 translate-y-[1.5px]" />
@@ -226,7 +227,7 @@
 									<button
 										onclick={keepEditorFocus((s, d) => toggleMark(schema.marks.em)(s, d))}
 										class="flex items-center p-1"
-										aria-label="Italic"
+										aria-label={m.toolbar_italic_aria()}
 									>
 										<Italic class="h-5 w-5" />
 									</button>
@@ -264,7 +265,7 @@
 										onclick={() => {
 											createCodeBlock()($editorViewStore.state, $editorViewStore.dispatch);
 										}}
-										aria-label="Insert code block"
+										aria-label={m.toolbar_insert_code_block_aria()}
 									>
 										<Code class="h-5 w-5" />
 									</button>
@@ -274,8 +275,8 @@
 									<button
 										class="flex items-center p-1"
 										onclick={keepEditorFocus(selectParentNode)}
-										aria-label="Select block"
-										title="Select parent block"
+										aria-label={m.toolbar_select_block_aria()}
+										title={m.toolbar_select_parent_block_title()}
 									>
 										<BoxSelect class="h-5 w-5" />
 									</button>
@@ -297,7 +298,7 @@
 					class="text-blue border-blue hover:bg-blue font-Work-Sans flex h-9 w-full items-center justify-center rounded border text-sm font-semibold transition-all duration-500 ease-in-out hover:text-white sm:w-[83px]"
 					onclick={preventDefault(togglePreview)}
 				>
-					{isPreviewVisible ? 'Hide' : 'Preview'}
+					{isPreviewVisible ? m.toolbar_hide() : m.toolbar_preview()}
 				</button>
 			</li>
 			<li class="hidden md:block">
@@ -310,9 +311,9 @@
 				>
 					{#if isCompiling}
 						<span class="loader"></span>
-						Compiling...
+						{m.toolbar_compiling()}
 					{:else}
-						Compile
+						{m.toolbar_compile()}
 					{/if}
 				</button>
 			</li>

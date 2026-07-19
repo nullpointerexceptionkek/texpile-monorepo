@@ -96,6 +96,7 @@
 	import { TextSelection } from 'prosemirror-state';
 	import { flashNodeAt } from '$lib/editor/extensions/flash-plugin';
 	import { toaster } from '$lib/modals/toaster-svelte';
+	import { m } from '$lib/paraglide/messages';
 
 	let loadedPath = $state<string | null>(null);
 	let loadError = $state<string | null>(null);
@@ -164,7 +165,7 @@
 			await refreshTree();
 			activeFilePath.set(mainPath);
 		} catch (e) {
-			toaster.error({ title: 'Could not create from template', description: e instanceof Error ? e.message : String(e) });
+			toaster.error({ title: m.wsview_toast_starter_create_failed_title(), description: e instanceof Error ? e.message : String(e) });
 		} finally {
 			applyingStarter = false;
 		}
@@ -183,7 +184,7 @@
 				activeFilePath.set(mainPath);
 			}
 		} catch (e) {
-			toaster.error({ title: 'Could not import the files', description: e instanceof Error ? e.message : String(e) });
+			toaster.error({ title: m.wsview_toast_import_failed_title(), description: e instanceof Error ? e.message : String(e) });
 		} finally {
 			applyingStarter = false;
 		}
@@ -308,7 +309,7 @@
 		// covers every refreshTree() trigger for free
 		void refreshGitStatus(root).then(({ missingGit }) => {
 			if (missingGit && takeNoGitHint()) {
-				toaster.warning({ title: 'Git not found', description: 'Install Git and reopen the folder to see status badges and diffs.' });
+				toaster.warning({ title: m.wsview_toast_no_git_title(), description: m.wsview_toast_no_git_desc() });
 			}
 		});
 	}
@@ -366,7 +367,7 @@
 			mainConfirmed = true; // the starter picked the main; no first-compile question
 			activeFilePath.set(mainFile); // openFolderFromMenu opens files[0] (alphabetical), not the main file
 		} catch (e) {
-			toaster.error({ title: 'Could not open tutorial', description: e instanceof Error ? e.message : String(e) });
+			toaster.error({ title: m.wsview_toast_tutorial_failed_title(), description: e instanceof Error ? e.message : String(e) });
 		}
 	}
 	let tutorialModalOpen = $state(false);
@@ -424,8 +425,8 @@
 			// insert the \input into the current doc BEFORE switching away (the switch flushes its save)
 			if (isInclude && !insertIncludeAtCursor(path)) {
 				toaster.error({
-					title: 'Created, but no \\input added',
-					description: 'Switch to the visual editor to insert an include at the cursor.'
+					title: m.wsview_toast_include_not_inserted_title(),
+					description: m.wsview_toast_include_not_inserted_desc()
 				});
 			}
 			await refreshTree();
@@ -434,8 +435,8 @@
 		} catch (e) {
 			const msg = e instanceof Error ? e.message : String(e);
 			toaster.error({
-				title: 'Could not create',
-				description: msg.includes('EEXIST') ? `"${name}" already exists in this folder.` : msg
+				title: m.wsview_toast_create_failed_title(),
+				description: msg.includes('EEXIST') ? m.wsview_toast_already_exists({ name }) : msg
 			});
 		}
 	}
@@ -448,7 +449,7 @@
 			await refreshTree();
 			void afterRename(entry.path, to);
 		} catch (e) {
-			toaster.error({ title: 'Could not rename', description: e instanceof Error ? e.message : String(e) });
+			toaster.error({ title: m.wsview_toast_rename_failed_title(), description: e instanceof Error ? e.message : String(e) });
 		}
 	}
 
@@ -465,7 +466,7 @@
 			await deleteEntry(entry.path);
 			await refreshTree();
 		} catch (e) {
-			toaster.error({ title: 'Could not delete', description: e instanceof Error ? e.message : String(e) });
+			toaster.error({ title: m.wsview_toast_delete_failed_title(), description: e instanceof Error ? e.message : String(e) });
 		}
 	}
 
@@ -483,7 +484,7 @@
 			await refreshTree();
 			void afterRename(entry.path, to);
 		} catch (e) {
-			toaster.error({ title: 'Could not move', description: e instanceof Error ? e.message : String(e) });
+			toaster.error({ title: m.wsview_toast_move_failed_title(), description: e instanceof Error ? e.message : String(e) });
 		}
 	}
 
@@ -870,7 +871,7 @@
 	function ensureTerminal() {
 		if (terminals.length === 0) {
 			const id = ++termSeq;
-			terminals = [{ id, title: `Terminal ${id}` }];
+			terminals = [{ id, title: m.wsview_terminal_numbered({ id }) }];
 			activeTermId = id;
 		}
 	}
@@ -896,7 +897,7 @@
 	}
 	function addTerminal() {
 		const id = ++termSeq;
-		terminals = [...terminals, { id, title: `Terminal ${id}` }];
+		terminals = [...terminals, { id, title: m.wsview_terminal_numbered({ id }) }];
 		activeTermId = id;
 		terminalMounted = true;
 		terminalVisible = true;
@@ -909,7 +910,7 @@
 	function resetTerminalsForWorkspace() {
 		if (terminals.length === 0) return; // none open; the next one opened will spawn in the new folder
 		const id = ++termSeq;
-		terminals = [{ id, title: `Terminal ${id}` }];
+		terminals = [{ id, title: m.wsview_terminal_numbered({ id }) }];
 		activeTermId = id;
 		if (terminalVisible) setTimeout(() => activeRef()?.refit(), 0);
 	}
@@ -1038,7 +1039,7 @@
 		// cleared the main file, so let them pick one (then compile). Dismissing leaves it unset.
 		if (cmd.includes('{main}') && !get(mainFile)) {
 			if (get(texFiles).length === 0) {
-				toaster.error({ title: 'Nothing to compile', description: 'No .tex file found in this folder.' });
+				toaster.error({ title: m.wsview_toast_nothing_to_compile_title(), description: m.wsview_toast_nothing_to_compile_desc() });
 			} else {
 				void openMainConfirm(() => {
 					if (get(mainFile)) void runCompile();
@@ -1163,8 +1164,8 @@
 	// either mistake; the Auto button clears the field back to auto-detect.
 	function outputPathWarning(v: string, ext: '.pdf' | '.log'): string | null {
 		if (!v.trim()) return null;
-		if (/\{[^}]*\}/.test(v)) return 'No {main} here, type the actual file path';
-		if (!v.trim().toLowerCase().endsWith(ext)) return `Should end in ${ext}`;
+		if (/\{[^}]*\}/.test(v)) return m.wsview_warning_no_main_here({ token: '{main}' });
+		if (!v.trim().toLowerCase().endsWith(ext)) return m.wsview_warning_should_end_in({ ext });
 		return null;
 	}
 	const pdfPathWarning = $derived(outputPathWarning(compileOutputsDraft.pdf, '.pdf'));
@@ -1384,7 +1385,7 @@
 		const res = await synctexForward(pdf, loadedPath, line);
 		console.debug('[synctex] forward', { tex: loadedPath, line, pdf, res });
 		if (!res.ok) {
-			toaster.error({ title: 'SyncTeX', description: res.error ?? 'No match.' });
+			toaster.error({ title: 'SyncTeX', description: res.error ?? m.wsview_toast_synctex_no_match() });
 			return;
 		}
 		setPdfPaneOpen(true);
@@ -1458,9 +1459,9 @@
 			isDirty.set(true);
 			scheduleSave(loadedPath, texSource);
 			if (viewMode === 'visual') rebuildVisualFromSource();
-			toaster.success({ title: 'Formatted', description: basename(loadedPath) });
+			toaster.success({ title: m.wsview_toast_formatted_title(), description: basename(loadedPath) });
 		} catch (e) {
-			toaster.error({ title: 'Format failed', description: e instanceof Error ? e.message : String(e) });
+			toaster.error({ title: m.wsview_toast_format_failed_title(), description: e instanceof Error ? e.message : String(e) });
 		} finally {
 			formatting = false;
 		}
@@ -1517,6 +1518,20 @@
 	// after a rename/move, find \includegraphics/\input across the project's .tex files
 	// that pointed at the file (AST-based) and offer to repoint them
 	let pendingRefUpdate = $state<{ oldRel: string; newRel: string; hits: { path: string; count: number }[]; total: number } | null>(null);
+	// composed sentence for the ref-update modal: total refs and file count pluralize independently
+	const refUpdateBody = $derived.by(() => {
+		const u = pendingRefUpdate;
+		if (!u) return '';
+		const refClause =
+			u.total === 1 ? m.wsview_refupdate_ref_count_one({ count: u.total }) : m.wsview_refupdate_ref_count_other({ count: u.total });
+		const fileClause =
+			u.hits.length === 1
+				? m.wsview_refupdate_file_count_one({ count: u.hits.length })
+				: m.wsview_refupdate_file_count_other({ count: u.hits.length });
+		return u.total === 1
+			? m.wsview_refupdate_body_one({ refClause, fileClause, oldRel: u.oldRel, newRel: u.newRel })
+			: m.wsview_refupdate_body_other({ refClause, fileClause, oldRel: u.oldRel, newRel: u.newRel });
+	});
 
 	async function afterRename(oldPath: string, newPath: string) {
 		const root = get(workspaceRoot);
@@ -1653,7 +1668,7 @@
 		const path = $activeFilePath;
 		// autosave off: the outgoing file's edit wasn't auto-written, so warn before tearing it down
 		if (get(settings).autosave === false && loadedPath && path !== loadedPath && pendingSave?.path === loadedPath) {
-			if (confirm(`Save changes to ${basename(loadedPath)} before switching?`)) flushSave();
+			if (confirm(m.wsview_confirm_save_before_switch({ name: basename(loadedPath) }))) flushSave();
 			else pendingSave = null; // discard the unsaved edit
 		} else {
 			flushSave(); // persist the outgoing file's queued edit before tearing down its buffers
@@ -1736,7 +1751,7 @@
 		} catch (e) {
 			if (get(activeFilePath) !== path) return;
 			closeOpenFile(); // a half-open file must not stay on screen behind the error
-			loadError = e instanceof Error ? e.message : 'Failed to open file';
+			loadError = e instanceof Error ? e.message : m.wsview_load_error_fallback();
 		}
 	}
 
@@ -1882,9 +1897,9 @@
 				const live = kind === 'tex' ? texSource : rawContent;
 				if (content === live) isDirty.set(false);
 			}
-			if (notify) toaster.success({ title: 'Saved', description: basename(path), duration: 1200 });
+			if (notify) toaster.success({ title: m.wsview_toast_saved_title(), description: basename(path), duration: 1200 });
 		} catch (e) {
-			toaster.error({ title: 'Save failed', description: e instanceof Error ? e.message : 'Unknown error' });
+			toaster.error({ title: m.wsview_toast_save_failed_title(), description: e instanceof Error ? e.message : m.wsview_error_unknown() });
 		} finally {
 			saving = false;
 		}
@@ -2146,7 +2161,7 @@
 		if (loadedPath !== path) return; // a file switch superseded this snapshot
 		diffLoading = false;
 		if (!res.ok) {
-			diffError = res.reason === 'no-git' ? 'Git is not installed.' : (res.error ?? 'Could not read the committed version.');
+			diffError = res.reason === 'no-git' ? m.wsview_diff_error_no_git() : (res.error ?? m.wsview_diff_error_default());
 			diffOriginal = '';
 			diffHasHead = false;
 			return;
@@ -2165,11 +2180,11 @@
 		const res = await gitInit(root);
 		scmBusy = false;
 		if (!res.ok) {
-			toaster.error({ title: 'Could not initialize repository', description: res.error });
+			toaster.error({ title: m.wsview_toast_git_init_failed_title(), description: res.error });
 			return;
 		}
 		await refreshGitStatus(root);
-		toaster.success({ title: 'Initialized empty Git repository' });
+		toaster.success({ title: m.wsview_toast_git_init_success_title() });
 	}
 
 	async function scmStage(paths: string[]) {
@@ -2178,7 +2193,7 @@
 		scmBusy = true;
 		const res = await gitStage(root, paths);
 		scmBusy = false;
-		if (!res.ok) toaster.error({ title: 'Stage failed', description: res.error });
+		if (!res.ok) toaster.error({ title: m.wsview_toast_stage_failed_title(), description: res.error });
 		await refreshGitStatus(root);
 	}
 
@@ -2188,15 +2203,18 @@
 		scmBusy = true;
 		const res = await gitUnstage(root, paths);
 		scmBusy = false;
-		if (!res.ok) toaster.error({ title: 'Unstage failed', description: res.error });
+		if (!res.ok) toaster.error({ title: m.wsview_toast_unstage_failed_title(), description: res.error });
 		await refreshGitStatus(root);
 	}
 
 	async function scmDiscard(changes: GitStatusEntry[]) {
 		const root = get(workspaceRoot);
 		if (!root || !changes.length) return;
-		const label = changes.length === 1 ? `"${basename(changes[0].path)}"` : `${changes.length} files`;
-		if (!confirm(`Discard changes to ${label}? This cannot be undone.`)) return;
+		const confirmMsg =
+			changes.length === 1
+				? m.wsview_confirm_discard_one({ name: basename(changes[0].path) })
+				: m.wsview_confirm_discard_other({ count: changes.length });
+		if (!confirm(confirmMsg)) return;
 		scmBusy = true;
 		// untracked files are deleted; tracked files are reverted to their staged/committed state
 		const untracked = changes.filter((c) => c.x === '?').map((c) => c.path);
@@ -2214,7 +2232,7 @@
 			if (!res.ok) err = res.error;
 		}
 		scmBusy = false;
-		if (err) toaster.error({ title: 'Discard failed', description: err });
+		if (err) toaster.error({ title: m.wsview_toast_discard_failed_title(), description: err });
 		const openAffected = !!loadedPath && changes.some((c) => c.path === loadedPath);
 		await refreshTree();
 		await refreshGitStatus(root);
@@ -2231,19 +2249,19 @@
 			const s = await gitStage(root, []);
 			if (!s.ok) {
 				scmBusy = false;
-				toaster.error({ title: 'Stage failed', description: s.error });
+				toaster.error({ title: m.wsview_toast_stage_failed_title(), description: s.error });
 				return false;
 			}
 		}
 		const res = await gitCommit(root, message);
 		scmBusy = false;
 		if (!res.ok) {
-			toaster.error({ title: 'Commit failed', description: res.error });
+			toaster.error({ title: m.wsview_toast_commit_failed_title(), description: res.error });
 			return false;
 		}
 		await refreshGitStatus(root);
 		if (viewMode === 'diff') void captureDiffSnapshot(); // the open diff now compares against the new HEAD
-		toaster.success({ title: 'Commit created' });
+		toaster.success({ title: m.wsview_toast_commit_created_title() });
 		return true;
 	}
 
@@ -2288,9 +2306,9 @@
 		visualDoc = null;
 		pendingVisualAnchor = null; // never re-anchor a later visual entry off this failed switch
 		if (failure.timeout) {
-			toaster.warning({ title: 'File too large to open in visual mode' });
+			toaster.warning({ title: m.wsview_toast_file_too_large_title() });
 		} else {
-			toaster.error({ title: 'Could not parse source', description: failure.message });
+			toaster.error({ title: m.wsview_toast_parse_failed_title(), description: failure.message });
 		}
 	}
 
@@ -2435,30 +2453,38 @@
 			<aside class="border-surface-200-800 bg-surface-50-950 flex shrink-0 flex-col border-r" style="width: {sidebarWidth}px">
 				<div class="border-surface-200-800 flex h-12 items-center justify-between gap-2 border-b px-3">
 					<span class="truncate text-sm font-semibold" title={$workspaceRoot ?? ''}>
-						{$workspaceRoot ? basename($workspaceRoot) : 'No folder'}
+						{$workspaceRoot ? basename($workspaceRoot) : m.wsview_no_folder()}
 					</span>
 					<div class="flex items-center gap-1">
-						<button class="btn-icon btn-icon-sm hover:preset-tonal" title="New file" onclick={() => fileTreeRef?.newAtRoot('file')}>
+						<button
+							class="btn-icon btn-icon-sm hover:preset-tonal"
+							title={m.wsview_new_file_title()}
+							onclick={() => fileTreeRef?.newAtRoot('file')}
+						>
 							<FilePlus class="size-4" />
 						</button>
-						<button class="btn-icon btn-icon-sm hover:preset-tonal" title="New folder" onclick={() => fileTreeRef?.newAtRoot('dir')}>
+						<button
+							class="btn-icon btn-icon-sm hover:preset-tonal"
+							title={m.wsview_new_folder_title()}
+							onclick={() => fileTreeRef?.newAtRoot('dir')}
+						>
 							<FolderPlus class="size-4" />
 						</button>
-						<button class="btn-icon btn-icon-sm hover:preset-tonal" title="Refresh file tree" onclick={refreshTree}>
+						<button class="btn-icon btn-icon-sm hover:preset-tonal" title={m.wsview_refresh_tree_title()} onclick={refreshTree}>
 							<RefreshCw class="size-4" />
 						</button>
 						<button
 							class="btn-icon btn-icon-sm {sidebarView === 'scm' ? 'text-primary-500' : 'hover:preset-tonal'}"
-							title="Source Control"
-							aria-label="Source Control"
+							title={m.wsview_source_control()}
+							aria-label={m.wsview_source_control()}
 							onclick={() => (sidebarView = sidebarView === 'scm' ? 'explorer' : 'scm')}
 						>
 							<GitBranch class="size-4" />
 						</button>
 						<button
 							class="btn-icon btn-icon-sm {sidebarView === 'search' ? 'text-primary-500' : 'hover:preset-tonal'}"
-							title={`Find in files (${modLabel}+Shift+F)`}
-							aria-label="Find in files"
+							title={m.wsview_find_in_files_title({ combo: `${modLabel}+Shift+F` })}
+							aria-label={m.wsview_find_in_files()}
 							onclick={() => (sidebarView === 'search' ? (sidebarView = 'explorer') : void openGlobalSearch())}
 						>
 							<Search class="size-4" />
@@ -2517,7 +2543,7 @@
 								onkeydown={resizeTocByKey}
 								role="separator"
 								aria-orientation="horizontal"
-								aria-label="Resize table of contents"
+								aria-label={m.wsview_resize_toc_aria()}
 								tabindex="0"
 							></div>
 							<div class="border-surface-200-800 min-h-0 overflow-y-auto border-t p-2" style="flex: {tocFraction} 1 0%">
@@ -2536,7 +2562,7 @@
 				onkeydown={resizeSidebarByKey}
 				role="separator"
 				aria-orientation="vertical"
-				aria-label="Resize sidebar"
+				aria-label={m.wsview_resize_sidebar_aria()}
 				tabindex="0"
 			></div>
 		{/if}
@@ -2550,14 +2576,14 @@
 					<button
 						class="btn-icon btn-icon-sm hover:preset-tonal shrink-0"
 						onclick={toggleSidebar}
-						title={sidebarOpen ? 'Hide file explorer' : 'Show file explorer'}
-						aria-label="Toggle file explorer"
+						title={sidebarOpen ? m.wsview_hide_file_explorer() : m.wsview_show_file_explorer()}
+						aria-label={m.wsview_toggle_file_explorer_aria()}
 					>
 						<PanelLeft class="size-4" />
 					</button>
 					<FileText class="text-surface-400 size-4 shrink-0" />
-					<span class="truncate text-sm font-medium">{loadedPath ? basename(loadedPath) : 'No file'}</span>
-					{#if $isDirty}<span class="bg-warning-500 size-2 shrink-0 rounded-full" title="Unsaved changes"></span>{/if}
+					<span class="truncate text-sm font-medium">{loadedPath ? basename(loadedPath) : m.wsview_no_file()}</span>
+					{#if $isDirty}<span class="bg-warning-500 size-2 shrink-0 rounded-full" title={m.wsview_unsaved_changes()}></span>{/if}
 					{#if loadedPath && kind === 'tex' && (viewMode === 'visual' || viewMode === 'source')}
 						<span class="border-surface-300-700 ml-2 shrink-0 border-l pl-3"><WordCount /></span>
 					{/if}
@@ -2569,16 +2595,18 @@
 							<button
 								class="flex items-center gap-1 px-2.5 py-1 {viewMode === 'visual' ? 'preset-filled-primary-500' : 'hover:preset-tonal'}"
 								onclick={() => setViewMode('visual')}
-								title="Visual editor"
+								title={m.wsview_visual_editor_title()}
 							>
-								<Eye class="size-3.5" /> Visual
+								<Eye class="size-3.5" />
+								{m.wsview_visual_label()}
 							</button>
 							<button
 								class="flex items-center gap-1 px-2.5 py-1 {viewMode === 'source' ? 'preset-filled-primary-500' : 'hover:preset-tonal'}"
 								onclick={() => setViewMode('source')}
-								title="LaTeX source"
+								title={m.wsview_latex_source_title()}
 							>
-								<Code class="size-3.5" /> Source
+								<Code class="size-3.5" />
+								{m.wsview_source_label()}
 							</button>
 						</div>
 					{/if}
@@ -2587,8 +2615,8 @@
 							<button
 								class="btn-icon btn-icon-sm hover:preset-tonal"
 								onclick={syncForward}
-								title="Sync to PDF (SyncTeX forward search)"
-								aria-label="Sync to PDF"
+								title={m.wsview_sync_to_pdf_title()}
+								aria-label={m.wsview_sync_to_pdf_aria()}
 							>
 								<LocateFixed class="size-4" />
 							</button>
@@ -2599,34 +2627,39 @@
 								<button
 									class="btn btn-sm preset-tonal-error w-20 justify-center gap-1.5 rounded-r-none"
 									onclick={stopCompile}
-									title={`Stop the running compile (${modLabel}+Alt+Enter)`}
+									title={m.wsview_stop_compile_title({ combo: `${modLabel}+Alt+Enter` })}
 								>
-									<Square class="size-4" /> Stop
+									<Square class="size-4" />
+									{m.wsview_stop_label()}
 								</button>
 							{:else if $settings.draftMode && pdfPaneOpen && !draftPaused}
 								<button
 									class="btn btn-sm preset-tonal-success min-w-24 justify-center gap-1.5 rounded-r-none whitespace-nowrap"
 									onclick={pauseDraft}
-									title="Live preview is running. Click to stop the engine"
+									title={m.wsview_live_preview_running_title()}
 								>
-									<span class="bg-success-500 size-2 animate-pulse rounded-full"></span> Live
+									<span class="bg-success-500 size-2 animate-pulse rounded-full"></span>
+									{m.wsview_live_label()}
 								</button>
 							{:else if $settings.draftMode && pdfPaneOpen && draftPaused}
 								<button
 									class="btn btn-sm preset-tonal-warning min-w-24 justify-center gap-1.5 rounded-r-none whitespace-nowrap"
 									onclick={resumeDraft}
-									title="Engine stopped. Click to resume the live preview"
+									title={m.wsview_engine_stopped_title()}
 								>
-									<Play class="size-4" /> Paused
+									<Play class="size-4" />
+									{m.wsview_paused_label()}
 								</button>
 							{:else}
 								<button
 									class="btn btn-sm preset-tonal-primary w-24 justify-center gap-1.5 rounded-r-none"
 									onclick={runCompile}
-									title={$settings.draftMode ? 'Open the live preview' : `Compile (${modLabel}+Alt+Enter)`}
+									title={$settings.draftMode
+										? m.wsview_open_live_preview_title()
+										: m.wsview_compile_title({ combo: `${modLabel}+Alt+Enter` })}
 								>
 									<Play class="size-4" />
-									{$settings.draftMode ? 'Preview' : 'Compile'}
+									{$settings.draftMode ? m.wsview_preview_label() : m.wsview_compile_label()}
 								</button>
 							{/if}
 							<button
@@ -2638,8 +2671,8 @@
 											: 'preset-tonal-success'
 										: 'preset-tonal-primary'} rounded-l-none border-l border-black/10 px-1"
 								onclick={() => (compileMenuOpen = !compileMenuOpen)}
-								title="Compile options"
-								aria-label="Compile options"
+								title={m.wsview_compile_options()}
+								aria-label={m.wsview_compile_options()}
 								aria-haspopup="menu"
 								aria-expanded={compileMenuOpen}
 							>
@@ -2661,7 +2694,8 @@
 											openCompileModal();
 										}}
 									>
-										<Settings2 class="size-4 shrink-0" /> Configure compile command…
+										<Settings2 class="size-4 shrink-0" />
+										{m.wsview_configure_compile_command()}
 									</button>
 								</div>
 							{/if}
@@ -2673,7 +2707,7 @@
 									showTerminal();
 									dockView = 'problems';
 								}}
-								title="Show problems from the last compile"
+								title={m.wsview_show_problems_title()}
 							>
 								{#if $compileLog.errors.length > 0}
 									<CircleAlert class="size-3.5" /> {$compileLog.errors.length}
@@ -2686,15 +2720,15 @@
 						<button
 							class="btn-icon btn-icon-sm hover:preset-tonal {pdfPaneOpen ? 'text-primary-500' : ''}"
 							onclick={togglePdfPane}
-							title="Toggle PDF preview"
-							aria-label="Toggle PDF preview"
+							title={m.wsview_toggle_pdf_preview()}
+							aria-label={m.wsview_toggle_pdf_preview()}
 						>
 							<PanelRight class="size-4" />
 						</button>
 					{/if}
 					<button class="btn btn-sm preset-filled-primary-500 gap-1.5" onclick={save} disabled={!loadedPath || saving || !$isDirty}>
 						{#if saving}<Loader2 class="size-4 animate-spin" />{:else}<Save class="size-4" />{/if}
-						Save
+						{m.wsview_save_label()}
 					</button>
 				</div>
 			</header>
@@ -2722,8 +2756,11 @@
 							{#if folderEmpty && !$activeFilePath}
 								<div class="mx-auto mt-16 max-w-xl px-6">
 									<div class="text-center">
-										<h2 class="text-lg font-semibold">Start a new document</h2>
-										<p class="text-surface-500 mt-1 text-sm">This folder has no <code>.tex</code> files yet. Pick a template to begin.</p>
+										<h2 class="text-lg font-semibold">{m.wsview_start_new_doc_heading()}</h2>
+										<p class="text-surface-500 mt-1 text-sm">
+											{m.wsview_start_new_doc_desc_pre()} <code>.tex</code>
+											{m.wsview_start_new_doc_desc_post()}
+										</p>
 									</div>
 									<div class="mt-6">
 										<StarterPicker onPick={pickStarter} onBlank={newTexFile} onImport={importStarterFiles} busy={applyingStarter} />
@@ -2740,32 +2777,33 @@
 										class="bg-surface-100-900 text-surface-600-300 border-surface-200-800 flex h-8 shrink-0 items-center gap-2 border-b px-3 text-xs"
 									>
 										<GitCompare class="size-3.5 shrink-0" />
-										<span class="font-medium">Changes since last commit</span>
-										{#if diffLoading}<span class="text-surface-500">· loading…</span>
+										<span class="font-medium">{m.wsview_diff_heading()}</span>
+										{#if diffLoading}<span class="text-surface-500">· {m.wsview_diff_loading()}</span>
 										{:else if diffError}<span class="text-error-500 truncate">· {diffError}</span>
-										{:else if !diffHasHead}<span class="text-surface-500">· new file (nothing committed yet)</span>{/if}
+										{:else if !diffHasHead}<span class="text-surface-500">· {m.wsview_diff_new_file()}</span>{/if}
 										<div class="ml-auto flex shrink-0 items-center gap-1">
 											<button
 												class="hover:preset-tonal rounded px-1.5 py-0.5"
 												onclick={toggleDiffLayout}
-												title={diffLayout === 'unified' ? 'Switch to side-by-side' : 'Switch to inline'}
+												title={diffLayout === 'unified' ? m.wsview_switch_to_side_by_side() : m.wsview_switch_to_inline()}
 											>
-												{diffLayout === 'unified' ? 'Side-by-side' : 'Inline'}
+												{diffLayout === 'unified' ? m.wsview_side_by_side_label() : m.wsview_inline_label()}
 											</button>
 											<button
 												class="hover:preset-tonal rounded p-0.5"
 												onclick={captureDiffSnapshot}
-												title="Refresh diff"
-												aria-label="Refresh diff"
+												title={m.wsview_refresh_diff()}
+												aria-label={m.wsview_refresh_diff()}
 											>
 												<RefreshCw class="size-3.5" />
 											</button>
 											<button
 												class="hover:preset-tonal-primary flex items-center gap-1 rounded px-1.5 py-0.5 font-medium"
 												onclick={exitDiff}
-												title="Back to the editor"
+												title={m.wsview_back_to_editor_title()}
 											>
-												<X class="size-3.5" /> Close
+												<X class="size-3.5" />
+												{m.wsview_close_label()}
 											</button>
 										</div>
 									</div>
@@ -2804,7 +2842,7 @@
 												localReferences={allReferences}
 												imageDir={loadedPath ? dirname(loadedPath) : undefined}
 												onLocalChange={onChange}
-												placeholder="Start writing…"
+												placeholder={m.wsview_editor_placeholder()}
 												onHistoryBoundary={workspaceHistoryStep}
 											/>
 										</div>
@@ -2832,13 +2870,16 @@
 									<img src={fileUrl(loadedPath)} alt={basename(loadedPath)} class="max-h-full max-w-full object-contain" />
 								</div>
 							{:else if loadedPath && kind === 'binary'}
-								<div class="text-surface-500 mt-12 text-center text-sm">{basename(loadedPath)} (binary file, not editable here)</div>
+								<div class="text-surface-500 mt-12 text-center text-sm">
+									{m.wsview_binary_file_note({ name: basename(loadedPath) })}
+								</div>
 							{:else if $activeFilePath}
 								<div class="text-surface-500 mt-12 flex items-center justify-center gap-2 text-sm">
-									<Loader2 class="size-4 animate-spin" /> Opening…
+									<Loader2 class="size-4 animate-spin" />
+									{m.wsview_opening()}
 								</div>
 							{:else}
-								<div class="text-surface-500 mt-12 text-center text-sm">Select a file to edit.</div>
+								<div class="text-surface-500 mt-12 text-center text-sm">{m.wsview_select_file_prompt()}</div>
 							{/if}
 						</div>
 					</div>
@@ -2853,7 +2894,7 @@
 						onkeydown={resizePdfByKey}
 						role="separator"
 						aria-orientation="vertical"
-						aria-label="Resize PDF preview"
+						aria-label={m.wsview_resize_pdf_preview_aria()}
 						tabindex="0"
 					></div>
 					<aside
@@ -2861,8 +2902,13 @@
 						style="width: {pdfPaneWidth}px; grid-column: 3; grid-row: {dockShrunk ? '2 / -1' : '2'}"
 					>
 						<div class="bg-surface-100-900 text-surface-600-300 flex h-8 shrink-0 items-center justify-between border-b px-3 text-xs">
-							<span class="font-medium">{$settings.draftMode ? 'Live preview' : 'PDF preview'}</span>
-							<button class="hover:preset-tonal rounded p-0.5" onclick={togglePdfPane} title="Close preview" aria-label="Close preview">
+							<span class="font-medium">{$settings.draftMode ? m.wsview_live_preview_label() : m.wsview_pdf_preview_label()}</span>
+							<button
+								class="hover:preset-tonal rounded p-0.5"
+								onclick={togglePdfPane}
+								title={m.wsview_close_preview()}
+								aria-label={m.wsview_close_preview()}
+							>
 								<X class="size-3.5" />
 							</button>
 						</div>
@@ -2896,7 +2942,7 @@
 						onkeydown={resizeTerminalByKey}
 						role="separator"
 						aria-orientation="horizontal"
-						aria-label="Resize terminal"
+						aria-label={m.wsview_resize_terminal_aria()}
 						tabindex="0"
 					></div>
 				{/if}
@@ -2911,7 +2957,7 @@
 								class="rounded px-2 py-1 {dockView === 'terminal' ? 'preset-tonal font-medium' : 'hover:preset-tonal'}"
 								onclick={() => (dockView = 'terminal')}
 							>
-								Terminal
+								{m.wsview_terminal_label()}
 							</button>
 							<button
 								class="flex items-center gap-1 rounded px-2 py-1 {dockView === 'problems'
@@ -2919,7 +2965,7 @@
 									: 'hover:preset-tonal'}"
 								onclick={() => (dockView = 'problems')}
 							>
-								Problems
+								{m.wsview_problems_label()}
 								{#if $compileLog && $compileLog.errors.length > 0}
 									<span class="text-error-500 font-semibold">{$compileLog.errors.length}</span>
 								{:else if $compileLog && $compileLog.warnings.length > 0}
@@ -2935,11 +2981,14 @@
 										onclick={() => (termMenuOpen = !termMenuOpen)}
 									>
 										<SquareTerminal class="size-3.5" />
-										<span class="font-medium">{terminals.find((t) => t.id === activeTermId)?.title ?? 'Terminal'}</span>
+										<span class="font-medium">{terminals.find((t) => t.id === activeTermId)?.title ?? m.wsview_terminal_label()}</span>
 										<ChevronDown class="size-3" />
 									</button>
 									{#if termMenuOpen}
-										<button class="fixed inset-0 z-40 cursor-default" aria-label="Close menu" onclick={() => (termMenuOpen = false)}
+										<button
+											class="fixed inset-0 z-40 cursor-default"
+											aria-label={m.wsview_close_menu_aria()}
+											onclick={() => (termMenuOpen = false)}
 										></button>
 										<div
 											class="bg-surface-50-950 border-surface-300-700 absolute right-0 bottom-full z-50 mb-1 min-w-52 overflow-hidden rounded border py-1 shadow-lg"
@@ -2952,8 +3001,8 @@
 													</button>
 													<button
 														class="hover:preset-tonal-error mr-1 rounded p-1"
-														title="Kill terminal"
-														aria-label="Kill terminal"
+														title={m.wsview_kill_terminal()}
+														aria-label={m.wsview_kill_terminal()}
 														onclick={() => killTerminal(t.id)}
 													>
 														<Trash2 class="size-3.5" />
@@ -2964,18 +3013,24 @@
 												class="hover:preset-tonal-primary border-surface-200-800 mt-1 flex w-full items-center gap-2 border-t px-2.5 py-1.5 text-left"
 												onclick={addTerminal}
 											>
-												<Plus class="size-3.5" /> New terminal
+												<Plus class="size-3.5" />
+												{m.wsview_new_terminal()}
 											</button>
 										</div>
 									{/if}
 								</div>
-								<button class="hover:preset-tonal rounded p-1" title="New terminal" aria-label="New terminal" onclick={addTerminal}>
+								<button
+									class="hover:preset-tonal rounded p-1"
+									title={m.wsview_new_terminal()}
+									aria-label={m.wsview_new_terminal()}
+									onclick={addTerminal}
+								>
 									<Plus class="size-3.5" />
 								</button>
 								<button
 									class="hover:preset-tonal-error rounded p-1"
-									title="Kill terminal"
-									aria-label="Kill terminal"
+									title={m.wsview_kill_terminal()}
+									aria-label={m.wsview_kill_terminal()}
 									onclick={() => activeTermId != null && killTerminal(activeTermId)}
 								>
 									<Trash2 class="size-3.5" />
@@ -2984,8 +3039,8 @@
 							{#if pdfPaneOpen}
 								<button
 									class="hover:preset-tonal rounded p-1"
-									title={terminalShrink ? 'Expand panel under the preview' : 'Shrink panel to the editor width'}
-									aria-label={terminalShrink ? 'Expand panel to full width' : 'Shrink panel to editor width'}
+									title={terminalShrink ? m.wsview_expand_panel_title() : m.wsview_shrink_panel_title()}
+									aria-label={terminalShrink ? m.wsview_expand_panel_aria() : m.wsview_shrink_panel_aria()}
 									onclick={toggleTerminalShrink}
 								>
 									{#if terminalShrink}
@@ -2995,7 +3050,12 @@
 									{/if}
 								</button>
 							{/if}
-							<button class="hover:preset-tonal rounded p-1" title="Hide panel" aria-label="Hide panel" onclick={toggleTerminal}>
+							<button
+								class="hover:preset-tonal rounded p-1"
+								title={m.wsview_hide_panel()}
+								aria-label={m.wsview_hide_panel()}
+								onclick={toggleTerminal}
+							>
 								<X class="size-3.5" />
 							</button>
 						</div>
@@ -3026,14 +3086,13 @@
 		>
 			<div class="card bg-surface-50-950 border-surface-300-700 w-full max-w-lg border p-5 shadow-2xl">
 				<div class="mb-3 flex items-center justify-between">
-					<h2 class="text-base font-semibold">Choose the main file</h2>
-					<button class="btn-icon btn-icon-sm hover:preset-tonal" onclick={dismissMainConfirm} aria-label="Close">
+					<h2 class="text-base font-semibold">{m.wsview_mainconfirm_title()}</h2>
+					<button class="btn-icon btn-icon-sm hover:preset-tonal" onclick={dismissMainConfirm} aria-label={m.wsview_close_aria()}>
 						<X class="size-4" />
 					</button>
 				</div>
 				<p class="text-surface-600-300 mb-3 text-sm">
-					A project compiles from one main .tex file; the other files are pulled in from it. Texpile picked the most likely one below. You
-					can change it later by right-clicking a file in the explorer and choosing "Set as main file".
+					{m.wsview_mainconfirm_desc()}
 				</p>
 				<div class="border-surface-300-700 mb-4 max-h-64 overflow-y-auto rounded border">
 					{#each mainCandidates as f (f.path)}
@@ -3053,15 +3112,17 @@
 							/>
 							<span class="truncate">{f.relPath}</span>
 							{#if mainDetected && samePath(f.path, mainDetected)}
-								<span class="badge preset-tonal-primary ml-auto shrink-0 text-[10px]">detected</span>
+								<span class="badge preset-tonal-primary ml-auto shrink-0 text-[10px]">{m.wsview_badge_detected()}</span>
 							{:else if mainDocRoots.has(f.path)}
-								<span class="badge preset-tonal-surface ml-auto shrink-0 text-[10px]">document</span>
+								<span class="badge preset-tonal-surface ml-auto shrink-0 text-[10px]">{m.wsview_badge_document()}</span>
 							{/if}
 						</label>
 					{/each}
 				</div>
 				<div class="flex justify-end">
-					<button class="btn btn-sm preset-filled-primary-500" onclick={confirmMainFile} disabled={!mainChoice}>Use this file</button>
+					<button class="btn btn-sm preset-filled-primary-500" onclick={confirmMainFile} disabled={!mainChoice}
+						>{m.wsview_use_this_file()}</button
+					>
 				</div>
 			</div>
 		</div>
@@ -3075,8 +3136,12 @@
 		>
 			<div class="card bg-surface-50-950 border-surface-300-700 w-full max-w-lg border p-5 shadow-2xl">
 				<div class="mb-3 flex items-center justify-between">
-					<h2 class="text-base font-semibold">Compile command</h2>
-					<button class="btn-icon btn-icon-sm hover:preset-tonal" onclick={() => (compileModalOpen = false)} aria-label="Close">
+					<h2 class="text-base font-semibold">{m.wsview_compile_modal_title()}</h2>
+					<button
+						class="btn-icon btn-icon-sm hover:preset-tonal"
+						onclick={() => (compileModalOpen = false)}
+						aria-label={m.wsview_close_aria()}
+					>
 						<X class="size-4" />
 					</button>
 				</div>
@@ -3085,7 +3150,7 @@
 
 				<!-- Live mode has its own lualatex pipeline; when on, the shell command is inert -->
 				<div class="mb-1 flex items-center justify-between gap-4">
-					<span class="text-sm">Live mode <span class="text-surface-500">(experimental)</span></span>
+					<span class="text-sm">{m.wsview_live_mode_label()} <span class="text-surface-500">{m.wsview_experimental_label()}</span></span>
 					<Switch checked={$settings.draftMode} onCheckedChange={(d) => updateSettings({ draftMode: d.checked })}>
 						<Switch.Control><Switch.Thumb /></Switch.Control>
 						<Switch.HiddenInput />
@@ -3094,22 +3159,22 @@
 
 				{#if $settings.draftMode}
 					<p class="text-surface-500 mt-1 mb-1 text-xs">
-						Live per-page preview: compiles the whole project with the real engine and re-typesets only what you change. Live mode runs its
-						own <strong>lualatex</strong> pipeline, so the compile command and engine below cannot be customized. Only lualatex is supported.
+						{m.wsview_livemode_desc_pre()} <strong>lualatex</strong>
+						{m.wsview_livemode_desc_post()}
 					</p>
 					<div class="border-surface-300-700 text-surface-500 mt-3 rounded border border-dashed px-3 py-2 text-xs">
-						Compile command &middot; disabled in live mode
+						{m.wsview_compile_disabled_live()}
 						<code class="bg-surface-200-800 ml-1 rounded px-1 opacity-70">lualatex (built-in)</code>
 					</div>
 				{:else}
 					<p class="text-surface-600-300 mt-2 mb-3 text-sm">
-						Runs in a shell at the folder root. <code class="bg-surface-200-800 rounded px-1">{'{main}'}</code> expands to your main file. Saved
-						for this folder.
+						{m.wsview_compile_desc_pre()} <code class="bg-surface-200-800 rounded px-1">{'{main}'}</code>
+						{m.wsview_compile_desc_post()}
 					</p>
 
 					<!-- quick setup: chips reflect the command when recognizable, and regenerate it on click -->
 					<div class="mb-2 flex flex-wrap items-center gap-2 text-sm">
-						<span class="text-surface-500 text-xs">Engine</span>
+						<span class="text-surface-500 text-xs">{m.wsview_engine_label()}</span>
 						{#each ['pdflatex', 'lualatex', 'xelatex'] as const as eng (eng)}
 							<button
 								type="button"
@@ -3122,11 +3187,11 @@
 							</button>
 						{/each}
 						{#if draftEngine === null && compileDraft.trim()}
-							<span class="text-surface-400 text-xs italic">custom</span>
+							<span class="text-surface-400 text-xs italic">{m.wsview_custom_label()}</span>
 						{/if}
 						<label class="text-surface-600-300 ml-auto inline-flex items-center gap-1.5 text-xs">
 							<input type="checkbox" class="checkbox" checked={draftLatexmk} onchange={(e) => applyLatexmk(e.currentTarget.checked)} />
-							use latexmk
+							{m.wsview_use_latexmk_label()}
 						</label>
 					</div>
 
@@ -3143,15 +3208,14 @@
 						}}
 					/>
 					<div class="mt-4 flex items-center justify-between gap-4">
-						<span class="text-sm">Compile completion marker</span>
+						<span class="text-sm">{m.wsview_completion_marker_label()}</span>
 						<Switch checked={$settings.compileSentinel} onCheckedChange={(d) => updateSettings({ compileSentinel: d.checked })}>
 							<Switch.Control><Switch.Thumb /></Switch.Control>
 							<Switch.HiddenInput />
 						</Switch>
 					</div>
 					<p class="text-surface-500 mt-1 text-xs">
-						Appends a marker echo after the compile command so the editor knows when it finishes. Turn off if it interferes with your shell
-						or compile command.
+						{m.wsview_completion_marker_desc()}
 					</p>
 				{/if}
 
@@ -3161,25 +3225,26 @@
 						class="text-surface-500 hover:text-surface-950-50 mt-4 inline-flex items-center gap-1 text-xs"
 						onclick={() => (advancedOpen = !advancedOpen)}
 					>
-						<ChevronDown class="size-3.5 transition-transform {advancedOpen ? '' : '-rotate-90'}" /> Advanced: output paths
+						<ChevronDown class="size-3.5 transition-transform {advancedOpen ? '' : '-rotate-90'}" />
+						{m.wsview_advanced_output_paths()}
 					</button>
 					{#if advancedOpen}
 						<div class="mt-2 space-y-3">
 							<p class="text-surface-500 text-xs">
-								The exact file your command produces, one each. Override only if auto-detection guesses wrong (a custom
-								<code class="bg-surface-200-800 rounded px-1">-jobname</code> or unusual output layout). SyncTeX follows the PDF. Paths are relative
-								to the folder root.
+								{m.wsview_advanced_desc_pre()}
+								<code class="bg-surface-200-800 rounded px-1">-jobname</code>
+								{m.wsview_advanced_desc_post()}
 							</p>
 							<div>
 								<div class="mb-1 flex items-center justify-between gap-2">
-									<span class="text-surface-600-300 text-xs font-medium">Compiled PDF file</span>
+									<span class="text-surface-600-300 text-xs font-medium">{m.wsview_pdf_file_label()}</span>
 									{#if pdfPathWarning}<span class="text-warning-600-400 text-xs">{pdfPathWarning}</span>{/if}
 								</div>
 								<div class="flex gap-2">
 									<input
 										class="input flex-1 font-mono text-sm"
 										bind:value={compileOutputsDraft.pdf}
-										placeholder="Auto detected from command"
+										placeholder={m.wsview_auto_detected_placeholder()}
 										spellcheck="false"
 									/>
 									<button
@@ -3187,22 +3252,22 @@
 										class="btn btn-sm hover:preset-tonal shrink-0"
 										onclick={() => (compileOutputsDraft.pdf = '')}
 										disabled={!compileOutputsDraft.pdf}
-										title="Clear and auto-detect from the command"
+										title={m.wsview_clear_autodetect_title()}
 									>
-										Auto
+										{m.wsview_auto_button()}
 									</button>
 								</div>
 							</div>
 							<div>
 								<div class="mb-1 flex items-center justify-between gap-2">
-									<span class="text-surface-600-300 text-xs font-medium">Log file</span>
+									<span class="text-surface-600-300 text-xs font-medium">{m.wsview_log_file_label()}</span>
 									{#if logPathWarning}<span class="text-warning-600-400 text-xs">{logPathWarning}</span>{/if}
 								</div>
 								<div class="flex gap-2">
 									<input
 										class="input flex-1 font-mono text-sm"
 										bind:value={compileOutputsDraft.log}
-										placeholder="Auto detected from command"
+										placeholder={m.wsview_auto_detected_placeholder()}
 										spellcheck="false"
 									/>
 									<button
@@ -3210,9 +3275,9 @@
 										class="btn btn-sm hover:preset-tonal shrink-0"
 										onclick={() => (compileOutputsDraft.log = '')}
 										disabled={!compileOutputsDraft.log}
-										title="Clear and auto-detect from the command"
+										title={m.wsview_clear_autodetect_title()}
 									>
-										Auto
+										{m.wsview_auto_button()}
 									</button>
 								</div>
 							</div>
@@ -3222,10 +3287,10 @@
 
 				<div class="mt-4 flex items-center justify-between gap-3">
 					<span class="text-surface-500 text-xs">
-						{#if !$mainFile}Pick a main file to run.{/if}
+						{#if !$mainFile}{m.wsview_pick_main_file_to_run()}{/if}
 					</span>
 					<div class="flex gap-2">
-						<button class="btn btn-sm hover:preset-tonal" onclick={() => (compileModalOpen = false)}>Cancel</button>
+						<button class="btn btn-sm hover:preset-tonal" onclick={() => (compileModalOpen = false)}>{m.wsview_cancel_label()}</button>
 						{#if $settings.draftMode}
 							<button
 								class="btn btn-sm preset-filled-primary-500 gap-1.5"
@@ -3235,24 +3300,27 @@
 								}}
 								disabled={!$mainFile}
 							>
-								<Play class="size-4" /> Run preview
+								<Play class="size-4" />
+								{m.wsview_run_preview()}
 							</button>
 						{:else}
-							<button class="btn btn-sm hover:preset-tonal" onclick={() => saveCompileCommand(false)}>Save</button>
+							<button class="btn btn-sm hover:preset-tonal" onclick={() => saveCompileCommand(false)}>{m.wsview_save_label()}</button>
 							<button
 								class="btn btn-sm preset-tonal-primary gap-1.5"
 								onclick={useDefaultCommand}
 								disabled={DEFAULT_COMPILE_COMMAND.includes('{main}') && !$mainFile}
-								title="Use the default command and run"
+								title={m.wsview_use_default_title()}
 							>
-								<Play class="size-4" /> Use default
+								<Play class="size-4" />
+								{m.wsview_use_default()}
 							</button>
 							<button
 								class="btn btn-sm preset-filled-primary-500 gap-1.5"
 								onclick={() => saveCompileCommand(true)}
 								disabled={compileDraft.includes('{main}') && !$mainFile}
 							>
-								<Play class="size-4" /> Save &amp; run
+								<Play class="size-4" />
+								{m.wsview_save_and_run()}
 							</button>
 						{/if}
 					</div>
@@ -3270,21 +3338,25 @@
 			<div class="card bg-surface-50-950 border-surface-300-700 w-full max-w-md border p-5 shadow-2xl">
 				<div class="mb-3 flex items-center justify-between">
 					<h2 class="flex items-center gap-2 text-base font-semibold">
-						<TriangleAlert class="text-warning-500 size-5" /> Format document
+						<TriangleAlert class="text-warning-500 size-5" />
+						{m.wsview_format_modal_title()}
 					</h2>
-					<button class="btn-icon btn-icon-sm hover:preset-tonal" onclick={() => (formatModalOpen = false)} aria-label="Close">
+					<button
+						class="btn-icon btn-icon-sm hover:preset-tonal"
+						onclick={() => (formatModalOpen = false)}
+						aria-label={m.wsview_close_aria()}
+					>
 						<X class="size-4" />
 					</button>
 				</div>
 				<p class="text-surface-600-300 mb-4 text-sm">
-					This reindents your LaTeX source with <code class="bg-surface-200-800 rounded px-1">latexindent</code>. It only touches
-					whitespace, but in rare cases (unusual verbatim-like environments, whitespace-sensitive macros) that can still change what
-					renders. Undo (Ctrl+Z) reverts it if something looks off.
+					{m.wsview_format_desc_pre()} <code class="bg-surface-200-800 rounded px-1">latexindent</code>{m.wsview_format_desc_post()}
 				</p>
 				<div class="flex justify-end gap-2">
-					<button class="btn btn-sm hover:preset-tonal" onclick={() => (formatModalOpen = false)}>Cancel</button>
+					<button class="btn btn-sm hover:preset-tonal" onclick={() => (formatModalOpen = false)}>{m.wsview_cancel_label()}</button>
 					<button class="btn btn-sm preset-filled-primary-500 gap-1.5" onclick={runFormat} disabled={formatting}>
-						{#if formatting}<Loader2 class="size-4 animate-spin" />{/if} Format
+						{#if formatting}<Loader2 class="size-4 animate-spin" />{/if}
+						{m.wsview_format_button()}
 					</button>
 				</div>
 			</div>
@@ -3295,14 +3367,14 @@
 	{#if conflict}
 		<div class="fixed inset-0 z-1300 flex items-center justify-center bg-black/40 p-4">
 			<div class="card bg-surface-50-950 border-surface-300-700 w-full max-w-md border p-5 shadow-2xl">
-				<h2 class="text-lg font-semibold">File changed on disk</h2>
+				<h2 class="text-lg font-semibold">{m.wsview_conflict_title()}</h2>
 				<p class="text-surface-600-300 mt-2 text-sm">
-					<span class="font-medium">{basename(conflict.path)}</span> was modified outside the editor while you had unsaved changes. Which version
-					do you want to keep?
+					<span class="font-medium">{basename(conflict.path)}</span>
+					{m.wsview_conflict_body()}
 				</p>
 				<div class="mt-5 flex justify-end gap-2">
-					<button class="btn hover:preset-tonal" onclick={() => resolveConflict('reload')}>Reload from disk</button>
-					<button class="btn preset-filled-primary-500" onclick={() => resolveConflict('keep')}>Keep my version</button>
+					<button class="btn hover:preset-tonal" onclick={() => resolveConflict('reload')}>{m.wsview_reload_from_disk()}</button>
+					<button class="btn preset-filled-primary-500" onclick={() => resolveConflict('keep')}>{m.wsview_keep_my_version()}</button>
 				</div>
 			</div>
 		</div>
@@ -3315,17 +3387,13 @@
 			onmousedown={(e) => e.target === e.currentTarget && (pendingRefUpdate = null)}
 		>
 			<div class="card bg-surface-50-950 border-surface-300-700 w-full max-w-md border p-5 shadow-2xl">
-				<h2 class="text-lg font-semibold">Update file references?</h2>
+				<h2 class="text-lg font-semibold">{m.wsview_refupdate_title()}</h2>
 				<p class="text-surface-600-300 mt-2 text-sm">
-					{pendingRefUpdate.total} reference{pendingRefUpdate.total === 1 ? '' : 's'} in {pendingRefUpdate.hits.length} file{pendingRefUpdate
-						.hits.length === 1
-						? ''
-						: 's'} point to <code class="text-xs break-all">{pendingRefUpdate.oldRel}</code>. Repoint
-					{pendingRefUpdate.total === 1 ? 'it' : 'them'} to <code class="text-xs break-all">{pendingRefUpdate.newRel}</code>?
+					{refUpdateBody}
 				</p>
 				<div class="mt-5 flex justify-end gap-2">
-					<button class="btn hover:preset-tonal" onclick={() => (pendingRefUpdate = null)}>Keep as-is</button>
-					<button class="btn preset-filled-primary-500" onclick={applyRefUpdate}>Update all</button>
+					<button class="btn hover:preset-tonal" onclick={() => (pendingRefUpdate = null)}>{m.wsview_refupdate_keep()}</button>
+					<button class="btn preset-filled-primary-500" onclick={applyRefUpdate}>{m.wsview_refupdate_apply()}</button>
 				</div>
 			</div>
 		</div>

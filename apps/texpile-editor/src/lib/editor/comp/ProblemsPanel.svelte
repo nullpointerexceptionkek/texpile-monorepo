@@ -2,6 +2,7 @@
 	import { CircleAlert, TriangleAlert, Box, FileCheck2, Info } from '@lucide/svelte';
 	import { compileLog, resolveLogPath } from '$lib/stores/compileLogStore';
 	import type { LogEntry } from '$lib/latex-log';
+	import { m } from '$lib/paraglide/messages';
 
 	// root is the workspace root used to resolve TeX-printed relative paths
 	let { root, onJump }: { root: string; onJump: (file: string, line: number) => void } = $props();
@@ -26,36 +27,52 @@
 <div class="flex h-full min-h-0 flex-col text-xs">
 	{#if !log}
 		<div class="text-surface-500-400 flex flex-1 items-center justify-center gap-2 p-4">
-			<Info class="size-4" /> No compile yet. Problems from the LaTeX log will appear here.
+			<Info class="size-4" />
+			{m.problems_empty_state()}
 		</div>
 	{:else}
 		<div class="border-surface-200-800 flex h-7 shrink-0 items-center gap-3 border-b px-2">
 			{#if log.status.fatal || (log.errors.length > 0 && log.status.pages === undefined)}
 				<span class="text-error-500 flex items-center gap-1 font-medium">
-					<CircleAlert class="size-3.5" /> Compile failed{log.status.fatal ? ' (no PDF produced)' : ''}
+					<CircleAlert class="size-3.5" />
+					{log.status.fatal ? m.problems_status_failed_no_pdf() : m.problems_status_failed()}
 				</span>
 			{:else if log.errors.length === 0 && log.warnings.length === 0}
 				<span class="text-success-600-400 flex items-center gap-1 font-medium">
-					<FileCheck2 class="size-3.5" /> Compiled clean{log.status.pages
-						? ` (${log.status.pages} page${log.status.pages === 1 ? '' : 's'})`
+					<FileCheck2 class="size-3.5" />
+					{m.problems_status_clean()}{log.status.pages
+						? ` (${
+								log.status.pages === 1
+									? m.problems_page_count_one({ count: log.status.pages })
+									: m.problems_page_count_other({ count: log.status.pages })
+							})`
 						: ''}
 				</span>
 			{:else}
 				<span class="text-surface-600-300">
-					{log.errors.length} error{log.errors.length === 1 ? '' : 's'}, {log.warnings.length} warning{log.warnings.length === 1
-						? ''
-						: 's'}{log.status.pages ? ` (${log.status.pages} page${log.status.pages === 1 ? '' : 's'})` : ''}
+					{log.errors.length === 1
+						? m.problems_error_count_one({ count: log.errors.length })
+						: m.problems_error_count_other({ count: log.errors.length })}, {log.warnings.length === 1
+						? m.problems_warning_count_one({ count: log.warnings.length })
+						: m.problems_warning_count_other({ count: log.warnings.length })}{log.status.pages
+						? ` (${
+								log.status.pages === 1
+									? m.problems_page_count_one({ count: log.status.pages })
+									: m.problems_page_count_other({ count: log.status.pages })
+							})`
+						: ''}
 				</span>
 			{/if}
 			<label class="text-surface-500-400 ml-auto flex cursor-pointer items-center gap-1.5">
 				<input type="checkbox" class="checkbox scale-75" bind:checked={showBadboxes} />
-				Boxes ({log.badboxes.length})
+				{m.problems_boxes_count({ count: log.badboxes.length })}
 			</label>
 		</div>
 		<div class="min-h-0 flex-1 overflow-y-auto">
 			{#if rows.length === 0}
 				<div class="text-surface-500-400 flex items-center gap-2 p-4">
-					<FileCheck2 class="size-4" /> No problems.
+					<FileCheck2 class="size-4" />
+					{m.problems_no_problems()}
 				</div>
 			{:else}
 				{#each rows as e, i (i)}
@@ -87,7 +104,7 @@
 								{shortPath(e)}{e.line ? `:${e.line}` : ''}
 							</span>
 						{:else if e.page}
-							<span class="text-surface-500-400 shrink-0 font-mono">p.{e.page}</span>
+							<span class="text-surface-500-400 shrink-0 font-mono">{m.problems_page_ref({ page: e.page })}</span>
 						{/if}
 					</button>
 				{/each}

@@ -3,17 +3,18 @@
 	import { Switch } from '@skeletonlabs/skeleton-svelte';
 	import { settings, updateSettings } from '$lib/settings';
 	import { updateState, updateModalOpen, startDownload, installNow } from '$lib/updates';
+	import { m } from '$lib/paraglide/messages';
 
 	const u = $derived($updateState);
 	const pkexec = $derived(u.installMode === 'package-manager');
 	const title = $derived(
 		u.phase === 'downloading'
-			? 'Downloading update'
+			? m.updatemodal_title_downloading()
 			: u.phase === 'downloaded'
-				? 'Update ready'
+				? m.updatemodal_title_downloaded()
 				: u.phase === 'error'
-					? 'Update failed'
-					: 'Update available'
+					? m.updatemodal_title_error()
+					: m.updatemodal_title_available()
 	);
 
 	function close() {
@@ -43,13 +44,13 @@
 					<Download class="text-primary-500 size-5" />
 					{title}
 				</h2>
-				<button class="btn-icon btn-icon-sm hover:preset-tonal" onclick={close} aria-label="Close">
+				<button class="btn-icon btn-icon-sm hover:preset-tonal" onclick={close} aria-label={m.updatemodal_close_aria()}>
 					<X class="size-4" />
 				</button>
 			</div>
 
 			{#if u.phase === 'available'}
-				<p class="text-surface-600-300 mb-4 text-sm">Texpile v{u.version} is available.</p>
+				<p class="text-surface-600-300 mb-4 text-sm">{m.updatemodal_version_available({ version: u.version })}</p>
 				{#if u.notes?.length}
 					<ul class="text-surface-600-300 mb-4 min-h-0 list-disc space-y-1 overflow-y-auto pl-5 text-sm">
 						{#each u.notes as note (note)}
@@ -58,16 +59,17 @@
 					</ul>
 				{/if}
 				<div class="mb-4 flex items-center justify-between gap-4">
-					<span class="text-sm">Check for updates on launch</span>
+					<span class="text-sm">{m.updatemodal_check_updates_on_launch()}</span>
 					<Switch checked={$settings.checkForUpdates} onCheckedChange={(d) => updateSettings({ checkForUpdates: d.checked })}>
 						<Switch.Control><Switch.Thumb /></Switch.Control>
 						<Switch.HiddenInput />
 					</Switch>
 				</div>
 				<div class="flex justify-end gap-2">
-					<button class="btn btn-sm hover:preset-tonal" onclick={close}>Dismiss</button>
+					<button class="btn btn-sm hover:preset-tonal" onclick={close}>{m.updatemodal_dismiss()}</button>
 					<button class="btn btn-sm preset-filled-primary-500 gap-1.5" onclick={() => startDownload()}>
-						<Download class="size-4" /> Download update
+						<Download class="size-4" />
+						{m.updatemodal_download_update()}
 					</button>
 				</div>
 			{:else if u.phase === 'downloading'}
@@ -76,46 +78,53 @@
 				</div>
 				<p class="text-surface-600-300 mb-4 text-sm">
 					{#if u.total > 0}
-						{Math.round(u.percent)}% ({mb(u.transferred)} MB of {mb(u.total)} MB)
+						{m.updatemodal_progress_percent({
+							percent: Math.round(u.percent),
+							transferred: mb(u.transferred),
+							total: mb(u.total)
+						})}
 					{:else}
-						Starting download...
+						{m.updatemodal_starting_download()}
 					{/if}
 				</p>
-				<p class="text-surface-500 mb-4 text-sm">You can close this window. The download continues in the background.</p>
+				<p class="text-surface-500 mb-4 text-sm">{m.updatemodal_background_download_notice()}</p>
 				<div class="flex justify-end">
-					<button class="btn btn-sm hover:preset-tonal" onclick={close}>Hide</button>
+					<button class="btn btn-sm hover:preset-tonal" onclick={close}>{m.updatemodal_hide()}</button>
 				</div>
 			{:else if u.phase === 'downloaded'}
 				{#if pkexec}
 					<p class="text-surface-600-300 mb-4 text-sm">
-						Texpile v{u.version} downloaded. Your system will ask for your password, and Texpile restarts when the install finishes.
+						{m.updatemodal_downloaded_pkexec({ version: u.version })}
 					</p>
 					<div class="flex justify-end gap-2">
-						<button class="btn btn-sm hover:preset-tonal" onclick={close}>Later</button>
+						<button class="btn btn-sm hover:preset-tonal" onclick={close}>{m.updatemodal_later()}</button>
 						<button class="btn btn-sm preset-filled-primary-500 gap-1.5" onclick={installNow}>
-							<RefreshCw class="size-4" /> Install now
+							<RefreshCw class="size-4" />
+							{m.updatemodal_install_now()}
 						</button>
 					</div>
 				{:else}
-					<p class="text-surface-600-300 mb-4 text-sm">Texpile v{u.version} will install when you close Texpile.</p>
+					<p class="text-surface-600-300 mb-4 text-sm">{m.updatemodal_downloaded_ready({ version: u.version })}</p>
 					<div class="flex justify-end gap-2">
-						<button class="btn btn-sm hover:preset-tonal" onclick={close}>Later</button>
+						<button class="btn btn-sm hover:preset-tonal" onclick={close}>{m.updatemodal_later()}</button>
 						<button class="btn btn-sm preset-filled-primary-500 gap-1.5" onclick={installNow}>
-							<RefreshCw class="size-4" /> Restart and install
+							<RefreshCw class="size-4" />
+							{m.updatemodal_restart_and_install()}
 						</button>
 					</div>
 				{/if}
 			{:else if u.phase === 'error'}
 				<p class="text-surface-600-300 mb-4 text-sm">
-					The update could not be downloaded. You can get the new version from the download page instead.
+					{m.updatemodal_download_error()}
 				</p>
 				{#if u.error}
 					<p class="text-surface-500 mb-4 text-xs break-words">{u.error}</p>
 				{/if}
 				<div class="flex justify-end gap-2">
-					<button class="btn btn-sm hover:preset-tonal" onclick={close}>Close</button>
+					<button class="btn btn-sm hover:preset-tonal" onclick={close}>{m.updatemodal_close()}</button>
 					<button class="btn btn-sm preset-filled-primary-500 gap-1.5" onclick={openDownloadPage}>
-						<ExternalLink class="size-4" /> Open download page
+						<ExternalLink class="size-4" />
+						{m.updatemodal_open_download_page()}
 					</button>
 				</div>
 			{/if}

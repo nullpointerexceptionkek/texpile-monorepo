@@ -2,6 +2,7 @@
 	import { Popover, Portal } from '@skeletonlabs/skeleton-svelte';
 	import { Plus, GripVertical, Trash2 } from '@lucide/svelte';
 	import { BLOCK_INSERT_ITEMS, type BlockInsertItem } from './blockInsertItems';
+	import { m } from '$lib/paraglide/messages';
 
 	interface State {
 		visible: boolean;
@@ -36,13 +37,15 @@
 		onOpenChange={(e) => (state.popoverOpen = e.open)}
 		positioning={{ placement: 'bottom-start', offset: { mainAxis: 4 } }}
 	>
-		<Popover.Trigger class="block-handle-btn" aria-label="Insert block below" title="Insert block below">
+		<Popover.Trigger class="block-handle-btn" aria-label={m.blockhandle_insert_below()} title={m.blockhandle_insert_below()}>
 			<Plus class="size-4" />
 		</Popover.Trigger>
 		<Portal>
 			<Popover.Positioner class="z-floating-ui">
 				<Popover.Content class="card bg-surface-50-950 border-surface-300-700 min-w-48 max-w-64 border p-1 shadow-lg">
-					<div class="text-surface-500 px-2 py-1 text-[10px] font-semibold tracking-wider uppercase">Insert block</div>
+					<div class="text-surface-500 px-2 py-1 text-[10px] font-semibold tracking-wider uppercase">
+						{m.blockhandle_insert_header()}
+					</div>
 					{#each BLOCK_INSERT_ITEMS as item (item.label)}
 						<button
 							type="button"
@@ -53,7 +56,7 @@
 							}}
 						>
 							<item.icon class="text-surface-500 size-4 shrink-0" />
-							<span>{item.label}</span>
+							<span>{item.label()}</span>
 						</button>
 					{/each}
 				</Popover.Content>
@@ -64,8 +67,8 @@
 	<button
 		type="button"
 		class="block-handle-btn cursor-grab"
-		aria-label="Drag to move"
-		title="Drag to move"
+		aria-label={m.blockhandle_drag_move()}
+		title={m.blockhandle_drag_move()}
 		draggable="true"
 		ondragstart={onDragStart}
 	>
@@ -83,8 +86,8 @@
 	<button
 		type="button"
 		class="block-handle-btn block-handle-btn-danger"
-		aria-label="Delete block"
-		title="Delete block"
+		aria-label={m.blockhandle_delete_block()}
+		title={m.blockhandle_delete_block()}
 		onmousedown={(e) => {
 			// preventDefault keeps focus on PM; delete runs, then PM refocuses itself
 			e.preventDefault();

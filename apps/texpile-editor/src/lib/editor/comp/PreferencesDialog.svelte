@@ -2,15 +2,18 @@
 	import { X } from '@lucide/svelte';
 	import { Switch } from '@skeletonlabs/skeleton-svelte';
 	import { themeChoice, setTheme, type ThemeChoice } from '$lib/theme';
-	import { settings, updateSettings } from '$lib/settings';
+	import { settings, updateSettings, applyUiLocale, type AppSettings } from '$lib/settings';
 	import { setSpellcheckEnabled } from '$lib/editor/extensions/spellcheck/spellcheckConfig';
+	import { m } from '$lib/paraglide/messages';
+	import { LOCALE_META } from '$lib/localeMeta';
+	import { toaster } from '$lib/modals/toaster-svelte';
 
 	let { open = $bindable(false) }: { open?: boolean } = $props();
 
 	const themes: { value: ThemeChoice; label: string }[] = [
-		{ value: 'system', label: 'System' },
-		{ value: 'light', label: 'Light' },
-		{ value: 'dark', label: 'Dark' }
+		{ value: 'system', label: m.prefs_theme_system() },
+		{ value: 'light', label: m.prefs_theme_light() },
+		{ value: 'dark', label: m.prefs_theme_dark() }
 	];
 
 	// image resize snaps to multiples of this fraction of \textwidth
@@ -19,6 +22,38 @@
 		{ value: 0.25, label: '25%' },
 		{ value: 0.5, label: '50%' }
 	];
+
+	// <option> only renders plain text, so the machine-translated tag is appended into the label itself
+	const uiLocales: { value: AppSettings['uiLocale']; label: string }[] = (
+		Object.entries(LOCALE_META) as [AppSettings['uiLocale'], (typeof LOCALE_META)[AppSettings['uiLocale']]][]
+	).map(([value, meta]) => ({
+		value,
+		label: meta.machineTranslated ? `${meta.label} ${m.prefs_machine_translated_tag({}, { locale: value })}` : meta.label
+	}));
+
+	function onLocaleChange(e: Event) {
+		const uiLocale = (e.currentTarget as HTMLSelectElement).value as AppSettings['uiLocale'];
+		updateSettings({ uiLocale });
+		if (!LOCALE_META[uiLocale]?.machineTranslated) {
+			applyUiLocale(uiLocale);
+			return;
+		}
+		// warn every time (not just once) since switching to this language is a deliberate, infrequent action
+		toaster.warning({
+			title: m.mt_warning_title(),
+			description: m.mt_warning_description(),
+			duration: 6000,
+			action: {
+				label: m.mt_warning_report_action(),
+				onClick: () => {
+					const title = `Translation issue: ${LOCALE_META[uiLocale]?.label ?? uiLocale}`;
+					window.open(`https://github.com/texpile/texpile/issues/new?title=${encodeURIComponent(title)}`, '_blank', 'noopener,noreferrer');
+				}
+			}
+		});
+		// give the toast a moment on screen before the locale-switch reload would otherwise wipe it
+		setTimeout(() => applyUiLocale(uiLocale), 3000);
+	}
 </script>
 
 <svelte:window onkeydown={(e) => open && e.key === 'Escape' && (open = false)} />
@@ -41,15 +76,15 @@
 	>
 		<div class="card bg-surface-50-950 border-surface-300-700 flex max-h-full w-full max-w-md flex-col border p-5 shadow-2xl">
 			<div class="mb-4 flex items-center justify-between gap-4">
-				<h2 class="text-base font-semibold">Preferences</h2>
-				<button class="btn-icon btn-icon-sm hover:preset-tonal" aria-label="Close" onclick={() => (open = false)}
+				<h2 class="text-base font-semibold">{m.prefs_title()}</h2>
+				<button class="btn-icon btn-icon-sm hover:preset-tonal" aria-label={m.prefs_close_aria()} onclick={() => (open = false)}
 					><X class="size-4" /></button
 				>
 			</div>
 
 			<div class="min-h-0 space-y-5 overflow-y-auto">
 				<div>
-					<div class="text-surface-600-400 mb-1.5 text-sm font-medium">Appearance</div>
+					<div class="text-surface-600-400 mb-1.5 text-sm font-medium">{m.prefs_appearance()}</div>
 					<div class="bg-surface-200-800 rounded-base flex gap-1 p-0.5">
 						{#each themes as t (t.value)}
 							<button
@@ -62,40 +97,51 @@
 							</button>
 						{/each}
 					</div>
-					<p class="text-surface-500 mt-1.5 text-xs">System follows your operating system's light or dark setting.</p>
-				</div>
-
-				<div>
-					{@render toggle(
-						'Autosave',
-						$settings.draftMode || $settings.autosave,
-						(v) => updateSettings({ autosave: v }),
-						$settings.draftMode,
-						$settings.draftMode ? 'Live mode requires autosave' : ''
-					)}
-					<p class="text-surface-500 mt-1 text-xs">
-						{#if $settings.draftMode}
-							Live mode keeps this on so the live preview always reflects your saved file.
-						{:else}
-							When off, changes save only when you press Save, and you're warned before switching files.
-						{/if}
-					</p>
-				</div>
-				{@render toggle('Reopen last folder on launch', $settings.reopenLastFolder, (v) => updateSettings({ reopenLastFolder: v }))}
-				{@render toggle('Check for updates on launch', $settings.checkForUpdates, (v) => updateSettings({ checkForUpdates: v }))}
-				{@render toggle('Spell check', $settings.spellcheck, (v) => setSpellcheckEnabled(v))}
-				<div>
-					{@render toggle('Math preview', $settings.mathPreview !== false, (v) => updateSettings({ mathPreview: v }))}
-					<p class="text-surface-500 mt-1 text-xs">Live typeset preview of the math under the cursor in source mode.</p>
-				</div>
-				<div>
-					{@render toggle('Dark PDF pages in dark mode', $settings.pdfDarkPages, (v) => updateSettings({ pdfDarkPages: v }))}
-					<p class="text-surface-500 mt-1 text-xs">When off, the PDF preview keeps the original page colors even in dark mode.</p>
+					<p class="text-surface-500 mt-1.5 text-xs">{m.prefs_appearance_hint()}</p>
 				</div>
 
 				<div>
 					<div class="flex items-center justify-between gap-4">
-						<span class="text-sm">Image resize step</span>
+						<span class="text-sm">{m.prefs_language()}</span>
+						<select class="select w-32 text-sm" value={$settings.uiLocale} onchange={onLocaleChange}>
+							{#each uiLocales as l (l.value)}
+								<option value={l.value}>{l.label}</option>
+							{/each}
+						</select>
+					</div>
+				</div>
+
+				<div>
+					{@render toggle(
+						m.prefs_autosave(),
+						$settings.draftMode || $settings.autosave,
+						(v) => updateSettings({ autosave: v }),
+						$settings.draftMode,
+						$settings.draftMode ? m.prefs_autosave_hint_live() : ''
+					)}
+					<p class="text-surface-500 mt-1 text-xs">
+						{#if $settings.draftMode}
+							{m.prefs_autosave_note_live()}
+						{:else}
+							{m.prefs_autosave_note_off()}
+						{/if}
+					</p>
+				</div>
+				{@render toggle(m.prefs_reopen_last_folder(), $settings.reopenLastFolder, (v) => updateSettings({ reopenLastFolder: v }))}
+				{@render toggle(m.prefs_check_updates(), $settings.checkForUpdates, (v) => updateSettings({ checkForUpdates: v }))}
+				{@render toggle(m.prefs_spellcheck(), $settings.spellcheck, (v) => setSpellcheckEnabled(v))}
+				<div>
+					{@render toggle(m.prefs_math_preview(), $settings.mathPreview !== false, (v) => updateSettings({ mathPreview: v }))}
+					<p class="text-surface-500 mt-1 text-xs">{m.prefs_math_preview_note()}</p>
+				</div>
+				<div>
+					{@render toggle(m.prefs_dark_pdf_pages(), $settings.pdfDarkPages, (v) => updateSettings({ pdfDarkPages: v }))}
+					<p class="text-surface-500 mt-1 text-xs">{m.prefs_dark_pdf_pages_note()}</p>
+				</div>
+
+				<div>
+					<div class="flex items-center justify-between gap-4">
+						<span class="text-sm">{m.prefs_image_resize_step()}</span>
 						<select
 							class="select w-24 text-sm"
 							value={$settings.figureResizeStep}
@@ -106,7 +152,7 @@
 							{/each}
 						</select>
 					</div>
-					<p class="text-surface-500 mt-1 text-xs">Dragging an image snaps its width to multiples of this fraction of the text width.</p>
+					<p class="text-surface-500 mt-1 text-xs">{m.prefs_image_resize_step_note()}</p>
 				</div>
 			</div>
 		</div>

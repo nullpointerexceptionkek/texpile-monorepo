@@ -3,6 +3,7 @@
 	import { editorViewStore, sourceCmView } from '$lib/stores/editorStore';
 	import { TextSelection } from 'prosemirror-state';
 	import { EditorView } from '@codemirror/view';
+	import { m } from '$lib/paraglide/messages';
 
 	// source mode reads headings parsed from the raw .tex (char offsets); visual reads the PM plugin's.
 	// onOpenFile routes clicks on entries merged in from other files (source-mode project outline).
@@ -31,17 +32,17 @@
 
 	function display(item: TocItem): string {
 		const text = (item.text || '').slice(0, 80);
-		if (item.kind === 'figure') return `Fig. ${item.number ?? ''}${text ? `: ${text}` : ''}`;
-		if (item.kind === 'table') return `Tab. ${item.number ?? ''}${text ? `: ${text}` : ''}`;
-		if (item.kind === 'frame') return text || 'Frame';
-		return item.number ? `${item.number}  ${text || 'Untitled'}` : text || 'Untitled';
+		if (item.kind === 'figure') return `${m.toc_label_figure()} ${item.number ?? ''}${text ? `: ${text}` : ''}`;
+		if (item.kind === 'table') return `${m.toc_label_table()} ${item.number ?? ''}${text ? `: ${text}` : ''}`;
+		if (item.kind === 'frame') return text || m.toc_label_frame();
+		return item.number ? `${item.number}  ${text || m.toc_label_untitled()}` : text || m.toc_label_untitled();
 	}
 </script>
 
 <nav class="text-sm">
-	<div class="text-surface-400 mb-2 text-xs font-semibold tracking-wide uppercase">Contents</div>
+	<div class="text-surface-400 mb-2 text-xs font-semibold tracking-wide uppercase">{m.toc_heading()}</div>
 	{#if items.length === 0}
-		<p class="text-surface-400 text-xs">No headings yet.</p>
+		<p class="text-surface-400 text-xs">{m.toc_empty()}</p>
 	{:else}
 		<div class="flex flex-col gap-0.5">
 			{#each items as item, i (i)}

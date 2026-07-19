@@ -17,6 +17,7 @@
 	import { bibtex } from '$lib/editor/extensions/bibtex/bibtex';
 	import { sourceCmView } from '$lib/stores/editorStore';
 	import { setSourceDocCount, setSourceSelectionCount } from '$lib/stores/countStore.svelte';
+	import { m } from '$lib/paraglide/messages';
 
 	// full-file CodeMirror editor. source-mode edits are written back verbatim, never through the
 	// parse/serialize round-trip. filename picks the syntax mode, defaulting to LaTeX.
@@ -84,8 +85,8 @@
 		'hover:preset-tonal-primary flex w-full items-center gap-2.5 px-3 py-1 text-left disabled:pointer-events-none disabled:opacity-40';
 	async function cmCopy() {
 		if (!view) return;
-		const m = view.state.selection.main;
-		const text = view.state.sliceDoc(m.from, m.to);
+		const sel = view.state.selection.main;
+		const text = view.state.sliceDoc(sel.from, sel.to);
 		if (text) await navigator.clipboard.writeText(text).catch(() => {});
 	}
 	async function cmCut() {
@@ -329,7 +330,7 @@
 {#if ctxMenu}
 	<button
 		class="fixed inset-0 z-40 cursor-default"
-		aria-label="Close menu"
+		aria-label={m.tbar_close_menu_aria()}
 		onclick={closeMenu}
 		oncontextmenu={(e) => (e.preventDefault(), closeMenu())}
 	></button>
@@ -338,25 +339,31 @@
 		style="left: {ctxMenu.x}px; top: {ctxMenu.y}px"
 	>
 		<button class={itemClass} disabled={!ctxMenu.hasSelection} onclick={() => (cmCut(), closeMenu())}>
-			<Scissors class="size-4 opacity-70" /> Cut <span class="text-surface-500 ml-auto text-xs">⌘X</span>
+			<Scissors class="size-4 opacity-70" />
+			{m.tbar_ctx_cut()} <span class="text-surface-500 ml-auto text-xs">⌘X</span>
 		</button>
 		<button class={itemClass} disabled={!ctxMenu.hasSelection} onclick={() => (cmCopy(), closeMenu())}>
-			<Copy class="size-4 opacity-70" /> Copy <span class="text-surface-500 ml-auto text-xs">⌘C</span>
+			<Copy class="size-4 opacity-70" />
+			{m.tbar_ctx_copy()} <span class="text-surface-500 ml-auto text-xs">⌘C</span>
 		</button>
 		<button class={itemClass} onclick={() => (cmPaste(), closeMenu())}>
-			<ClipboardPaste class="size-4 opacity-70" /> Paste <span class="text-surface-500 ml-auto text-xs">⌘V</span>
+			<ClipboardPaste class="size-4 opacity-70" />
+			{m.tbar_ctx_paste()} <span class="text-surface-500 ml-auto text-xs">⌘V</span>
 		</button>
 		<button class={itemClass} onclick={() => (cmSelectAll(), closeMenu())}>
-			<span class="size-4 shrink-0"></span> Select All <span class="text-surface-500 ml-auto text-xs">⌘A</span>
+			<span class="size-4 shrink-0"></span>
+			{m.tbar_ctx_select_all()} <span class="text-surface-500 ml-auto text-xs">⌘A</span>
 		</button>
 		<div class="border-surface-200-800 my-1 border-t"></div>
 		<button class={itemClass} onclick={() => (cmFind(), closeMenu())}>
-			<Search class="size-4 opacity-70" /> Find… <span class="text-surface-500 ml-auto text-xs">⌘F</span>
+			<Search class="size-4 opacity-70" />
+			{m.tbar_ctx_find()} <span class="text-surface-500 ml-auto text-xs">⌘F</span>
 		</button>
 		{#if onSyncToPdf}
 			<div class="border-surface-200-800 my-1 border-t"></div>
 			<button class={itemClass} onclick={() => (onSyncToPdf?.(ctxMenu.line), closeMenu())}>
-				<LocateFixed class="size-4 opacity-70" /> Show in PDF
+				<LocateFixed class="size-4 opacity-70" />
+				{m.tbar_ctx_show_in_pdf()}
 			</button>
 		{/if}
 	</div>

@@ -4,19 +4,22 @@
 	import { createMathField } from '$lib/editor/extensions/mathlivebridge/mlcommands';
 	import { editorViewStore } from '$lib/stores/editorStore';
 	import Kbd from '$lib/components/Kbd.svelte';
+	import { m } from '$lib/paraglide/messages';
 
 	let open = $state(false);
 
+	// label is a function, not a string: this list is built once at init, before the persisted
+	// locale is applied, so the text has to be read at render time
 	const mathOptions = [
 		{
 			id: 'inline',
-			label: 'Inline Math',
+			label: () => m.mathpal_inline_math(),
 			shortcut: 'Mod+M',
 			command: createMathField(false)
 		},
 		{
 			id: 'block',
-			label: 'Block Math',
+			label: () => m.mathpal_block_math(),
 			shortcut: 'Mod+Shift+M',
 			command: createMathField(true)
 		}
@@ -41,7 +44,7 @@
 	autoFocus={false}
 >
 	<Popover.Trigger class="toolbarButton rounded p-1 hover:bg-surface-200-800">
-		<button aria-label="Insert math" title="Insert math" class="flex items-center gap-0.5">
+		<button aria-label={m.mathpal_insert_math_aria()} title={m.mathpal_insert_math_aria()} class="flex items-center gap-0.5">
 			<SquareRadical class="h-5 w-5 text-surface-800-200" />
 			<ChevronDown class="text-surface-500 size-3 shrink-0" />
 		</button>
@@ -56,7 +59,7 @@
 						class="hover:preset-tonal-primary flex w-full items-center justify-between gap-3 rounded px-3 py-2 text-left"
 						onclick={() => handleInsert(option)}
 					>
-						<span class="text-sm">{option.label}</span>
+						<span class="text-sm">{option.label()}</span>
 						<Kbd keys={option.shortcut} />
 					</button>
 				{/each}

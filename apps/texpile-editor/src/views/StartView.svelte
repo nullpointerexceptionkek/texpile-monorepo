@@ -25,6 +25,7 @@
 	import StarterPicker from '$lib/editor/comp/StarterPicker.svelte';
 	import TutorialConfirmModal from '$lib/editor/comp/TutorialConfirmModal.svelte';
 	import { applyStarter, applyImportedFiles, openTutorialProject, type Starter, type ImportedFile } from '$lib/workspace/starters';
+	import { m } from '$lib/paraglide/messages';
 
 	let busy = $state(false);
 	let error = $state<string | null>(null);
@@ -57,7 +58,7 @@
 			setMainFile(root, mainPath);
 			await finishOpen(root, mainPath);
 		} catch (e) {
-			error = e instanceof Error ? e.message : 'Failed to create from template';
+			error = e instanceof Error ? e.message : m.start_error_template();
 		} finally {
 			busy = false;
 		}
@@ -73,7 +74,7 @@
 			setMainFile(root, mainFile);
 			await finishOpen(root, mainFile);
 		} catch (e) {
-			error = e instanceof Error ? e.message : 'Failed to open the tutorial';
+			error = e instanceof Error ? e.message : m.start_error_tutorial();
 		} finally {
 			busy = false;
 		}
@@ -88,7 +89,7 @@
 			if (mainPath) setMainFile(root, mainPath);
 			await finishOpen(root, mainPath);
 		} catch (e) {
-			error = e instanceof Error ? e.message : 'Failed to import the files';
+			error = e instanceof Error ? e.message : m.start_error_import();
 		} finally {
 			busy = false;
 		}
@@ -103,7 +104,7 @@
 			await writeTextFile(mainPath, createStarterLatex());
 			await finishOpen(root, mainPath);
 		} catch (e) {
-			error = e instanceof Error ? e.message : 'Failed to create project';
+			error = e instanceof Error ? e.message : m.start_error_create_project();
 		} finally {
 			busy = false;
 		}
@@ -123,7 +124,7 @@
 			updateSettings({ lastFolder: root });
 			navigate('/workspace');
 		} catch (e) {
-			error = e instanceof Error ? e.message : 'Failed to open folder';
+			error = e instanceof Error ? e.message : m.start_error_open_folder();
 		} finally {
 			busy = false;
 		}
@@ -149,7 +150,7 @@
 			updateSettings({ lastFolder: root });
 			navigate('/workspace');
 		} catch (e) {
-			error = e instanceof Error ? e.message : 'Failed to create project';
+			error = e instanceof Error ? e.message : m.start_error_create_project();
 		} finally {
 			busy = false;
 		}
@@ -186,7 +187,7 @@
 
 		{#if templateFor}
 			<div class="mb-3 flex items-baseline justify-between gap-2">
-				<h2 class="text-surface-500 text-xs font-semibold tracking-wider uppercase">New project</h2>
+				<h2 class="text-surface-500 text-xs font-semibold tracking-wider uppercase">{m.start_new_project_heading()}</h2>
 				<span class="text-surface-400 truncate text-xs" title={templateFor}>{basename(templateFor)}</span>
 			</div>
 			<StarterPicker onPick={applyTemplate} onBlank={openBlank} onImport={importOwn} {busy} />
@@ -195,21 +196,21 @@
 				onclick={() => (templateFor = null)}
 				disabled={busy}
 			>
-				Back
+				{m.start_back()}
 			</button>
 			{#if error}
 				<p class="text-error-500 mt-2 text-sm">{error}</p>
 			{/if}
 		{:else}
-			<h2 class="text-surface-500 mb-2 text-xs font-semibold tracking-wider uppercase">Start</h2>
+			<h2 class="text-surface-500 mb-2 text-xs font-semibold tracking-wider uppercase">{m.start_heading()}</h2>
 			<div class="flex flex-col gap-2">
 				<button class="btn preset-filled-primary-500 w-full" onclick={() => openFolder()} disabled={busy}>
 					{#if busy}<Loader2 class="size-4 animate-spin" />{:else}<FolderOpen class="size-4" />{/if}
-					Open folder
+					{m.start_open_folder()}
 				</button>
 				<button class="btn preset-outlined-primary-500 w-full" onclick={createNewProject} disabled={busy}>
 					<FolderPlus class="size-4" />
-					Create new project
+					{m.start_create_new_project()}
 				</button>
 			</div>
 
@@ -218,7 +219,8 @@
 				onclick={() => (tutorialModalOpen = true)}
 				disabled={busy}
 			>
-				<GraduationCap class="size-4" /> New here? Try the tutorial
+				<GraduationCap class="size-4" />
+				{m.start_tutorial_cta()}
 			</button>
 
 			{#if error}
@@ -226,7 +228,7 @@
 			{/if}
 
 			{#if $recentFolders.length > 0}
-				<h2 class="text-surface-500 mt-6 mb-1.5 text-xs font-semibold tracking-wider uppercase">Recent</h2>
+				<h2 class="text-surface-500 mt-6 mb-1.5 text-xs font-semibold tracking-wider uppercase">{m.start_recent_heading()}</h2>
 				<ul class="space-y-1.5">
 					{#each $recentFolders as folder (folder)}
 						<li>

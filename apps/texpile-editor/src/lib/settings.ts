@@ -2,6 +2,7 @@
 // browser dev. new settings also go in the main process DEFAULT_SETTINGS so on-disk defaults match.
 import { browser } from '$lib/runtime';
 import { writable, get } from 'svelte/store';
+import { setLocale as setParaglideLocale } from '$lib/paraglide/runtime';
 
 export interface AppSettings {
 	reopenLastFolder: boolean;
@@ -39,6 +40,8 @@ export interface AppSettings {
 	whatsNewSeen: string;
 	/** live math preview tooltip in source mode. */
 	mathPreview: boolean;
+	/** UI display language. Not the LaTeX document language (see DocumentLanguage). */
+	uiLocale: 'en' | 'zh-Hans' | 'zh-Hant' | 'de';
 }
 
 /** default compile command. -interaction=nonstopmode keeps errors from parking the engine at its
@@ -67,7 +70,8 @@ const DEFAULTS: AppSettings = {
 	checkForUpdates: true,
 	uiZoom: 1,
 	whatsNewSeen: '',
-	mathPreview: true
+	mathPreview: true,
+	uiLocale: 'en'
 };
 
 const LS_KEY = 'texpile:settings';
@@ -109,9 +113,20 @@ export function loadSettings(): Promise<AppSettings> {
 		}
 		const merged = { ...DEFAULTS, ...raw };
 		settings.set(merged);
+		// reload:false: this runs before main.ts mounts the app, so nothing has rendered
+		// the base locale yet and there's nothing to correct with a reload.
+		applyUiLocale(merged.uiLocale, { reload: false });
 		return merged;
 	})();
 	return loadPromise;
+}
+
+/** syncs Paraglide's runtime locale and <html lang> to match a uiLocale value. reload defaults
+ *  to true (Paraglide's default): none of the app's message() calls are reactive in place, so
+ *  a locale switch after the app has already rendered needs a full reload to take effect. */
+export function applyUiLocale(locale: AppSettings['uiLocale'], opts?: { reload?: boolean }): void {
+	if (typeof document !== 'undefined') document.documentElement.lang = locale;
+	setParaglideLocale(locale, opts);
 }
 
 /** back-compat alias used by the start screen. */

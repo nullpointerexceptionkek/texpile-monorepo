@@ -3,6 +3,7 @@
 	import { GitBranch, Check, Plus, Minus, Undo2, RefreshCw, GitCommitHorizontal } from '@lucide/svelte';
 	import type { GitStatusEntry, GitBadge } from '$lib/workspace/git';
 	import { modLabel } from '$lib/platform';
+	import { m } from '$lib/paraglide/messages';
 
 	interface Props {
 		root: string;
@@ -92,8 +93,8 @@
 			{#if stagedRow}
 				<button
 					class="hover:preset-tonal rounded p-0.5"
-					title="Unstage changes"
-					aria-label="Unstage changes"
+					title={m.vcs_unstage_changes()}
+					aria-label={m.vcs_unstage_changes()}
 					onclick={() => onUnstage([c.path])}
 				>
 					<Minus class="size-3.5" />
@@ -101,13 +102,18 @@
 			{:else}
 				<button
 					class="hover:preset-tonal-error rounded p-0.5"
-					title="Discard changes"
-					aria-label="Discard changes"
+					title={m.vcs_discard_changes()}
+					aria-label={m.vcs_discard_changes()}
 					onclick={() => onDiscard([c])}
 				>
 					<Undo2 class="size-3.5" />
 				</button>
-				<button class="hover:preset-tonal rounded p-0.5" title="Stage changes" aria-label="Stage changes" onclick={() => onStage([c.path])}>
+				<button
+					class="hover:preset-tonal rounded p-0.5"
+					title={m.vcs_stage_changes()}
+					aria-label={m.vcs_stage_changes()}
+					onclick={() => onStage([c.path])}
+				>
 					<Plus class="size-3.5" />
 				</button>
 			{/if}
@@ -119,20 +125,21 @@
 {#if !isRepo}
 	<div class="flex flex-col items-center gap-3 p-6 text-center">
 		<GitBranch class="text-surface-400 size-8" />
-		<p class="text-surface-500 text-sm">This folder is not under source control.</p>
+		<p class="text-surface-500 text-sm">{m.vcs_not_a_repo()}</p>
 		<button class="btn btn-sm preset-filled-primary-500 gap-1.5" onclick={onInit} disabled={busy}>
-			<GitBranch class="size-4" /> Initialize Repository
+			<GitBranch class="size-4" />
+			{m.vcs_init_repo()}
 		</button>
 	</div>
 {:else}
 	<div class="flex h-full min-h-0 flex-col">
 		<div class="text-surface-600-300 flex h-7 shrink-0 items-center gap-1.5 px-3 text-xs">
 			<GitBranch class="size-3.5 shrink-0" />
-			<span class="truncate font-medium">{branch ?? 'no branch'}</span>
+			<span class="truncate font-medium">{branch ?? m.vcs_no_branch()}</span>
 			<button
 				class="hover:preset-tonal ml-auto shrink-0 rounded p-0.5"
-				title="Refresh"
-				aria-label="Refresh source control"
+				title={m.vcs_refresh_title()}
+				aria-label={m.vcs_refresh_aria()}
 				onclick={onRefresh}
 			>
 				<RefreshCw class="size-3.5" />
@@ -143,29 +150,29 @@
 			<textarea
 				class="input resize-none text-sm"
 				rows="2"
-				placeholder={`Message (${modLabel}+Enter to commit)`}
+				placeholder={m.vcs_commit_placeholder({ modLabel })}
 				bind:value={commitMessage}
 				onkeydown={commitKeydown}></textarea>
 			<button
 				class="btn btn-sm preset-filled-primary-500 w-full gap-1.5"
 				onclick={doCommit}
 				disabled={busy || !commitMessage.trim() || (staged.length === 0 && unstaged.length === 0)}
-				title={staged.length ? 'Commit staged changes' : 'Stage all changes and commit'}
+				title={staged.length ? m.vcs_commit_staged_title() : m.vcs_commit_all_title()}
 			>
 				<Check class="size-4" />
-				{staged.length ? 'Commit' : 'Commit All'}
+				{staged.length ? m.vcs_commit_button() : m.vcs_commit_all_button()}
 			</button>
 		</div>
 
 		<div class="min-h-0 flex-1 overflow-y-auto p-1.5">
 			{#if staged.length}
 				<div class="text-surface-500 group/hdr flex items-center gap-1 px-2 py-1 text-xs font-semibold uppercase">
-					<span>Staged Changes</span>
+					<span>{m.vcs_staged_changes_heading()}</span>
 					<span class="bg-surface-300-700 rounded-full px-1.5 text-[10px]">{staged.length}</span>
 					<button
 						class="hover:preset-tonal ml-auto rounded p-0.5 opacity-0 group-hover/hdr:opacity-100"
-						title="Unstage all"
-						aria-label="Unstage all"
+						title={m.vcs_unstage_all()}
+						aria-label={m.vcs_unstage_all()}
 						onclick={() => onUnstage(staged.map((c) => c.path))}
 					>
 						<Minus class="size-3.5" />
@@ -176,20 +183,20 @@
 
 			{#if unstaged.length}
 				<div class="text-surface-500 group/hdr flex items-center gap-1 px-2 py-1 text-xs font-semibold uppercase">
-					<span>Changes</span>
+					<span>{m.vcs_changes_heading()}</span>
 					<span class="bg-surface-300-700 rounded-full px-1.5 text-[10px]">{unstaged.length}</span>
 					<button
 						class="hover:preset-tonal-error ml-auto rounded p-0.5 opacity-0 group-hover/hdr:opacity-100"
-						title="Discard all changes"
-						aria-label="Discard all changes"
+						title={m.vcs_discard_all()}
+						aria-label={m.vcs_discard_all()}
 						onclick={() => onDiscard(unstaged)}
 					>
 						<Undo2 class="size-3.5" />
 					</button>
 					<button
 						class="hover:preset-tonal rounded p-0.5 opacity-0 group-hover/hdr:opacity-100"
-						title="Stage all changes"
-						aria-label="Stage all changes"
+						title={m.vcs_stage_all()}
+						aria-label={m.vcs_stage_all()}
 						onclick={() => onStage(unstaged.map((c) => c.path))}
 					>
 						<Plus class="size-3.5" />
@@ -201,7 +208,7 @@
 			{#if !staged.length && !unstaged.length}
 				<div class="text-surface-500 mt-8 flex flex-col items-center gap-1 text-center text-sm">
 					<GitCommitHorizontal class="size-6 opacity-60" />
-					No changes
+					{m.vcs_no_changes()}
 				</div>
 			{/if}
 		</div>

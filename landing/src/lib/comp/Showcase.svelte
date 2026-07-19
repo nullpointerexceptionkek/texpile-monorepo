@@ -5,12 +5,13 @@
 	import source from '$lib/assets/showcase/source-dark.png';
 	import diff from '$lib/assets/showcase/diff-dark.png';
 	import errorlog from '$lib/assets/showcase/errorlog-dark.png';
+	import { m } from '$lib/paraglide/messages';
 
 	const shots = [
-		{ src: visual, label: 'Visual editor, PDF preview, and a real terminal' },
-		{ src: source, label: 'The same file in the source editor' },
-		{ src: diff, label: 'Side-by-side diff and built-in source control' },
-		{ src: errorlog, label: 'Compile errors as a Problems list, with file and line' }
+		{ src: visual, label: m.showcase_shot_visual() },
+		{ src: source, label: m.showcase_shot_source() },
+		{ src: diff, label: m.showcase_shot_diff() },
+		{ src: errorlog, label: m.showcase_shot_errorlog() }
 	];
 
 	let active = $state(0);
@@ -49,7 +50,7 @@
 			{#each shots as shot, i (shot.label)}
 				<button
 					class="h-2.5 w-2.5 rounded-full transition-colors {i === active ? 'bg-surface-500' : 'bg-surface-300 hover:bg-surface-400'}"
-					aria-label="Show: {shot.label}"
+					aria-label={m.showcase_show_aria({ label: shot.label })}
 					aria-current={i === active}
 					onclick={() => (active = i)}
 				></button>

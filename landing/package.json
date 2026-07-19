@@ -27,6 +27,7 @@
 	},
 	"dependencies": {
 		"@fontsource/poppins": "^5.2.7",
+		"@inlang/paraglide-js": "2.22.0",
 		"@lucide/svelte": "^0.562.0",
 		"@plausible-analytics/tracker": "^0.4.5"
 	}

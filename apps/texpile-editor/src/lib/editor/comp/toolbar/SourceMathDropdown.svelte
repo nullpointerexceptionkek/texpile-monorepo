@@ -8,7 +8,16 @@
 	import 'mathlive/static.css';
 	import { sourceCmView } from '$lib/stores/editorStore';
 	import { insertSnippetAtCursor } from './sourceInsert';
-	import { SYMBOL_GROUPS, MATRIX_BRACKETS, generateMatrixLatex, toCmSnippet, toSourceBlock, type MatrixBracket } from './mathSymbols';
+	import {
+		SYMBOL_GROUPS,
+		MATRIX_BRACKETS,
+		generateMatrixLatex,
+		toCmSnippet,
+		toSourceBlock,
+		symbolTooltip,
+		type MatrixBracket
+	} from './mathSymbols';
+	import { m } from '$lib/paraglide/messages';
 
 	let open = $state(false);
 	let activeGroup = $state(SYMBOL_GROUPS[0].id);
@@ -51,8 +60,8 @@
 		<button
 			class="toolbarButton flex items-center gap-1 rounded p-1 hover:preset-tonal"
 			class:preset-tonal-primary={open}
-			aria-label="Math symbols"
-			title="Math symbols"
+			aria-label={m.tbar_math_symbols()}
+			title={m.tbar_math_symbols()}
 			tabindex="-1"
 			onmousedown={preventFocusLoss}
 		>
@@ -75,10 +84,10 @@
 								class:hover:preset-tonal={activeGroup !== g.id}
 								tabindex="-1"
 								onclick={() => (activeGroup = g.id)}
-								title={g.label}
+								title={g.label()}
 							>
 								<Icon class="h-3.5 w-3.5" />
-								{g.label}
+								{g.label()}
 							</button>
 						{/each}
 					</div>
@@ -87,7 +96,7 @@
 					<div class="max-h-[60vh] overflow-y-auto">
 						{#if group.id === 'matrices'}
 							<div class="border-surface-300-700 border-b p-3">
-								<div class="mb-2 text-xs font-medium">Matrix style</div>
+								<div class="mb-2 text-xs font-medium">{m.tbar_matrix_style()}</div>
 								<div class="mb-3 flex flex-wrap gap-2">
 									{#each MATRIX_BRACKETS as b (b.mode)}
 										<button
@@ -99,13 +108,13 @@
 											class:border-surface-300-700={matrixBracket !== b.mode}
 											tabindex="-1"
 											onclick={() => (matrixBracket = b.mode)}
-											title={b.title}
+											title={b.title()}
 										>
 											{b.label}
 										</button>
 									{/each}
 								</div>
-								<div class="mb-2 text-xs font-medium">Size</div>
+								<div class="mb-2 text-xs font-medium">{m.tbar_matrix_size()}</div>
 								<!-- fixed cells, not 1fr: this popover is as wide as its tab row, and 1fr blew the
 							     6x6 grid up to ~95px a cell -->
 								<div class="grid w-fit gap-1" style="grid-template-columns: repeat(6, 1.5rem);">
@@ -118,7 +127,7 @@
 												class:border-blue-400={row < matrixRows && col < matrixCols}
 												class:bg-surface-100-900={!(row < matrixRows && col < matrixCols)}
 												class:border-surface-300-700={!(row < matrixRows && col < matrixCols)}
-												aria-label={`Insert ${row + 1}x${col + 1} matrix`}
+												aria-label={m.tbar_insert_matrix_aria({ rows: row + 1, cols: col + 1 })}
 												tabindex="-1"
 												onmouseover={() => {
 													matrixRows = row + 1;
@@ -141,7 +150,7 @@
 							<div class="env-list">
 								{#each group.symbols as symbol (symbol.latex)}
 									<button type="button" class="env-btn bg-surface-100-900" tabindex="-1" onclick={() => insert(symbol.latex)}>
-										<span class="env-label">{symbol.tooltip}</span>
+										<span class="env-label">{symbolTooltip(symbol)}</span>
 										<span class="env-preview">
 											<!-- eslint-disable-next-line svelte/no-at-html-tags -- renderLatex() is mathlive's own trusted math-typesetting HTML for a symbol from the hardcoded SYMBOL_GROUPS table, never user/network input. -->
 											{@html renderLatex(symbol.displayLatex ?? symbol.latex)}
@@ -151,13 +160,13 @@
 							</div>
 						{:else}
 							<div class="symbol-grid" data-group={group.id}>
-								{#each group.symbols as symbol (symbol.latex + (symbol.tooltip ?? ''))}
+								{#each group.symbols as symbol (symbol.latex)}
 									<button
 										type="button"
 										class="symbol-btn bg-surface-100-900"
 										tabindex="-1"
 										onclick={() => insert(symbol.latex)}
-										title={symbol.tooltip || symbol.latex}
+										title={symbolTooltip(symbol) || symbol.latex}
 									>
 										<span class="symbol-content">
 											<!-- eslint-disable-next-line svelte/no-at-html-tags -- renderLatex() is mathlive's own trusted math-typesetting HTML for a symbol from the hardcoded SYMBOL_GROUPS table, never user/network input. -->

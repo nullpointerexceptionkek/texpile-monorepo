@@ -2,6 +2,7 @@
 	import { Popover, Portal } from '@skeletonlabs/skeleton-svelte';
 	import { ChevronDown, Check, Superscript, Subscript } from '@lucide/svelte';
 	import { modLabel } from '$lib/platform';
+	import { m } from '$lib/paraglide/messages';
 
 	interface Props {
 		/** Whether the current selection has the superscript mark. */
@@ -36,8 +37,8 @@
 		class="text-surface-800-200 flex h-7 items-center gap-0.5 rounded px-1.5 transition-colors {anyActive
 			? 'preset-tonal-primary'
 			: 'hover:preset-tonal'}"
-		aria-label="Superscript or subscript"
-		title="Superscript / Subscript"
+		aria-label={m.tbar_supsub_aria()}
+		title={m.tbar_supsub_title()}
 	>
 		<!-- same box + stroke as every other toolbar icon so it doesn't read bigger/bolder -->
 		<Superscript class="h-5 w-5" />
@@ -54,7 +55,7 @@
 					onclick={() => choose('sup')}
 				>
 					<Superscript class="text-surface-500 size-[18px] shrink-0" strokeWidth={2.25} />
-					<span class="flex-1">Superscript</span>
+					<span class="flex-1">{m.tbar_superscript()}</span>
 					<span class="text-surface-500 text-xs">{modKey}+.</span>
 					{#if sup}<Check class="ml-1 h-4 w-4 shrink-0" />{/if}
 				</button>
@@ -65,7 +66,7 @@
 					onclick={() => choose('sub')}
 				>
 					<Subscript class="text-surface-500 size-[18px] shrink-0" strokeWidth={2.25} />
-					<span class="flex-1">Subscript</span>
+					<span class="flex-1">{m.tbar_subscript()}</span>
 					<span class="text-surface-500 text-xs">{modKey}+,</span>
 					{#if sub}<Check class="ml-1 h-4 w-4 shrink-0" />{/if}
 				</button>

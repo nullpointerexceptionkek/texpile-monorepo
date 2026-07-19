@@ -4,6 +4,8 @@
 	import { Menu, Portal } from '@skeletonlabs/skeleton-svelte';
 	import { trackEvent } from '$lib/plausible';
 	import OsLogo from '$lib/comp/OsLogo.svelte';
+	import { m } from '$lib/paraglide/messages';
+	import { getLocale } from '$lib/paraglide/runtime';
 
 	// latest.json upgrades the links to versioned files; versions.json feeds the history list.
 	// Without either (fetch failed, JS off) the stable root names still download the newest release.
@@ -45,7 +47,7 @@
 	function fmtDate(iso?: string) {
 		if (!iso) return '';
 		const d = new Date(iso);
-		return Number.isNaN(d.getTime()) ? '' : d.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
+		return Number.isNaN(d.getTime()) ? '' : d.toLocaleDateString(getLocale(), { year: 'numeric', month: 'short', day: 'numeric' });
 	}
 
 	type Platform = {
@@ -57,9 +59,16 @@
 		fallback: string;
 	};
 	const PLATFORMS: Platform[] = [
-		{ key: 'windows', os: 'windows', name: 'Windows', detail: 'Installer (.exe)', fileKey: 'windows', fallback: 'Texpile-Setup.exe' },
-		{ key: 'mac', os: 'apple', name: 'macOS', detail: 'Intel & Apple silicon (.dmg)', fileKey: 'mac', fallback: 'Texpile.dmg' },
-		{ key: 'linux', os: 'linux', name: 'Linux', detail: 'AppImage', fileKey: 'linuxAppImage', fallback: 'Texpile.AppImage' }
+		{
+			key: 'windows',
+			os: 'windows',
+			name: m.word_windows(),
+			detail: m.dl_detail_windows(),
+			fileKey: 'windows',
+			fallback: 'Texpile-Setup.exe'
+		},
+		{ key: 'mac', os: 'apple', name: m.word_macos(), detail: m.dl_detail_mac(), fileKey: 'mac', fallback: 'Texpile.dmg' },
+		{ key: 'linux', os: 'linux', name: m.word_linux(), detail: m.word_appimage(), fileKey: 'linuxAppImage', fallback: 'Texpile.AppImage' }
 	];
 
 	const hrefFor = (p: Platform) => `${DL}/${latest?.files[p.fileKey] ?? p.fallback}`;
@@ -105,39 +114,35 @@
 </script>
 
 <svelte:head>
-	<title>Download Texpile - Windows, macOS, Linux</title>
-	<meta name="description" content="Download Texpile, the free offline LaTeX editor, for Windows, macOS, and Linux. No account required." />
-	<meta
-		name="keywords"
-		content="download Texpile, LaTeX editor download, LaTeX editor for Windows, LaTeX editor for macOS, LaTeX editor for Linux"
-	/>
+	<title>{m.dl_title()}</title>
+	<meta name="description" content={m.dl_meta_description()} />
+	<meta name="keywords" content={m.dl_meta_keywords()} />
 
 	<!-- Page-specific Open Graph -->
 	<meta property="og:url" content="https://texpile.com/download" />
-	<meta property="og:title" content="Download Texpile - Windows, macOS, Linux" />
-	<meta
-		property="og:description"
-		content="Download Texpile, the free offline LaTeX editor, for Windows, macOS, and Linux. No account required."
-	/>
+	<meta property="og:title" content={m.dl_title()} />
+	<meta property="og:description" content={m.dl_meta_description()} />
 
 	<!-- Page-specific Twitter -->
 	<meta property="twitter:url" content="https://texpile.com/download" />
-	<meta property="twitter:title" content="Download Texpile - Windows, macOS, Linux" />
-	<meta
-		property="twitter:description"
-		content="Download Texpile, the free offline LaTeX editor, for Windows, macOS, and Linux. No account required."
-	/>
+	<meta property="twitter:title" content={m.dl_title()} />
+	<meta property="twitter:description" content={m.dl_meta_description()} />
 
 	<link rel="canonical" href="https://texpile.com/download" />
+	<link rel="alternate" hreflang="en" href="https://texpile.com/download" />
+	<link rel="alternate" hreflang="zh-Hans" href="https://texpile.com/zh-Hans/download" />
+	<link rel="alternate" hreflang="zh-Hant" href="https://texpile.com/zh-Hant/download" />
+	<link rel="alternate" hreflang="de" href="https://texpile.com/de/download" />
+	<link rel="alternate" hreflang="x-default" href="https://texpile.com/download" />
 </svelte:head>
 
 <section class="bg-surface-50 border-surface-200 border-b">
 	<div class="container mx-auto max-w-3xl px-4 py-14 text-center sm:px-6 md:py-16 lg:px-8">
-		<h1 class="text-3xl font-bold md:text-4xl">Download Texpile</h1>
-		<p class="text-surface-600 mx-auto mt-4 max-w-xl">Free and fully offline. No account, no cloud, runs on your own machine.</p>
+		<h1 class="text-3xl font-bold md:text-4xl">{m.dl_heading()}</h1>
+		<p class="text-surface-600 mx-auto mt-4 max-w-xl">{m.dl_subheading()}</p>
 		{#if versionLabel}
 			<p class="text-surface-500 mt-3 text-sm">
-				Latest release {versionLabel}{#if fmtDate(latest?.publishedAt)}&nbsp;·&nbsp;{fmtDate(latest?.publishedAt)}{/if}
+				{m.dl_latest_release({ version: versionLabel })}{#if fmtDate(latest?.publishedAt)}&nbsp;·&nbsp;{fmtDate(latest?.publishedAt)}{/if}
 			</p>
 		{/if}
 	</div>
@@ -153,9 +158,9 @@
 						<OsLogo os="linux" class="h-8 w-8" />
 					</div>
 					<div class="min-w-0 flex-1">
-						<div class="text-lg font-semibold">Download for Linux</div>
+						<div class="text-lg font-semibold">{m.dl_download_for_linux()}</div>
 						<div class="text-surface-500 mt-0.5 text-sm">
-							AppImage or .deb{#if versionLabel}&nbsp;·&nbsp;{versionLabel}{/if}
+							{m.dl_appimage_or_deb()}{#if versionLabel}&nbsp;·&nbsp;{versionLabel}{/if}
 						</div>
 					</div>
 					{@render linuxDownload('lead')}
@@ -171,7 +176,7 @@
 						<OsLogo os={recommended.os} class="h-8 w-8" />
 					</div>
 					<div class="min-w-0 flex-1">
-						<div class="text-lg font-semibold">Download for {recommended.name}</div>
+						<div class="text-lg font-semibold">{m.dl_download_for({ name: recommended.name })}</div>
 						<div class="text-surface-500 mt-0.5 text-sm">
 							{recommended.detail}{#if versionLabel}&nbsp;·&nbsp;{versionLabel}{/if}
 						</div>
@@ -179,7 +184,8 @@
 					<div
 						class="btn preset-filled-primary-500 rounded-base hidden shrink-0 items-center gap-2 px-5 py-2.5 text-sm font-semibold text-white sm:flex"
 					>
-						<Download class="h-4 w-4" /> Download
+						<Download class="h-4 w-4" />
+						{m.word_download()}
 					</div>
 				</a>
 			{/if}
@@ -187,7 +193,7 @@
 
 		<div class="mt-10">
 			<h2 class="text-surface-500 mb-4 text-center text-xs font-semibold tracking-wide uppercase">
-				{recommended ? 'Other platforms' : 'Choose your platform'}
+				{recommended ? m.dl_other_platforms() : m.dl_choose_platform()}
 			</h2>
 			<div class="flex flex-wrap justify-center gap-4">
 				{#each others as p (p.key)}
@@ -207,7 +213,8 @@
 									onclick={() => trackDownload(p.name)}
 									class="btn preset-outlined-primary-500 rounded-base inline-flex items-center gap-1.5 px-4 py-1.5 text-sm font-medium"
 								>
-									<Download class="h-4 w-4" /> Download{#if versionLabel}&nbsp;{versionLabel}{/if}
+									<Download class="h-4 w-4" />
+									{m.word_download()}{#if versionLabel}&nbsp;{versionLabel}{/if}
 								</a>
 							{/if}
 						</div>
@@ -218,29 +225,37 @@
 
 		{#if history.length}
 			<div class="mt-10">
-				<h2 class="text-surface-500 mb-3 text-center text-xs font-semibold tracking-wide uppercase">Version history</h2>
+				<h2 class="text-surface-500 mb-3 text-center text-xs font-semibold tracking-wide uppercase">{m.dl_version_history()}</h2>
 				<div class="border-surface-200 divide-surface-200 divide-y overflow-hidden rounded-lg border bg-white">
 					{#each history as r, i (r.version)}
 						<div class="flex flex-col gap-2 p-4 sm:flex-row sm:items-center sm:justify-between">
 							<div class="flex items-center gap-2.5">
 								<span class="font-semibold">v{r.version.replace(/^v/, '')}</span>
 								{#if i === 0}
-									<span class="border-surface-300 text-surface-500 rounded-base border px-1.5 py-0.5 text-xs font-medium">Latest</span>
+									<span class="border-surface-300 text-surface-500 rounded-base border px-1.5 py-0.5 text-xs font-medium"
+										>{m.dl_latest_badge()}</span
+									>
 								{/if}
 								{#if fmtDate(r.publishedAt)}<span class="text-surface-400 text-sm">{fmtDate(r.publishedAt)}</span>{/if}
 							</div>
 							<div class="text-primary-600 flex flex-wrap gap-x-4 gap-y-1 text-sm">
 								{#if r.files.windows}
-									<a class="anchor" href={`${DL}/${r.files.windows}`} download onclick={() => trackDownload('Windows')}>Windows</a>
+									<a class="anchor" href={`${DL}/${r.files.windows}`} download onclick={() => trackDownload('Windows')}
+										>{m.word_windows()}</a
+									>
 								{/if}
 								{#if r.files.mac}
-									<a class="anchor" href={`${DL}/${r.files.mac}`} download onclick={() => trackDownload('macOS')}>macOS</a>
+									<a class="anchor" href={`${DL}/${r.files.mac}`} download onclick={() => trackDownload('macOS')}>{m.word_macos()}</a>
 								{/if}
 								{#if r.files.linuxAppImage}
-									<a class="anchor" href={`${DL}/${r.files.linuxAppImage}`} download onclick={() => trackDownload('Linux')}>AppImage</a>
+									<a class="anchor" href={`${DL}/${r.files.linuxAppImage}`} download onclick={() => trackDownload('Linux')}
+										>{m.word_appimage()}</a
+									>
 								{/if}
 								{#if r.files.linuxDeb}
-									<a class="anchor" href={`${DL}/${r.files.linuxDeb}`} download onclick={() => trackDownload('Linux (.deb)')}>.deb</a>
+									<a class="anchor" href={`${DL}/${r.files.linuxDeb}`} download onclick={() => trackDownload('Linux (.deb)')}
+										>{m.word_deb()}</a
+									>
 								{/if}
 							</div>
 						</div>
@@ -261,18 +276,19 @@
 			<div class="bg-primary-500/10 text-primary-600 mx-auto flex h-12 w-12 items-center justify-center rounded-full">
 				<Download class="h-6 w-6" />
 			</div>
-			<p class="text-surface-900 mt-4 text-lg font-semibold">Your download is starting…</p>
-			<p class="text-surface-600 mt-1.5 text-sm">While you wait, consider starring the project on GitHub to support it.</p>
+			<p class="text-surface-900 mt-4 text-lg font-semibold">{m.dl_modal_starting()}</p>
+			<p class="text-surface-600 mt-1.5 text-sm">{m.dl_modal_star_prompt()}</p>
 			<a
 				href={GITHUB_URL}
 				target="_blank"
 				rel="noopener noreferrer"
 				class="btn preset-filled-primary-500 rounded-base mt-5 inline-flex w-full items-center justify-center gap-2 py-2.5 text-sm font-semibold text-white"
 			>
-				<Star class="h-4 w-4" /> Star on GitHub
+				<Star class="h-4 w-4" />
+				{m.dl_star_github()}
 			</a>
 			<button type="button" onclick={dismissDownloadModal} class="text-surface-500 hover:text-surface-700 mt-3 text-sm font-medium">
-				Close
+				{m.dl_close()}
 			</button>
 		</div>
 	</div>
@@ -287,7 +303,8 @@
 				? 'btn preset-filled-primary-500 rounded-base flex shrink-0 items-center gap-2 px-5 py-2.5 text-sm font-semibold text-white'
 				: 'btn preset-outlined-primary-500 rounded-base inline-flex items-center gap-1.5 px-4 py-1.5 text-sm font-medium'}
 		>
-			<Download class="h-4 w-4" /> Download{#if variant === 'grid' && versionLabel}&nbsp;{versionLabel}{/if}
+			<Download class="h-4 w-4" />
+			{m.word_download()}{#if variant === 'grid' && versionLabel}&nbsp;{versionLabel}{/if}
 			<ChevronDown class="h-4 w-4 opacity-70" />
 		</Menu.Trigger>
 		<Portal>
@@ -297,13 +314,13 @@
 						value="deb"
 						class="rounded-base hover:bg-surface-100 data-[highlighted]:bg-surface-100 cursor-pointer px-3 py-2 text-sm font-medium"
 					>
-						<Menu.ItemText>.deb <span class="text-surface-400 font-normal">Debian / Ubuntu</span></Menu.ItemText>
+						<Menu.ItemText>{m.word_deb()} <span class="text-surface-400 font-normal">{m.dl_deb_desc()}</span></Menu.ItemText>
 					</Menu.Item>
 					<Menu.Item
 						value="appimage"
 						class="rounded-base hover:bg-surface-100 data-[highlighted]:bg-surface-100 cursor-pointer px-3 py-2 text-sm font-medium"
 					>
-						<Menu.ItemText>AppImage <span class="text-surface-400 font-normal">other distros, needs libfuse2</span></Menu.ItemText>
+						<Menu.ItemText>{m.word_appimage()} <span class="text-surface-400 font-normal">{m.dl_appimage_desc()}</span></Menu.ItemText>
 					</Menu.Item>
 				</Menu.Content>
 			</Menu.Positioner>

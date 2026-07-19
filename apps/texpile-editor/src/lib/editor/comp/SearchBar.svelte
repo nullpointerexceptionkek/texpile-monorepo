@@ -7,6 +7,7 @@
 	import ArrowLeft from '@lucide/svelte/icons/arrow-left';
 	import ArrowRight from '@lucide/svelte/icons/arrow-right';
 	import X from '@lucide/svelte/icons/x';
+	import { m } from '$lib/paraglide/messages';
 
 	let searchTerm = $state('');
 	let searchInput = $state<HTMLInputElement>();
@@ -105,16 +106,21 @@
 			bind:value={searchTerm}
 			oninput={() => runSearch(true)}
 			onkeydown={(e) => e.key === 'Enter' && runSearch()}
-			placeholder="Search…"
+			placeholder={m.searchbar_placeholder()}
 			class="input w-56"
 		/>
-		<span class="badge preset-filled-surface-200-800 min-w-[3.5rem] text-center">{match ? `${current}/${match}` : '0/0'}</span>
-		<button class="btn-icon btn-icon-sm hover:preset-tonal" onclick={gotoPrev} aria-label="Previous match"
+		<span class="badge preset-filled-surface-200-800 min-w-[3.5rem] text-center"
+			>{match ? m.searchbar_match_count({ current, total: match }) : m.searchbar_match_count({ current: 0, total: 0 })}</span
+		>
+		<button class="btn-icon btn-icon-sm hover:preset-tonal" onclick={gotoPrev} aria-label={m.searchbar_aria_previous()}
 			><ArrowLeft class="size-4" /></button
 		>
-		<button class="btn-icon btn-icon-sm hover:preset-tonal" onclick={gotoNext} aria-label="Next match"><ArrowRight class="size-4" /></button
+		<button class="btn-icon btn-icon-sm hover:preset-tonal" onclick={gotoNext} aria-label={m.searchbar_aria_next()}
+			><ArrowRight class="size-4" /></button
 		>
-		<button class="btn-icon btn-icon-sm hover:preset-tonal" onclick={closeBar} aria-label="Close search"><X class="size-4" /></button>
+		<button class="btn-icon btn-icon-sm hover:preset-tonal" onclick={closeBar} aria-label={m.searchbar_aria_close()}
+			><X class="size-4" /></button
+		>
 	</div>
 {/if}
 

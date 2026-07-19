@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { Search, X, CaseSensitive, Regex, ChevronDown, ChevronRight, FileText } from '@lucide/svelte';
 	import { searchInFolder, basename, type SearchFileResult } from '$lib/workspace/fileSystem';
+	import { m } from '$lib/paraglide/messages';
 
 	let { root, onOpen, onClose }: { root: string; onOpen: (file: string, line: number) => void; onClose: () => void } = $props();
 
@@ -25,6 +26,16 @@
 	}
 
 	const totalMatches = $derived(results.reduce((n, r) => n + r.matches.length, 0));
+	const resultsText = $derived(
+		totalMatches === 1
+			? m.globalsearch_results_count_one({ count: totalMatches })
+			: m.globalsearch_results_count_other({ count: totalMatches })
+	);
+	const filesText = $derived(
+		results.length === 1
+			? m.globalsearch_files_count_one({ count: results.length })
+			: m.globalsearch_files_count_other({ count: results.length })
+	);
 
 	async function runSearch() {
 		const q = query.trim();
@@ -80,7 +91,7 @@
 			<!-- svelte-ignore a11y_autofocus -->
 			<input
 				class="input h-8 w-full pl-7 text-sm"
-				placeholder="Search in folder"
+				placeholder={m.globalsearch_placeholder()}
 				bind:this={inputEl}
 				bind:value={query}
 				autofocus
@@ -90,29 +101,32 @@
 		</div>
 		<button
 			class="btn-icon btn-icon-sm {caseSensitive ? 'preset-tonal-primary' : 'hover:preset-tonal'}"
-			title="Match case"
-			aria-label="Match case"
+			title={m.globalsearch_match_case()}
+			aria-label={m.globalsearch_match_case()}
 			onclick={() => (caseSensitive = !caseSensitive)}><CaseSensitive class="size-4" /></button
 		>
 		<button
 			class="btn-icon btn-icon-sm {useRegex ? 'preset-tonal-primary' : 'hover:preset-tonal'}"
-			title="Use regular expression"
-			aria-label="Use regular expression"
+			title={m.globalsearch_use_regex()}
+			aria-label={m.globalsearch_use_regex()}
 			onclick={() => (useRegex = !useRegex)}><Regex class="size-4" /></button
 		>
-		<button class="btn-icon btn-icon-sm hover:preset-tonal" title="Close search" aria-label="Close search" onclick={onClose}
-			><X class="size-4" /></button
+		<button
+			class="btn-icon btn-icon-sm hover:preset-tonal"
+			title={m.globalsearch_close_search()}
+			aria-label={m.globalsearch_close_search()}
+			onclick={onClose}><X class="size-4" /></button
 		>
 	</div>
 
 	<div class="text-surface-500 px-2 py-1 text-xs">
 		{#if searching}
-			Searching…
+			{m.globalsearch_searching()}
 		{:else if error}
 			<span class="text-error-500">{error}</span>
 		{:else if query.trim()}
-			{totalMatches} result{totalMatches === 1 ? '' : 's'} in {results.length} file{results.length === 1 ? '' : 's'}{#if truncated}
-				(truncated){/if}
+			{m.globalsearch_summary({ results: resultsText, files: filesText })}{#if truncated}
+				{m.globalsearch_truncated()}{/if}
 		{/if}
 	</div>
 
@@ -132,15 +146,15 @@
 					<span class="text-surface-400 ml-auto shrink-0 text-xs">{r.matches.length}</span>
 				</button>
 				{#if !collapsed[r.file]}
-					{#each r.matches as m (m.line)}
+					{#each r.matches as match (match.line)}
 						<button
 							class="hover:preset-tonal-primary flex w-full items-baseline gap-2 py-0.5 pr-2 pl-7 text-left text-xs"
-							onclick={() => onOpen(r.file, m.line)}
-							title="Line {m.line}"
+							onclick={() => onOpen(r.file, match.line)}
+							title={m.globalsearch_line_title({ line: match.line })}
 						>
-							<span class="text-surface-400 w-8 shrink-0 text-right tabular-nums">{m.line}</span>
+							<span class="text-surface-400 w-8 shrink-0 text-right tabular-nums">{match.line}</span>
 							<span class="truncate font-mono"
-								>{#each parts(m.text.trim()) as p}<span class={p.hit ? 'bg-warning-500/40 rounded-sm' : ''}>{p.s}</span>{/each}</span
+								>{#each parts(match.text.trim()) as p}<span class={p.hit ? 'bg-warning-500/40 rounded-sm' : ''}>{p.s}</span>{/each}</span
 							>
 						</button>
 					{/each}

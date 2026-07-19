@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { STARTERS, type Starter, type ImportedFile } from '$lib/workspace/starters';
 	import { FileText, FilePlus, FolderInput } from '@lucide/svelte';
+	import { m } from '$lib/paraglide/messages';
 
 	let {
 		onPick,
@@ -45,8 +46,10 @@
 				disabled={busy}
 				onclick={() => importInput?.click()}
 			>
-				<span class="flex items-center gap-2 font-medium"><FolderInput class="text-primary-500 size-4 shrink-0" /> Import your own</span>
-				<span class="text-surface-500 text-xs">Bring existing .tex, .bib, .cls or .sty files into this folder and start from them.</span>
+				<span class="flex items-center gap-2 font-medium"
+					><FolderInput class="text-primary-500 size-4 shrink-0" /> {m.starter_import_own()}</span
+				>
+				<span class="text-surface-500 text-xs">{m.starter_import_description()}</span>
 			</button>
 			<input bind:this={importInput} type="file" multiple accept=".tex,.bib,.cls,.sty,.bst" class="hidden" onchange={onFilesPicked} />
 		{/if}
@@ -57,7 +60,8 @@
 			disabled={busy}
 			onclick={onBlank}
 		>
-			<FilePlus class="size-4" /> Or start with a blank file
+			<FilePlus class="size-4" />
+			{m.starter_blank_file()}
 		</button>
 	{/if}
 </div>

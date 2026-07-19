@@ -3,6 +3,7 @@
 	import { Highlighter, AlertTriangle } from '@lucide/svelte';
 	import { editorViewStore, templateFeaturesStore } from '$lib/stores/editorStore';
 	import { schema } from '$lib/schema/schema';
+	import { m } from '$lib/paraglide/messages';
 
 	let { activeHighlightColor = null }: { activeHighlightColor?: string | null } = $props();
 
@@ -11,14 +12,14 @@
 	const highlightDisabled = $derived($templateFeaturesStore?.highlight === false);
 
 	const highlightColors = [
-		{ name: 'Yellow', value: 'yellow' },
-		{ name: 'Cyan', value: 'cyan' },
-		{ name: 'Magenta', value: 'magenta' },
-		{ name: 'Green', value: 'green' },
-		{ name: 'Red', value: 'red' },
-		{ name: 'Blue', value: 'blue' },
-		{ name: 'White', value: 'white' },
-		{ name: 'None', value: 'none' }
+		{ name: m.tbar_color_yellow(), value: 'yellow' },
+		{ name: m.tbar_color_cyan(), value: 'cyan' },
+		{ name: m.tbar_color_magenta(), value: 'magenta' },
+		{ name: m.tbar_color_green(), value: 'green' },
+		{ name: m.tbar_color_red(), value: 'red' },
+		{ name: m.tbar_color_blue(), value: 'blue' },
+		{ name: m.tbar_color_white(), value: 'white' },
+		{ name: m.tbar_color_none(), value: 'none' }
 	] as const;
 
 	function setHighlight(color: string) {
@@ -46,7 +47,7 @@
 	autoFocus={false}
 >
 	<Popover.Trigger class="toolbarButton rounded p-1 hover:bg-surface-200-800">
-		<button aria-label="Highlight" title="Highlight" class="relative flex items-center">
+		<button aria-label={m.tbar_highlight_aria()} title={m.tbar_highlight_aria()} class="relative flex items-center">
 			<Highlighter class="h-5 w-5 text-surface-800-200" />
 			<!-- active-color bar is absolute so it doesn't add height and lift the icon off center -->
 			<span
@@ -62,7 +63,7 @@
 				{#if highlightDisabled}
 					<div class="text-warning-600 dark:text-warning-400 border-surface-300-700 flex items-start gap-2 border-b px-3 py-2 text-xs">
 						<AlertTriangle class="mt-0.5 h-4 w-4 flex-shrink-0" />
-						<span>Highlight won't appear in final document for this template</span>
+						<span>{m.tbar_highlight_disabled_warning()}</span>
 					</div>
 				{/if}
 				{#each highlightColors as { name, value }}

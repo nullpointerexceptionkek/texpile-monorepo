@@ -19,6 +19,7 @@
 	import { getPdfJs } from 'svelte-pdf-view';
 	import { native, fileUrl } from '$lib/workspace/fileSystem';
 	import type { DraftPage } from '$lib/workspace/fileSystem';
+	import { m } from '$lib/paraglide/messages';
 
 	interface Props {
 		root: string;
@@ -553,11 +554,11 @@
 			case 'spans-pages':
 			case 'spans-boundary':
 			case 'break-inside':
-				return 'paragraph crosses a column or page';
+				return m.draft_reason_column_or_page();
 			case 'overflow':
-				return 'edit fills the column';
+				return m.draft_reason_overflow();
 			case 'underflow':
-				return 'edit shortens the column';
+				return m.draft_reason_underflow();
 			case 'no-line-boxes':
 			case 'no-anchor-glyphs':
 			case 'no-page-records':
@@ -565,21 +566,21 @@
 			case 'no-page-glyphs':
 			case 'no-run-of-N':
 			case 'content-mismatch':
-				return 'could not locate paragraph';
+				return m.draft_reason_locate_failed();
 			case 'synctex-span>N':
 			case 'line-count':
 			case 'spread':
 			case 'glue-gap':
-				return 'layout no longer matches';
+				return m.draft_reason_layout_mismatch();
 			case 'cal-uncertified':
 			case 'cal-typeset-failed':
 			case 'cal-empty':
 			case 'typeset':
-				return 'content the fast engine cannot reproduce';
+				return m.draft_reason_cannot_reproduce();
 			case 'no-lines':
-				return 'nothing to typeset';
+				return m.draft_reason_nothing_to_typeset();
 			default:
-				return 'needs a full recompile';
+				return m.draft_reason_needs_recompile();
 		}
 	}
 
@@ -1493,7 +1494,7 @@
 			await req.onRecompile?.();
 			// the daemon SURVIVES this: an abandon means "this edit renders via a full pass",
 			// never an engine reload (that only happens on a preamble change)
-			status = `Recompiling (${whyPhrase(stage)}), engine stays warm…`;
+			status = m.draft_status_recompiling({ reason: whyPhrase(stage) });
 			compile('abandon:' + stage);
 		};
 		try {
@@ -1584,7 +1585,7 @@
 				patchedPages.add(cal.pageNo);
 				showEditBand({ page: cal.pageNo, top: cal.b1 - h1, bottom: cal.bk + dk, colL: cal.colL, colR: cal.colR });
 				followEdit(cal.pageNo, cal.b1, cal.bk, cal.colL, cal.colR);
-				status = `Refining p${cal.pageNo}…`;
+				status = m.draft_status_refining({ page: cal.pageNo });
 				ev('provisional-split', { page: cal.pageNo, spillPage, kA, of: lineRecs.length });
 				if (!req.transient) scheduleReconcile(req.onRecompile, 'split');
 				return;
@@ -1701,7 +1702,7 @@
 			if (provisionalStage) {
 				provisionalPages = new Set(provisionalPages).add(cal.pageNo); // tint until the recompile lands
 				ev('provisional', { stage: provisionalStage, page: cal.pageNo, delta: +delta.toFixed(1), transient: !!req.transient });
-				status = `Refining p${cal.pageNo}…`;
+				status = m.draft_status_refining({ page: cal.pageNo });
 				// debounced reconcile: the provisional render carries the typing; ONE full pass
 				// runs after the user pauses instead of one per keystroke. Transient (repaired
 				// mid-typing) edits never schedule one -- the balanced keystroke that follows will.
@@ -1713,7 +1714,7 @@
 					provisionalPages = s;
 				}
 				ev('patched', { page: cal.pageNo, delta: +delta.toFixed(1), ms: +ms.toFixed(0) });
-				status = `Warm engine · patched p${cal.pageNo} in ${ms.toFixed(0)} ms`;
+				status = m.draft_status_patched({ page: cal.pageNo, ms: ms.toFixed(0) });
 			}
 		} catch (e) {
 			ev('error', String(e));
@@ -1840,7 +1841,7 @@
 		provisionalPages = new Set(provisionalPages).add(cal.pageNo).add(pB);
 		showEditBand({ page: cal.pageNo, top: topA, bottom: cal.bk + dk, colL: cal.colL, colR: cal.colR });
 		followEdit(cal.pageNo, cal.b1, cal.bk + dk, cal.colL, cal.colR);
-		status = `Refining p${cal.pageNo}…`;
+		status = m.draft_status_refining({ page: cal.pageNo });
 		ev('provisional-split', { page: cal.pageNo, spillPage: pB, kA, of: lineRecs.length, moved: movedFrom.length, stage: 'overflow' });
 		return true;
 	}
@@ -1860,7 +1861,7 @@
 			.then((r) => {
 				ev('daemon-warm', { ms: +(performance.now() - t).toFixed(0), ok: r.ok });
 				// only announce readiness if nothing else took over the status meanwhile
-				if (r.ok && !compiling && !patching) status = 'Warm engine ready';
+				if (r.ok && !compiling && !patching) status = m.draft_status_warm_ready();
 			})
 			.catch(() => {
 				warmed = false;
@@ -1954,7 +1955,7 @@
 		// a recompile after an abandon already shows "Left warm engine (...), recompiling…"
 		// keep the "Recompiling (…)…" / "Refining…" status the caller set for an abandon or a
 		// provisional reconcile; only a fresh compile announces "Compiling project…"
-		if (!reason.startsWith('abandon:') && !reason.startsWith('provisional:')) status = 'Compiling project…';
+		if (!reason.startsWith('abandon:') && !reason.startsWith('provisional:')) status = m.draft_status_compiling();
 		error = null;
 		try {
 			const r = await n.draftCompile({ root, mainFile });
@@ -2001,7 +2002,10 @@
 				// drop stale hashes for removed pages
 				for (const k of [...prevRecords.keys()]) if (k > pages.length) prevRecords.delete(k);
 				const secs = (r.ms / 1000).toFixed(1);
-				status = `Compiled in ${secs} s · ${pages.length} page${pages.length === 1 ? '' : 's'}${(r.passes ?? 1) > 1 ? ` · ${r.passes} passes` : ''}`;
+				const pageCount =
+					pages.length === 1 ? m.draft_compiled_pages_one({ count: pages.length }) : m.draft_compiled_pages_other({ count: pages.length });
+				const passesSuffix = (r.passes ?? 1) > 1 ? ` · ${m.draft_compiled_passes({ passes: r.passes })}` : '';
+				status = `${m.draft_status_compiled({ secs })} · ${pageCount}${passesSuffix}`;
 				ev('compiled', { pages: pages.length, passes: r.passes ?? 1, changed, ms: r.ms });
 				warmDaemon(); // preload the daemon (heavy preambles cost ~1.5s once) so the first edit patches instantly
 				if (pendingFocus) {
@@ -2295,9 +2299,9 @@
 					.replace(/\.tex$/i, '') + '.pdf';
 			const res = await nat.draftSavePdf({ root, defaultName: name });
 			ev('save-pdf', { saved: res.saved, path: res.path });
-			if (res.saved && res.path) status = `PDF saved to ${res.path}`;
+			if (res.saved && res.path) status = m.draft_status_pdf_saved({ path: res.path });
 		} catch (e) {
-			status = `Could not save PDF: ${e instanceof Error ? e.message : String(e)}`;
+			status = m.draft_status_pdf_save_failed({ message: e instanceof Error ? e.message : String(e) });
 		} finally {
 			savingPdf = false;
 		}
@@ -2323,15 +2327,16 @@
 	<!-- one toolbar row: status on the left, zoom + page-nav on the right ("Draft preview"
 	     already labels the pane header above) -->
 	<div class="border-surface-300-700 text-surface-600-300 flex shrink-0 items-center gap-1 border-b px-2 py-1 text-xs">
-		{#if error}<span class="text-error-500 shrink-0">preview error</span>{:else}<span class="text-surface-700-200 truncate">{status}</span
+		{#if error}<span class="text-error-500 shrink-0">{m.draft_preview_error_label()}</span>{:else}<span
+				class="text-surface-700-200 truncate">{status}</span
 			>{/if}
 		<div class="flex-1"></div>
 		<button
 			class="hover:preset-tonal rounded p-1 disabled:opacity-40"
 			onclick={savePdf}
 			disabled={!pages.length || savingPdf}
-			title="Save PDF"
-			aria-label="Save PDF"
+			title={m.draft_toolbar_save_pdf()}
+			aria-label={m.draft_toolbar_save_pdf()}
 		>
 			<Download class="size-4" />
 		</button>
@@ -2340,8 +2345,8 @@
 			class="hover:preset-tonal rounded p-1 disabled:opacity-40"
 			onclick={zoomOut}
 			disabled={!pages.length}
-			title="Zoom out"
-			aria-label="Zoom out"
+			title={m.draft_toolbar_zoom_out()}
+			aria-label={m.draft_toolbar_zoom_out()}
 		>
 			<ZoomOut class="size-4" />
 		</button>
@@ -2349,7 +2354,7 @@
 			class="hover:preset-tonal min-w-11 rounded px-1 py-1 text-center tabular-nums"
 			onclick={actualSize}
 			disabled={!pages.length}
-			title="Actual size (100%)"
+			title={m.draft_toolbar_actual_size()}
 		>
 			{Math.round(zoom * 100)}%
 		</button>
@@ -2357,8 +2362,8 @@
 			class="hover:preset-tonal rounded p-1 disabled:opacity-40"
 			onclick={zoomIn}
 			disabled={!pages.length}
-			title="Zoom in"
-			aria-label="Zoom in"
+			title={m.draft_toolbar_zoom_in()}
+			aria-label={m.draft_toolbar_zoom_in()}
 		>
 			<ZoomIn class="size-4" />
 		</button>
@@ -2367,8 +2372,8 @@
 			class:preset-tonal={fitMode}
 			onclick={fitWidthBtn}
 			disabled={!pages.length}
-			title="Fit width"
-			aria-label="Fit width"
+			title={m.draft_toolbar_fit_width()}
+			aria-label={m.draft_toolbar_fit_width()}
 		>
 			<MoveHorizontal class="size-4" />
 		</button>
@@ -2378,8 +2383,8 @@
 			class:text-primary-500={followEdits}
 			onclick={() => (followEdits = !followEdits)}
 			disabled={!pages.length}
-			title={followEdits ? 'Following your edits (click to stop)' : 'Follow your edits in the preview'}
-			aria-label="Follow edits"
+			title={followEdits ? m.draft_toolbar_follow_edits_on() : m.draft_toolbar_follow_edits_off()}
+			aria-label={m.draft_toolbar_follow_edits_aria()}
 			aria-pressed={followEdits}
 		>
 			<Crosshair class="size-4" />
@@ -2390,8 +2395,8 @@
 				class="hover:preset-tonal rounded p-1 disabled:opacity-40"
 				onclick={() => goToPage(curPage - 1)}
 				disabled={curPage <= 1}
-				title="Previous page"
-				aria-label="Previous page"
+				title={m.draft_toolbar_prev_page()}
+				aria-label={m.draft_toolbar_prev_page()}
 			>
 				<ChevronUp class="size-4" />
 			</button>
@@ -2400,8 +2405,8 @@
 				class="hover:preset-tonal rounded p-1 disabled:opacity-40"
 				onclick={() => goToPage(curPage + 1)}
 				disabled={curPage >= pages.length}
-				title="Next page"
-				aria-label="Next page"
+				title={m.draft_toolbar_next_page()}
+				aria-label={m.draft_toolbar_next_page()}
 			>
 				<ChevronDown class="size-4" />
 			</button>
@@ -2446,7 +2451,7 @@
 					</div>
 				{/if}
 			</div>
-			<div class="text-surface-500 -mt-3 text-[10px]">page {p.n}</div>
+			<div class="text-surface-500 -mt-3 text-[10px]">{m.draft_page_label({ n: p.n })}</div>
 		{/each}
 	</div>
 </div>

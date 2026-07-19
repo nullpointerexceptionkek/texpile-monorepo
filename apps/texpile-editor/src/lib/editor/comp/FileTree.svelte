@@ -15,6 +15,7 @@
 	import type { TreeEntry } from '$lib/workspace/fileSystem';
 	import { gitKey } from '$lib/workspace/gitStore';
 	import type { GitBadge } from '$lib/workspace/git';
+	import { m } from '$lib/paraglide/messages';
 
 	interface Props {
 		tree: TreeEntry[];
@@ -60,11 +61,11 @@
 		R: 'text-violet-500'
 	};
 	const BADGE_TITLE: Record<GitBadge, string> = {
-		M: 'Modified',
-		A: 'Added',
-		D: 'Deleted',
-		U: 'Untracked',
-		R: 'Renamed'
+		M: m.filetree_badge_modified(),
+		A: m.filetree_badge_added(),
+		D: m.filetree_badge_deleted(),
+		U: m.filetree_badge_untracked(),
+		R: m.filetree_badge_renamed()
 	};
 
 	let expanded = $state<Record<string, boolean>>({});
@@ -208,7 +209,8 @@
 		if (renameEdited) commitRename(e);
 	}
 	function confirmDelete(e: TreeEntry) {
-		if (confirm(`Delete "${e.name}"${e.type === 'dir' ? ' and everything inside it' : ''}?`)) onDelete(e);
+		const message = e.type === 'dir' ? m.filetree_confirm_delete_dir({ name: e.name }) : m.filetree_confirm_delete_file({ name: e.name });
+		if (confirm(message)) onDelete(e);
 	}
 </script>
 
@@ -229,7 +231,11 @@
 			/>{:else}<File class="text-surface-400 size-4 shrink-0" />{/if}
 		<input
 			class="input h-6 flex-1 py-0 text-sm"
-			placeholder={createType === 'dir' ? 'folder name' : createType === 'include' ? 'include file name' : 'file name'}
+			placeholder={createType === 'dir'
+				? m.filetree_placeholder_folder_name()
+				: createType === 'include'
+					? m.filetree_placeholder_include_name()
+					: m.filetree_placeholder_file_name()}
 			value={createValue}
 			oninput={(e) => {
 				createValue = e.currentTarget.value;
@@ -302,7 +308,7 @@
 				{:else}
 					<span class="truncate">{entry.name}</span>
 					{#if isMain(entry)}
-						<Star class="fill-primary-500 text-primary-500 size-3 shrink-0" aria-label="Main file" />
+						<Star class="fill-primary-500 text-primary-500 size-3 shrink-0" aria-label={m.filetree_main_file_label()} />
 					{/if}
 					{#if gitBadge(entry)}
 						{@const b = gitBadge(entry)}
@@ -315,14 +321,18 @@
 			{#if renaming !== entry.path}
 				<div class="flex shrink-0 items-center gap-0.5 pr-1 opacity-0 group-hover:opacity-100">
 					{#if entry.type === 'dir'}
-						<button class="btn-icon btn-icon-sm hover:preset-tonal" title="New file" onclick={() => startCreate(entry.path, 'file')}>
+						<button
+							class="btn-icon btn-icon-sm hover:preset-tonal"
+							title={m.filetree_new_file_title()}
+							onclick={() => startCreate(entry.path, 'file')}
+						>
 							<FilePlus class="size-3.5" />
 						</button>
 					{/if}
-					<button class="btn-icon btn-icon-sm hover:preset-tonal" title="Rename" onclick={() => startRename(entry)}>
+					<button class="btn-icon btn-icon-sm hover:preset-tonal" title={m.filetree_rename()} onclick={() => startRename(entry)}>
 						<Pencil class="size-3.5" />
 					</button>
-					<button class="btn-icon btn-icon-sm hover:preset-tonal-error" title="Delete" onclick={() => confirmDelete(entry)}>
+					<button class="btn-icon btn-icon-sm hover:preset-tonal-error" title={m.filetree_delete()} onclick={() => confirmDelete(entry)}>
 						<Trash2 class="size-3.5" />
 					</button>
 				</div>
@@ -378,7 +388,8 @@
 					startCreate(d, 'file');
 				}}
 			>
-				<FilePlus class="text-surface-500 size-4" /> New File
+				<FilePlus class="text-surface-500 size-4" />
+				{m.filetree_menu_new_file()}
 			</button>
 			<button
 				class="hover:preset-tonal-primary flex w-full items-center gap-2.5 px-3 py-1.5 text-left"
@@ -388,7 +399,8 @@
 					startCreate(d, 'dir');
 				}}
 			>
-				<FolderPlus class="text-surface-500 size-4" /> New Folder
+				<FolderPlus class="text-surface-500 size-4" />
+				{m.filetree_menu_new_folder()}
 			</button>
 			<button
 				class="hover:preset-tonal-primary flex w-full items-center gap-2.5 px-3 py-1.5 text-left"
@@ -397,9 +409,10 @@
 					ctxMenu = null;
 					startCreate(d, 'include');
 				}}
-				title="Create a .tex fragment and \input it at the cursor"
+				title={m.filetree_new_include_hint()}
 			>
-				<FileSymlink class="text-surface-500 size-4" /> New Include
+				<FileSymlink class="text-surface-500 size-4" />
+				{m.filetree_menu_new_include()}
 			</button>
 		{/if}
 		{#if ctxMenu.entry && isTex(ctxMenu.entry) && onSetMain}
@@ -412,7 +425,7 @@
 				}}
 			>
 				<Star class="text-surface-500 size-4 {ctxMenu.entry && isMain(ctxMenu.entry) ? 'fill-primary-500 text-primary-500' : ''}" />
-				{ctxMenu.entry && isMain(ctxMenu.entry) ? 'Unset main file' : 'Set as main file'}
+				{ctxMenu.entry && isMain(ctxMenu.entry) ? m.filetree_menu_unset_main() : m.filetree_menu_set_main()}
 			</button>
 		{/if}
 		{#if ctxMenu.entry}
@@ -424,7 +437,8 @@
 					if (e) startRename(e);
 				}}
 			>
-				<Pencil class="text-surface-500 size-4" /> Rename
+				<Pencil class="text-surface-500 size-4" />
+				{m.filetree_rename()}
 			</button>
 			<button
 				class="hover:preset-tonal-error text-error-600 flex w-full items-center gap-2.5 px-3 py-1.5 text-left"
@@ -434,7 +448,8 @@
 					if (e) confirmDelete(e);
 				}}
 			>
-				<Trash2 class="size-4" /> Delete
+				<Trash2 class="size-4" />
+				{m.filetree_delete()}
 			</button>
 		{/if}
 	</div>

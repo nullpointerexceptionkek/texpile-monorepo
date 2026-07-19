@@ -4,6 +4,7 @@ import { browser } from '$lib/runtime';
 import { writable, get } from 'svelte/store';
 import { toaster } from '$lib/modals/toaster-svelte';
 import { route } from '$lib/router.svelte';
+import { m } from '$lib/paraglide/messages';
 
 export type UpdatePhase = 'idle' | 'available' | 'downloading' | 'downloaded' | 'error';
 export type CheckStatus = 'update' | 'none' | 'error' | 'unsupported';
@@ -65,13 +66,13 @@ function surfaceInBackground(kind: 'downloaded' | 'error', version: string | nul
 	}
 	if (kind === 'downloaded') {
 		toaster.success({
-			title: 'Update ready to install',
-			description: `Texpile v${version} downloaded. Install it from Help > Check for updates.`
+			title: m.updates_toast_ready_title(),
+			description: m.updates_toast_ready_description({ version: version ?? '' })
 		});
 	} else {
 		toaster.error({
-			title: 'Update download failed',
-			description: message || 'Check your connection, then retry from Help > Check for updates.'
+			title: m.updates_toast_failed_title(),
+			description: message || m.updates_toast_failed_description()
 		});
 	}
 }

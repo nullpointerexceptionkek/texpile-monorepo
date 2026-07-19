@@ -3,19 +3,28 @@
 // two surfaces can't drift apart.
 import type { Component } from 'svelte';
 import { Radical, Pi, Sigma, ArrowLeftRight, Braces, Triangle, Grid3x3, LayoutList } from '@lucide/svelte';
+import { m } from '$lib/paraglide/messages';
 
 export type SymbolGroup = {
 	id: string;
-	label: string;
+	/** called at render time: this table is module-level, and the locale isn't known yet at module eval. */
+	label: () => string;
 	icon: Component;
-	// displayLatex: separate LaTeX for the button when the insertion LaTeX doesn't render well
-	symbols: Array<{ latex: string; tooltip?: string; displayLatex?: string }>;
+	// displayLatex: separate LaTeX for the button when the insertion LaTeX doesn't render well.
+	// tooltip is a function only where it's translated (the environments group renders it as a
+	// visible label, not just a hover); plain strings elsewhere are raw LaTeX/symbol names.
+	symbols: Array<{ latex: string; tooltip?: string | (() => string); displayLatex?: string }>;
 };
+
+/** resolves a symbol's tooltip whether it's a literal or a lazily-translated one. */
+export function symbolTooltip(s: { tooltip?: string | (() => string) }): string | undefined {
+	return typeof s.tooltip === 'function' ? s.tooltip() : s.tooltip;
+}
 
 export const SYMBOL_GROUPS: SymbolGroup[] = [
 	{
 		id: 'common',
-		label: 'Common',
+		label: () => m.mathpal_group_common(),
 		icon: Radical,
 		symbols: [
 			{ latex: '\\frac{#@}{#0}', tooltip: 'Fraction', displayLatex: '\\frac{a}{b}' },
@@ -38,7 +47,7 @@ export const SYMBOL_GROUPS: SymbolGroup[] = [
 	},
 	{
 		id: 'greek',
-		label: 'Greek',
+		label: () => m.mathpal_group_greek(),
 		icon: Pi,
 		symbols: [
 			{ latex: '\\alpha', tooltip: 'alpha' },
@@ -80,7 +89,7 @@ export const SYMBOL_GROUPS: SymbolGroup[] = [
 	},
 	{
 		id: 'calculus',
-		label: 'Calculus',
+		label: () => m.mathpal_group_calculus(),
 		icon: Sigma,
 		symbols: [
 			{ latex: '\\int', tooltip: 'Integral' },
@@ -105,7 +114,7 @@ export const SYMBOL_GROUPS: SymbolGroup[] = [
 	},
 	{
 		id: 'relations',
-		label: 'Relations',
+		label: () => m.mathpal_group_relations(),
 		icon: ArrowLeftRight,
 		symbols: [
 			{ latex: '=', tooltip: 'Equals' },
@@ -128,7 +137,7 @@ export const SYMBOL_GROUPS: SymbolGroup[] = [
 	},
 	{
 		id: 'sets',
-		label: 'Sets',
+		label: () => m.mathpal_group_sets(),
 		icon: Braces,
 		symbols: [
 			{ latex: '\\in', tooltip: 'Element of' },
@@ -147,7 +156,7 @@ export const SYMBOL_GROUPS: SymbolGroup[] = [
 	},
 	{
 		id: 'trig',
-		label: 'Trig',
+		label: () => m.mathpal_group_trig(),
 		icon: Triangle,
 		symbols: [
 			{ latex: '\\sin', tooltip: 'Sine' },
@@ -172,7 +181,7 @@ export const SYMBOL_GROUPS: SymbolGroup[] = [
 	},
 	{
 		id: 'matrices',
-		label: 'Matrix',
+		label: () => m.mathpal_group_matrix(),
 		icon: Grid3x3,
 		symbols: [
 			{
@@ -206,7 +215,7 @@ export const SYMBOL_GROUPS: SymbolGroup[] = [
 	},
 	{
 		id: 'science',
-		label: 'Science',
+		label: () => m.mathpal_group_science(),
 		icon: Sigma,
 		symbols: [
 			{ latex: '\\rightarrow', tooltip: 'Reaction arrow (forward)' },
@@ -233,37 +242,37 @@ export const SYMBOL_GROUPS: SymbolGroup[] = [
 	},
 	{
 		id: 'environments',
-		label: 'Envs',
+		label: () => m.mathpal_group_envs(),
 		icon: LayoutList,
 		symbols: [
 			{
 				latex: '\\begin{cases}#? & #? \\\\ #? & #?\\end{cases}',
-				tooltip: 'Piecewise (cases)',
+				tooltip: () => m.mathpal_env_cases(),
 				displayLatex: '\\begin{cases}a & x>0 \\\\ b & x\\le0\\end{cases}'
 			},
 			{
 				latex: '\\begin{dcases}#? & #? \\\\ #? & #?\\end{dcases}',
-				tooltip: 'Display cases',
+				tooltip: () => m.mathpal_env_dcases(),
 				displayLatex: '\\begin{dcases}a & x>0 \\\\ b & x\\le0\\end{dcases}'
 			},
 			{
 				latex: '\\begin{rcases}#? \\\\ #?\\end{rcases}',
-				tooltip: 'Right cases',
+				tooltip: () => m.mathpal_env_rcases(),
 				displayLatex: '\\begin{rcases}a \\\\ b\\end{rcases}'
 			},
 			{
 				latex: '\\begin{gathered}#? \\\\ #?\\end{gathered}',
-				tooltip: 'Gathered (centered)',
+				tooltip: () => m.mathpal_env_gathered(),
 				displayLatex: '\\begin{gathered}a \\\\ b\\end{gathered}'
 			},
 			{
 				latex: '\\begin{aligned}#? &= #? \\\\ #? &= #?\\end{aligned}',
-				tooltip: 'Aligned columns',
+				tooltip: () => m.mathpal_env_aligned(),
 				displayLatex: '\\begin{aligned}a &= b \\\\ c &= d\\end{aligned}'
 			},
 			{
 				latex: '\\begin{split}#? &= #? \\\\ &= #?\\end{split}',
-				tooltip: 'Split equation',
+				tooltip: () => m.mathpal_env_split(),
 				displayLatex: '\\begin{split}a &= b \\\\ &= c\\end{split}'
 			}
 		]
@@ -272,12 +281,12 @@ export const SYMBOL_GROUPS: SymbolGroup[] = [
 
 /** the bracket styles the matrix builder offers, shared by both palettes. */
 export const MATRIX_BRACKETS = [
-	{ mode: 'matrix', label: '···', title: 'No delimiters' },
-	{ mode: 'pmatrix', label: '( )', title: 'Parentheses' },
-	{ mode: 'bmatrix', label: '[ ]', title: 'Brackets' },
-	{ mode: 'Bmatrix', label: '{ }', title: 'Braces' },
-	{ mode: 'vmatrix', label: '| |', title: 'Single vertical lines' },
-	{ mode: 'Vmatrix', label: '‖ ‖', title: 'Double vertical lines (norm)' }
+	{ mode: 'matrix', label: '···', title: () => m.mathpal_matrix_no_delimiters() },
+	{ mode: 'pmatrix', label: '( )', title: () => m.mathpal_matrix_parentheses() },
+	{ mode: 'bmatrix', label: '[ ]', title: () => m.mathpal_matrix_brackets() },
+	{ mode: 'Bmatrix', label: '{ }', title: () => m.mathpal_matrix_braces() },
+	{ mode: 'vmatrix', label: '| |', title: () => m.mathpal_matrix_single_bars() },
+	{ mode: 'Vmatrix', label: '‖ ‖', title: () => m.mathpal_matrix_double_bars() }
 ] as const;
 
 export type MatrixBracket = (typeof MATRIX_BRACKETS)[number]['mode'];

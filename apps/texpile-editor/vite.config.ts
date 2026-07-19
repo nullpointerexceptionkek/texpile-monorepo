@@ -1,6 +1,7 @@
 import { svelte } from '@sveltejs/vite-plugin-svelte';
 import { defineConfig } from 'vitest/config';
 import tailwindcss from '@tailwindcss/vite';
+import { paraglideVitePlugin } from '@inlang/paraglide-js';
 import { createRequire } from 'node:module';
 import path from 'node:path';
 import { readChangelog } from './scripts/changelog.mjs';
@@ -17,13 +18,22 @@ const rootPkg = require('../../package.json') as { version?: string };
 const NO_PREBUNDLE = new Set([
 	'harper.js', // ships its own WASM worker; kept external (see optimizeDeps.exclude)
 	'svelte-pdf-view', // bundles the PDF.js worker; pre-bundling breaks worker loading (see optimizeDeps.exclude)
-	'@tailwindcss/vite' // a Vite plugin, not a runtime dependency
+	'@tailwindcss/vite', // a Vite plugin, not a runtime dependency
+	'@inlang/paraglide-js' // compiler/vite plugin; app code imports the generated $lib/paraglide output, not this package
 ]);
 
 const prebundle = Object.keys(pkg.dependencies ?? {}).filter((d) => !NO_PREBUNDLE.has(d));
 
 export default defineConfig(({ mode }) => ({
-	plugins: [tailwindcss(), svelte()],
+	plugins: [
+		tailwindcss(),
+		svelte(),
+		paraglideVitePlugin({
+			project: './project.inlang',
+			outdir: './src/lib/paraglide',
+			emitTsDeclarations: true
+		})
+	],
 
 	// relative asset URLs: the packaged app is served from the app:// scheme (electron/src/main.ts),
 	// so the bundle must not assume a server root

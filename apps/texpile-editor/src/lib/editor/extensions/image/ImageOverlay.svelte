@@ -7,6 +7,7 @@
 	import { isReadOnly } from '$lib/stores/permissionStore';
 	import { templateFeaturesStore } from '$lib/stores/editorStore';
 	import { settings } from '$lib/settings';
+	import { m } from '$lib/paraglide/messages';
 
 	interface Props {
 		node: PMNode;
@@ -139,7 +140,13 @@
 			positioning={{ placement: 'bottom-end', offset: { mainAxis: 4 } }}
 		>
 			<Popover.Trigger class="image-settings-btn">
-				<button class="settings-button" title="Image Settings" type="button" aria-label="Image settings" disabled={$isReadOnly}>
+				<button
+					class="settings-button"
+					title={m.imageoverlay_settings_title()}
+					type="button"
+					aria-label={m.imageoverlay_settings_aria()}
+					disabled={$isReadOnly}
+				>
 					<Settings class="h-4 w-4" />
 				</button>
 			</Popover.Trigger>
@@ -150,7 +157,7 @@
 						<div class="settings-content">
 							<div class="settings-row">
 								<div class="mb-1 flex items-center justify-between">
-									<span class="text-sm">Size</span>
+									<span class="text-sm">{m.imageoverlay_size_label()}</span>
 									<span class="text-surface-500 text-xs tabular-nums">{sizePercent}%</span>
 								</div>
 								<input
@@ -166,14 +173,14 @@
 
 							<div class="settings-row flex items-center justify-between">
 								<div class="flex items-center gap-2">
-									<span class="text-sm">Show Caption</span>
+									<span class="text-sm">{m.imageoverlay_show_caption_label()}</span>
 									<Tooltip positioning={{ placement: 'top' }} openDelay={200}>
 										<Tooltip.Trigger class="inline-flex items-center">
 											<Info class="text-surface-500 h-3.5 w-3.5" />
 										</Tooltip.Trigger>
 										<Portal>
 											<Tooltip.Positioner class="z-floating-ui">
-												<Tooltip.Content class="card preset-filled p-2 text-sm">Show caption text below image</Tooltip.Content>
+												<Tooltip.Content class="card preset-filled p-2 text-sm">{m.imageoverlay_show_caption_tooltip()}</Tooltip.Content>
 											</Tooltip.Positioner>
 										</Portal>
 									</Tooltip>
@@ -181,7 +188,7 @@
 								<button
 									type="button"
 									class="toggle-button {showCaptionInput ? 'active' : ''}"
-									aria-label="Show caption"
+									aria-label={m.imageoverlay_show_caption_aria()}
 									aria-pressed={showCaptionInput}
 									onclick={() => {
 										showCaptionInput = !showCaptionInput;
@@ -194,14 +201,14 @@
 
 							<div class="settings-row flex items-center justify-between">
 								<div class="flex items-center gap-2">
-									<span class="text-sm">Numbered</span>
+									<span class="text-sm">{m.imageoverlay_numbered_label()}</span>
 									<Tooltip positioning={{ placement: 'top' }} openDelay={200}>
 										<Tooltip.Trigger class="inline-flex items-center">
 											<Info class="text-surface-500 h-3.5 w-3.5" />
 										</Tooltip.Trigger>
 										<Portal>
 											<Tooltip.Positioner class="z-floating-ui">
-												<Tooltip.Content class="card preset-filled p-2 text-sm">Show "Figure X:" before caption</Tooltip.Content>
+												<Tooltip.Content class="card preset-filled p-2 text-sm">{m.imageoverlay_numbered_tooltip()}</Tooltip.Content>
 											</Tooltip.Positioner>
 										</Portal>
 									</Tooltip>
@@ -209,7 +216,7 @@
 								<button
 									type="button"
 									class="toggle-button {numberedInput ? 'active' : ''}"
-									aria-label="Numbered figure"
+									aria-label={m.imageoverlay_numbered_aria()}
 									aria-pressed={numberedInput}
 									onclick={() => {
 										numberedInput = !numberedInput;
@@ -223,16 +230,14 @@
 							{#if columnSpanningEnabled}
 								<div class="settings-row flex items-center justify-between">
 									<div class="flex items-center gap-2">
-										<span class="text-sm">Span columns</span>
+										<span class="text-sm">{m.imageoverlay_span_columns_label()}</span>
 										<Tooltip positioning={{ placement: 'top' }} openDelay={200}>
 											<Tooltip.Trigger class="inline-flex items-center">
 												<Info class="text-surface-500 h-3.5 w-3.5" />
 											</Tooltip.Trigger>
 											<Portal>
 												<Tooltip.Positioner class="z-floating-ui">
-													<Tooltip.Content class="card preset-filled p-2 text-sm"
-														>Figure spans across all columns (figure* environment)</Tooltip.Content
-													>
+													<Tooltip.Content class="card preset-filled p-2 text-sm">{m.imageoverlay_span_columns_tooltip()}</Tooltip.Content>
 												</Tooltip.Positioner>
 											</Portal>
 										</Tooltip>
@@ -240,7 +245,7 @@
 									<button
 										type="button"
 										class="toggle-button {spanningInput ? 'active' : ''}"
-										aria-label="Span columns"
+										aria-label={m.imageoverlay_span_columns_aria()}
 										aria-pressed={spanningInput}
 										onclick={() => {
 											spanningInput = !spanningInput;
@@ -259,15 +264,15 @@
 									onclick={() => (showAdvanced = !showAdvanced)}
 								>
 									<ChevronDown class="h-4 w-4 transition-transform {showAdvanced ? 'rotate-180' : ''}" />
-									<span>Advanced options</span>
+									<span>{m.imageoverlay_advanced_options()}</span>
 								</button>
 
 								{#if showAdvanced}
 									<div class="border-surface-300-700 space-y-4 pl-6">
 										<label class="label">
 											<span>
-												LaTeX Label
-												<span class="text-surface-600-400 text-sm">(for \ref commands)</span>
+												{m.imageoverlay_latex_label()}
+												<span class="text-surface-600-400 text-sm">{m.imageoverlay_latex_label_hint()}</span>
 											</span>
 											<input
 												type="text"
@@ -275,12 +280,12 @@
 												value={labelInput}
 												oninput={handleLabelInput}
 												onblur={handleLabelBlur}
-												placeholder="Custom label (e.g., fig:results)"
+												placeholder={m.imageoverlay_label_placeholder()}
 											/>
 											{#if isTexpileManagedLabel(labelInput)}
 												<span class="text-surface-500-400 mt-1 flex items-center gap-1 text-xs">
 													<Info class="h-3 w-3" />
-													Auto-generated unique identifier. You can customize it here.
+													{m.imageoverlay_auto_label_hint()}
 												</span>
 											{/if}
 										</label>

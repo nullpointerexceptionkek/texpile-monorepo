@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { navigate } from '$lib/router.svelte';
 	import { ArrowLeft } from '@lucide/svelte';
+	import { m } from '$lib/paraglide/messages';
 
 	interface Props {
 		status?: number;
@@ -9,7 +10,7 @@
 
 	let { status = 404, message = '' }: Props = $props();
 
-	const title = $derived(status === 404 ? 'Page not found' : 'Something went wrong');
+	const title = $derived(status === 404 ? m.errorview_title_not_found() : m.errorview_title_generic());
 
 	function goBack() {
 		if (window.history.length > 1) window.history.back();
@@ -30,7 +31,7 @@
 		{/if}
 		<button class="btn preset-filled-primary-500 mt-2 gap-2" onclick={goBack}>
 			<ArrowLeft size={16} />
-			Go back
+			{m.errorview_go_back()}
 		</button>
 	</div>
 </div>

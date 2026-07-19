@@ -277,7 +277,8 @@ const DEFAULT_SETTINGS = {
 	draftMode: false, // preview via the incremental per-page engine instead of the terminal command
 	checkForUpdates: true,
 	uiZoom: 1, // whole-window zoom factor (webContents.setZoomFactor); the View menu adjusts it
-	mathPreview: true // live math preview tooltip in source mode
+	mathPreview: true, // live math preview tooltip in source mode
+	uiLocale: 'en' // UI display language, not the LaTeX document language
 };
 const settingsFile = () => path.join(app.getPath('userData'), 'settings.json');
 function readSettings(): Record<string, unknown> {

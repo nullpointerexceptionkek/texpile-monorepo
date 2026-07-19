@@ -51,6 +51,7 @@
 		"@codemirror/search": "^6.5.11",
 		"@codemirror/state": "^6.4.1",
 		"@codemirror/view": "^6.21.3",
+		"@inlang/paraglide-js": "2.22.0",
 		"@lucide/svelte": "^0.522.0",
 		"@tailwindcss/vite": "^4.1.10",
 		"@unified-latex/unified-latex-ctan": "1.8.4",

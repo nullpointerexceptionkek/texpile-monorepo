@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { X } from '@lucide/svelte';
+	import { X, Languages } from '@lucide/svelte';
 	import { Switch } from '@skeletonlabs/skeleton-svelte';
 	import { themeChoice, setTheme, type ThemeChoice } from '$lib/theme';
 	import { settings, updateSettings, applyUiLocale, type AppSettings } from '$lib/settings';
@@ -106,7 +106,12 @@
 
 				<div>
 					<div class="flex items-center justify-between gap-4">
-						<span class="text-sm">{m.prefs_language()}</span>
+						<!-- the one setting a user may need to find while the UI is in a language they can't
+						     read, so it carries an icon the others don't -->
+						<span class="flex items-center gap-2 text-sm">
+							<Languages class="text-surface-500 size-4 shrink-0" />
+							{m.prefs_language()}
+						</span>
 						<select class="select w-32 text-sm" value={$settings.uiLocale} onchange={onLocaleChange}>
 							{#each uiLocales as l (l.value)}
 								<option value={l.value}>{l.label}</option>

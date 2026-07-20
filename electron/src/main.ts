@@ -387,16 +387,46 @@ const DEFAULT_SETTINGS = {
 	checkForUpdates: true,
 	uiZoom: 1, // whole-window zoom factor (webContents.setZoomFactor); the View menu adjusts it
 	mathPreview: true, // live math preview tooltip in source mode
-	uiLocale: 'en', // UI display language, not the LaTeX document language
+	uiLocale: 'en', // UI display language, not the LaTeX document language. Overridden per-read by
+	// the detected system language until the user picks one; see systemUiLocale + readSettings.
 	collabRelayUrl: 'wss://collab.texpile.com', // shared-session relay endpoint
 	openFolders: [] as string[] // folders open across windows; maintained here for session restore
 };
+
+// The UI languages we ship. Anything else, or a failed probe, falls back to English.
+type UiLocale = 'en' | 'de' | 'zh-Hans' | 'zh-Hant';
+let cachedLocale: UiLocale | null = null;
+/** first-run UI language from the OS. A stored uiLocale always wins (readSettings' merge order),
+ *  so a deliberate choice is never overridden on a later launch. */
+function systemUiLocale(): UiLocale {
+	if (cachedLocale) return cachedLocale;
+	let tags: string[] = [];
+	try {
+		// preferred-languages is in OS preference order; getLocale is the single-value fallback
+		tags = app.getPreferredSystemLanguages?.() ?? [];
+		if (!tags.length) tags = [app.getLocale()];
+	} catch {
+		/* both throw before app-ready on some platforms; stay unset and retry on the next read */
+	}
+	if (!tags.length) return 'en'; // uncached: this was a failed probe, not a real answer
+	for (const raw of tags) {
+		const tag = raw.toLowerCase();
+		if (tag.startsWith('de')) return (cachedLocale = 'de');
+		// script subtag wins; else region, where TW/HK/MO are Traditional and the rest Simplified
+		if (tag.startsWith('zh')) return (cachedLocale = /hant|-tw|-hk|-mo/.test(tag) ? 'zh-Hant' : 'zh-Hans');
+		if (tag.startsWith('en')) return (cachedLocale = 'en');
+		// unsupported language: keep looking, the user's next preference may be one we ship
+	}
+	return (cachedLocale = 'en');
+}
+
 const settingsFile = () => path.join(app.getPath('userData'), 'settings.json');
 function readSettings(): Record<string, unknown> {
 	try {
-		return { ...DEFAULT_SETTINGS, ...JSON.parse(fs.readFileSync(settingsFile(), 'utf8')) };
+		return { ...DEFAULT_SETTINGS, uiLocale: systemUiLocale(), ...JSON.parse(fs.readFileSync(settingsFile(), 'utf8')) };
 	} catch {
-		return { ...DEFAULT_SETTINGS };
+		// no settings file yet: the genuine first run, which is exactly when detection matters
+		return { ...DEFAULT_SETTINGS, uiLocale: systemUiLocale() };
 	}
 }
 function writeSettings(partial: Record<string, unknown> | undefined): Record<string, unknown> {

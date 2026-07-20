@@ -1,16 +1,21 @@
-<script module lang="ts">
-	// per page-load, not per mount: survives in-app navigation, resets on a real reload
-	let reopenAttempted = false;
-</script>
-
 <script lang="ts">
-	import { onMount } from 'svelte';
 	import { navigate } from '$lib/router.svelte';
-	import { FolderOpen, FolderPlus, GraduationCap, Loader2 } from '@lucide/svelte';
+	import { AppWindow, FolderOpen, FolderPlus, GraduationCap, Loader2 } from '@lucide/svelte';
 	// dark wordmark for light backgrounds, white one for dark mode
 	import logoOnLight from '$lib/assets/logo/Logo-dark.svg';
 	import logoOnDark from '$lib/assets/logo/Logo-light.svg';
-	import { pickFolder, scanTexFiles, statFile, writeTextFile, joinPath, basename, type TexFile } from '$lib/workspace/fileSystem';
+	import {
+		pickFolder,
+		claimWorkspace,
+		isDesktop,
+		openNewWindow,
+		scanTexFiles,
+		statFile,
+		writeTextFile,
+		joinPath,
+		basename,
+		type TexFile
+	} from '$lib/workspace/fileSystem';
 	import { createStarterLatex } from '$lib/workspace/latexRoundtrip';
 	import {
 		workspaceRoot,
@@ -21,7 +26,7 @@
 		setMainFile,
 		savedLastFile
 	} from '$lib/workspace/workspaceStore';
-	import { getSettings, updateSettings } from '$lib/settings';
+	import { updateSettings } from '$lib/settings';
 	import StarterPicker from '$lib/editor/comp/StarterPicker.svelte';
 	import TutorialConfirmModal from '$lib/editor/comp/TutorialConfirmModal.svelte';
 	import { applyStarter, applyImportedFiles, openTutorialProject, type Starter, type ImportedFile } from '$lib/workspace/starters';
@@ -33,6 +38,8 @@
 	let tutorialModalOpen = $state(false);
 
 	async function finishOpen(root: string, active: string | null) {
+		// belt & braces: template/tutorial roots are freshly created, but claiming is cheap
+		if (!(await claimWorkspace(root)).ok) return;
 		const { files } = await scanTexFiles(root);
 		workspaceRoot.set(root);
 		texFiles.set(files);
@@ -116,6 +123,8 @@
 		if (!root) return;
 		busy = true;
 		try {
+			// already open in another window: that window was focused, stay on the start screen
+			if (!(await claimWorkspace(root)).ok) return;
 			const { files } = await scanTexFiles(root);
 			workspaceRoot.set(root);
 			texFiles.set(files);
@@ -137,6 +146,8 @@
 		if (!root) return;
 		busy = true;
 		try {
+			// already open in another window: that window was focused, stay on the start screen
+			if (!(await claimWorkspace(root)).ok) return;
 			const { files } = await scanTexFiles(root);
 			if (files.length === 0) {
 				// let the user pick a starter (or a blank file) before opening
@@ -156,24 +167,10 @@
 		}
 	}
 
-	// reopen the last folder once per page-load (module-level flag, not sessionStorage:
-	// that persists across reloads and blocked reopen in dev)
-	onMount(async () => {
-		if (reopenAttempted) return;
-		reopenAttempted = true;
-		const s = await getSettings();
-		if (!s.reopenLastFolder || !s.lastFolder) return;
-		try {
-			const { files } = await scanTexFiles(s.lastFolder);
-			workspaceRoot.set(s.lastFolder);
-			texFiles.set(files);
-			activeFilePath.set(await initialFile(s.lastFolder, files));
-			addRecentFolder(s.lastFolder);
-			navigate('/workspace');
-		} catch {
-			// last folder is gone or unreadable, stay on the start screen
-		}
-	});
+	// NOTE: session restore no longer lives here. The main process remembers the open folders
+	// (settings.openFolders) and pushes a main:open-folder to each restored window at launch;
+	// App.svelte handles it. A StartView-side auto-reopen would make every NEW window reopen
+	// the last folder too.
 </script>
 
 <svelte:head><title>Texpile</title></svelte:head>
@@ -187,8 +184,8 @@
 
 		{#if templateFor}
 			<div class="mb-3 flex items-baseline justify-between gap-2">
-				<h2 class="text-surface-500 text-xs font-semibold tracking-wider uppercase">{m.start_new_project_heading()}</h2>
-				<span class="text-surface-400 truncate text-xs" title={templateFor}>{basename(templateFor)}</span>
+				<h2 class="text-surface-500 shrink-0 text-xs font-semibold tracking-wider uppercase">{m.start_new_project_heading()}</h2>
+				<span class="text-surface-400 min-w-0 truncate text-xs" title={templateFor}>{basename(templateFor)}</span>
 			</div>
 			<StarterPicker onPick={applyTemplate} onBlank={openBlank} onImport={importOwn} {busy} />
 			<button
@@ -214,14 +211,22 @@
 				</button>
 			</div>
 
-			<button
-				class="text-surface-500 hover:text-surface-950-50 mt-3 inline-flex items-center gap-1.5 text-sm disabled:opacity-50"
-				onclick={() => (tutorialModalOpen = true)}
-				disabled={busy}
-			>
-				<GraduationCap class="size-4" />
-				{m.start_tutorial_cta()}
-			</button>
+			<div class="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1.5">
+				<button
+					class="text-surface-500 hover:text-surface-950-50 inline-flex items-center gap-1.5 text-sm disabled:opacity-50"
+					onclick={() => (tutorialModalOpen = true)}
+					disabled={busy}
+				>
+					<GraduationCap class="size-4" />
+					{m.start_tutorial_cta()}
+				</button>
+				{#if isDesktop()}
+					<button class="text-surface-500 hover:text-surface-950-50 inline-flex items-center gap-1.5 text-sm" onclick={openNewWindow}>
+						<AppWindow class="size-4" />
+						{m.start_new_window()}
+					</button>
+				{/if}
+			</div>
 
 			{#if error}
 				<p class="text-error-500 mt-2 px-2 text-sm">{error}</p>
@@ -232,14 +237,16 @@
 				<ul class="space-y-1.5">
 					{#each $recentFolders as folder (folder)}
 						<li>
+							<!-- min-w-0 on the button + path span: flex items default to min-width:auto,
+							     so without it `truncate` never engages and long paths overflow the card -->
 							<button
-								class="group flex w-full items-baseline gap-2 text-left disabled:opacity-60"
+								class="group flex w-full min-w-0 items-baseline gap-2 text-left disabled:opacity-60"
 								onclick={() => openFolder(folder)}
 								disabled={busy}
 								title={folder}
 							>
-								<span class="text-blue shrink-0 text-sm group-hover:underline">{basename(folder)}</span>
-								<span class="text-surface-400 truncate text-xs group-hover:underline">{folder}</span>
+								<span class="text-blue max-w-[60%] shrink-0 truncate text-sm group-hover:underline">{basename(folder)}</span>
+								<span class="text-surface-400 min-w-0 truncate text-xs group-hover:underline">{folder}</span>
 							</button>
 						</li>
 					{/each}

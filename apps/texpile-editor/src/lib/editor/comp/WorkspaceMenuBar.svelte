@@ -4,7 +4,7 @@
 	import { get } from 'svelte/store';
 	import { editorViewStore, referenceStore, editorConfigStore, cursorInCm } from '$lib/stores/editorStore';
 	import { recentFolders } from '$lib/workspace/workspaceStore';
-	import { basename } from '$lib/workspace/fileSystem';
+	import { basename, isDesktop, openNewWindow, openFolderInNewWindow } from '$lib/workspace/fileSystem';
 	import { isMac } from '$lib/platform';
 	import { setSpellcheckEnabled } from '$lib/editor/extensions/spellcheck/spellcheckConfig';
 	import SpellcheckDictionary from './SpellcheckDictionary.svelte';
@@ -222,6 +222,8 @@
 	let prefsOpen = $state(false);
 	function fileSelect(value: string) {
 		if (value === 'save') onSave?.();
+		else if (value === 'new-window') openNewWindow();
+		else if (value === 'open-folder-new-window') openFolderInNewWindow();
 		else if (value === 'close-workspace') onCloseWorkspace?.();
 		else if (value === 'preferences') prefsOpen = true;
 	}
@@ -415,6 +417,13 @@
 							</Menu.Positioner>
 						</Portal>
 					</Menu>
+					{#if isDesktop()}
+						<Menu.Separator class="border-surface-200-800 my-1 border-t" />
+						<Menu.Item value="new-window" class={itemClass}><Menu.ItemText>{m.menubar_new_window()}</Menu.ItemText></Menu.Item>
+						<Menu.Item value="open-folder-new-window" class={itemClass}>
+							<Menu.ItemText>{m.menubar_open_folder_new_window()}</Menu.ItemText>
+						</Menu.Item>
+					{/if}
 					<Menu.Separator class="border-surface-200-800 my-1 border-t" />
 					<Menu.Item value="save" class={itemClass}>
 						<Menu.ItemText>{m.menubar_save()}</Menu.ItemText><span class="opacity-50">{combo({}, 'S')}</span>

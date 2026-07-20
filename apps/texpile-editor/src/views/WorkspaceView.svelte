@@ -75,10 +75,14 @@
 		createEntry,
 		deleteEntry,
 		renameEntry,
+		copyEntry,
 		pickFolder,
+		claimWorkspace,
+		releaseWorkspace,
 		relativeTo,
 		isDesktop,
 		statFile,
+		writeBinaryFile,
 		detectEol,
 		toLf,
 		fromLf,
@@ -219,6 +223,14 @@
 			navigate('/');
 			return;
 		}
+		// register as this folder's window (covers reloads); a lost claim means another window
+		// already owns the folder - that window was focused, this one goes back to Start
+		void claimWorkspace(root).then((c) => {
+			if (!c.ok && get(workspaceRoot) === root) {
+				workspaceRoot.set(null);
+				navigate('/');
+			}
+		});
 		terminalAvailable = isDesktop(); // client-only; set here so SSR/CSR agree
 		resolveMainConfirm(root); // storage first, before anything can want a compile
 		loadReferences(root);
@@ -326,6 +338,8 @@
 		if (!root) return;
 		const prevRoot = get(workspaceRoot);
 		try {
+			// already open in another window: that window was focused, this one stays put
+			if (!(await claimWorkspace(root)).ok) return;
 			const { files } = await scanTexFiles(root);
 			resolveMainConfirm(root); // before the stores flip, so the modal effect can't see a stale state
 			workspaceRoot.set(root);
@@ -349,6 +363,7 @@
 	async function closeWorkspace() {
 		await flushSaveAndWait();
 		resolveMainConfirm(null);
+		releaseWorkspace(); // frees the folder so another window may open it
 		workspaceRoot.set(null);
 		texFiles.set([]);
 		fileTree.set([]);
@@ -485,6 +500,72 @@
 			void afterRename(entry.path, to);
 		} catch (e) {
 			toaster.error({ title: m.wsview_toast_move_failed_title(), description: e instanceof Error ? e.message : String(e) });
+		}
+	}
+
+	// multi-select fan-out: sequential so each move/delete sees the tree state the last one left
+	async function deleteManyInTree(entries: TreeEntry[]) {
+		for (const entry of entries) await deleteInTree(entry);
+	}
+	async function moveManyInTree(entries: TreeEntry[], targetDir: string) {
+		for (const entry of entries) await moveInTree(entry, targetDir);
+	}
+
+	/** targetDir + name, numbered (name-1.ext, name-2.ext, ...) until it doesn't collide. */
+	async function uniqueDest(targetDir: string, name: string): Promise<string> {
+		const sep = targetDir.includes('\\') ? '\\' : '/';
+		const base = targetDir.replace(/[\\/]+$/, '') + sep;
+		let dest = base + name;
+		let n = 0;
+		while ((await statFile(dest)).exists) {
+			n++;
+			const dot = name.lastIndexOf('.');
+			dest = base + (dot > 0 ? `${name.slice(0, dot)}-${n}${name.slice(dot)}` : `${name}-${n}`);
+		}
+		return dest;
+	}
+
+	// files dropped from the OS file manager (or pasted from the clipboard) copy into the tree.
+	// Bytes come from the drag/clipboard payload, so no OS paths are involved.
+	async function importIntoTree(items: { relPath: string; file: File }[], targetDir: string) {
+		let imported = 0;
+		try {
+			for (const item of items) {
+				const sep = targetDir.includes('\\') ? '\\' : '/';
+				const rel = item.relPath.split('/').join(sep);
+				// a clashing top-level name gets a numbered variant instead of overwriting;
+				// nested paths (folder drops) merge like an OS copy would
+				const dest = rel.includes(sep) ? targetDir.replace(/[\\/]+$/, '') + sep + rel : await uniqueDest(targetDir, rel);
+				await writeBinaryFile(dest, item.file);
+				imported++;
+			}
+			toaster.success({
+				title: imported === 1 ? m.wsview_toast_imported_one({ count: imported }) : m.wsview_toast_imported_other({ count: imported })
+			});
+		} catch (e) {
+			toaster.error({ title: m.wsview_toast_import_failed_title(), description: e instanceof Error ? e.message : String(e) });
+		} finally {
+			await refreshTree();
+		}
+	}
+
+	// a tree drag from another Texpile window: recursive fs-side copy (the source window's
+	// workspace is left untouched; a cross-window MOVE would go stale under its feet)
+	async function copyIntoTree(paths: string[], targetDir: string) {
+		let copied = 0;
+		try {
+			for (const src of paths) {
+				const dest = await uniqueDest(targetDir, basename(src));
+				await copyEntry(src, dest);
+				copied++;
+			}
+			toaster.success({
+				title: copied === 1 ? m.wsview_toast_imported_one({ count: copied }) : m.wsview_toast_imported_other({ count: copied })
+			});
+		} catch (e) {
+			toaster.error({ title: m.wsview_toast_import_failed_title(), description: e instanceof Error ? e.message : String(e) });
+		} finally {
+			await refreshTree();
 		}
 	}
 
@@ -2425,7 +2506,11 @@
 </script>
 
 <svelte:window onkeydown={onKeydown} />
-<svelte:head><title>{loadedPath ? `Texpile: ${basename(loadedPath)}` : 'Texpile'}</title></svelte:head>
+<!-- file - folder - app (VS Code's order); the folder segment tells windows apart in the taskbar -->
+<svelte:head
+	><title>{$workspaceRoot ? `${loadedPath ? `${basename(loadedPath)} - ` : ''}${basename($workspaceRoot)} - Texpile` : 'Texpile'}</title
+	></svelte:head
+>
 
 <div class="flex h-screen flex-col overflow-hidden">
 	<WorkspaceMenuBar
@@ -2528,8 +2613,10 @@
 								onOpen={openEntry}
 								onCreate={createInTree}
 								onRename={renameInTree}
-								onDelete={deleteInTree}
-								onMove={moveInTree}
+								onDelete={deleteManyInTree}
+								onMove={moveManyInTree}
+								onImport={importIntoTree}
+								onCopyIn={copyIntoTree}
 								onSetMain={(entry) => applyMainFile(entry.path)}
 							/>
 						</div>

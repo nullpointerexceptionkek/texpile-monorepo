@@ -21,9 +21,7 @@
 	// full document navigation (not client-side routing), same as every other locale switch on this site.
 	// details.value is always one of `locales` (that's all the menu ever renders), hence the cast.
 	function onLocaleSelect(details: { value: string }) {
-		window.location.href = resolve(
-			localizeHref(page.url.pathname, { locale: details.value as Locale }) as '/' | '/download'
-		);
+		window.location.href = resolve(localizeHref(page.url.pathname, { locale: details.value as Locale }) as '/' | '/download');
 	}
 
 	let atTop = $state(true);

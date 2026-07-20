@@ -802,5 +802,14 @@
 	"mathpal_env_rcases": "Fallunterscheidung (rechts)",
 	"mathpal_env_gathered": "Gesammelt (zentriert)",
 	"mathpal_env_aligned": "Ausgerichtete Spalten",
-	"mathpal_env_split": "Geteilte Formel"
+	"mathpal_env_split": "Geteilte Formel",
+	"menubar_new_window": "Neues Fenster",
+	"menubar_open_folder_new_window": "Ordner in neuem Fenster öffnen…",
+	"draft_busy_other_window": "Die Live-Vorschau ist in einem anderen Fenster aktiv.",
+	"draft_busy_takeover": "Live-Vorschau hier verwenden",
+	"start_new_window": "Neues Fenster",
+	"filetree_confirm_delete_many": "{count} Einträge löschen?",
+	"filetree_delete_many": "{count} Einträge löschen",
+	"wsview_toast_imported_one": "{count} Datei importiert",
+	"wsview_toast_imported_other": "{count} Dateien importiert"
 }

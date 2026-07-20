@@ -38,6 +38,9 @@
 	let status = $state('');
 	let error = $state<string | null>(null);
 	let compiling = $state(false);
+	// one live preview at a time: another window owns the warm engine (main's draftOwner);
+	// this preview is paused until the user explicitly takes the engine over
+	let busyElsewhere = $state(false);
 	let canvasEls: HTMLCanvasElement[] = $state([]);
 
 	/* eslint-disable @typescript-eslint/no-explicit-any */
@@ -774,7 +777,7 @@
 		// C1 calibration: the daemon must reproduce the UNEDITED paragraph exactly --
 		// verifies fonts/size/indent/macros empirically (same engine, so if the unedited
 		// text reproduces, the edited text is exact too)
-		const cal = await native()!.draftTypeset({ root, mainFile, text: orig, hsize: W });
+		const cal = await daemonTypeset({ root, mainFile, text: orig, hsize: W });
 		if (!cal.ok) return bail('cal-typeset-failed');
 		const calLines = cal.records.filter((x: any) => x.t === 'line');
 		if (!calLines.length || (cal.stats && (cal.stats as any).certified === false))
@@ -921,7 +924,7 @@
 		const median = (a: number[]) => (a.length ? a.slice().sort((x, y) => x - y)[Math.floor(a.length / 2)] : 0);
 		const variants: { glyphs: any[]; lines: any[]; indent: boolean }[] = [];
 		for (const ind of listItem ? [false] : [false, true]) {
-			const cal = await native()!.draftTypeset({ root, mainFile, text: (ind ? INDENT_PREFIX : '') + orig, hsize: W });
+			const cal = await daemonTypeset({ root, mainFile, text: (ind ? INDENT_PREFIX : '') + orig, hsize: W });
 			if (!cal.ok) continue;
 			const lines = cal.records.filter((x: any) => x.t === 'line');
 			if (!lines.length || (cal.stats && (cal.stats as any).certified === false)) continue;
@@ -1041,7 +1044,7 @@
 		if (!allG.length) return bail('no-page-glyphs');
 		const W = paper.colW > 0 ? paper.colW : Math.max(...boxes.map((b) => b.W)) * BP2PT;
 		const G = 8;
-		const cal = await n.draftTypeset({ root, mainFile, text: orig, hsize: W });
+		const cal = await daemonTypeset({ root, mainFile, text: orig, hsize: W });
 		if (!cal.ok) return bail('cal-typeset-failed');
 		const calLines = cal.records.filter((x: any) => x.t === 'line');
 		if (!calLines.length || (cal.stats && (cal.stats as any).certified === false)) return bail('cal-uncertified');
@@ -1236,7 +1239,7 @@
 		// indent flag rides on the cal so edited re-typesets reproduce the same breaks.
 		const variants: { lines: any[]; glyphs: any[]; indent: boolean }[] = [];
 		for (const ind of listItem ? [false] : [false, true]) {
-			const cal = await n.draftTypeset({ root, mainFile, text: (ind ? INDENT_PREFIX : '') + orig, hsize: W });
+			const cal = await daemonTypeset({ root, mainFile, text: (ind ? INDENT_PREFIX : '') + orig, hsize: W });
 			if (!cal.ok) continue;
 			const lines = cal.records.filter((x: any) => x.t === 'line');
 			if (!lines.length || (cal.stats && (cal.stats as any).certified === false)) continue;
@@ -1521,7 +1524,7 @@
 			// edit carries the same engine-resolved \hspace*{\parindent}. An edit that changes
 			// the paragraph's command set (e.g. typing \noindent) is cmdChanged and always
 			// reconciles -- the engine certifies whatever the commands mean.
-			const r = await n.draftTypeset({ root, mainFile, text: (cal.indent && !req.listItem ? INDENT_PREFIX : '') + req.text, hsize: cal.W });
+			const r = await daemonTypeset({ root, mainFile, text: (cal.indent && !req.listItem ? INDENT_PREFIX : '') + req.text, hsize: cal.W });
 			if (!r.ok || (r.stats && (r.stats as any).certified === false)) {
 				await recompile('typeset', { ok: r.ok });
 				return;
@@ -1857,7 +1860,7 @@
 		if (!n) return;
 		const t = performance.now();
 		// hsize 0 = the daemon falls back to its OWN engine-announced \columnwidth
-		n.draftTypeset({ root, mainFile, text: 'warm', hsize: paper.colW })
+		daemonTypeset({ root, mainFile, text: 'warm', hsize: paper.colW })
 			.then((r) => {
 				ev('daemon-warm', { ms: +(performance.now() - t).toFixed(0), ok: r.ok });
 				// only announce readiness if nothing else took over the status meanwhile
@@ -1941,10 +1944,45 @@
 		}
 	}
 
+	// all daemon typesets funnel through here so an 'engine-busy' from ANY path (another
+	// window holds the warm engine) pauses this preview instead of surfacing a raw error
+	async function daemonTypeset(body: { root: string; mainFile: string; text: string; hsize?: number }) {
+		const r = await native()!.draftTypeset(body);
+		// cast, not narrow: svelte-check doesn't reliably narrow this cross-module union
+		if (!r.ok && (r as { error?: string }).error === 'engine-busy') busyElsewhere = true;
+		return r;
+	}
+
+	// explicit user action from the paused banner: steal the engine and start fresh here
+	async function takeoverEngine() {
+		const n = native();
+		if (!n?.draftTakeover) return;
+		try {
+			await n.draftTakeover({ root });
+		} catch {
+			/* the engine may already be free */
+		}
+		busyElsewhere = false;
+		void compile('takeover');
+	}
+
+	// the losing side of a takeover: main pushes this so we pause immediately instead of
+	// showing a stale "ready" state until the next keystroke discovers engine-busy
+	$effect(() => {
+		const n = native();
+		if (!n?.onDraftPreempted) return;
+		return n.onDraftPreempted(() => {
+			busyElsewhere = true;
+			compiling = false;
+			status = '';
+		});
+	});
+
 	let compileToken = 0;
 	async function compile(reason = 'trigger') {
 		const n = native();
 		if (!n || !root || !mainFile) return;
+		if (busyElsewhere) return; // paused: don't fight the owning window on every trigger
 		// cancel-on-supersede: don't queue behind an in-flight compile -- fire a fresh one. The
 		// service kills the older run's lualatex, so a hung/slow compile never blocks the latest
 		// edit (else the 120s pass timeout would freeze the preview). This run drops its own
@@ -2033,8 +2071,14 @@
 				// svelte-check doesn't reliably narrow this cross-module discriminated union.
 				// A service-side 'superseded' isn't an error -- the newer compile will render.
 				const fail = r as { error: string; log?: string };
-				error = fail.error + (fail.log ? '\n' + fail.log : '');
-				status = '';
+				if (fail.error === 'engine-busy') {
+					// another window owns the live-preview engine: pause with the banner
+					busyElsewhere = true;
+					status = '';
+				} else {
+					error = fail.error + (fail.log ? '\n' + fail.log : '');
+					status = '';
+				}
 			}
 		} catch (e) {
 			if (myToken !== compileToken) return;
@@ -2412,6 +2456,12 @@
 			</button>
 		{/if}
 	</div>
+	{#if busyElsewhere}
+		<div class="border-surface-300-700 bg-surface-50-950 m-3 flex items-center justify-between gap-3 rounded border p-3 text-sm">
+			<span class="text-surface-600-300">{m.draft_busy_other_window()}</span>
+			<button class="btn btn-sm preset-filled-primary-500 shrink-0" onclick={takeoverEngine}>{m.draft_busy_takeover()}</button>
+		</div>
+	{/if}
 	{#if error}
 		<pre class="text-error-500 m-3 overflow-auto rounded bg-surface-50-950 p-3 text-xs whitespace-pre-wrap">{error}</pre>
 	{/if}

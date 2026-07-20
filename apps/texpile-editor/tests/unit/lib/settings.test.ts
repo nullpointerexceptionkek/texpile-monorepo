@@ -65,4 +65,23 @@ describe('settings hydration (auto-reopen depends on this)', () => {
 		const s = await loadSettings();
 		expect(s.uiLocale).toBe('en');
 	});
+
+	it('persists only the changed fields, not the whole settings object', async () => {
+		// two windows share settings.json; a whole-object write would clobber the other
+		// window's fields with this window's stale copies (the multi-window regression)
+		const writes: Record<string, unknown>[] = [];
+		(globalThis as { window?: unknown }).window = {
+			texpileNative: {
+				getSettings: () => Promise.resolve({ sidebarWidth: 999 }),
+				setSettings: (p: Record<string, unknown>) => {
+					writes.push(p);
+					return Promise.resolve({});
+				}
+			}
+		};
+		const { loadSettings, updateSettings } = await import('../../../src/lib/settings');
+		await loadSettings();
+		updateSettings({ terminalHeight: 300 });
+		expect(writes.at(-1)).toEqual({ terminalHeight: 300 });
+	});
 });

@@ -5,6 +5,19 @@ Release notes for Texpile Desktop. Add notes under `## [Unreleased]` as you work
 
 ## [Unreleased]
 
+- feat: the app and the website are available in Simplified Chinese, Traditional Chinese, and German; pick a language in Preferences
+- feat: machine-translated languages are marked as such, and switching to one shows where translation mistakes can be reported
+- feat: work in several windows: File > New Window and Open Folder in New Window; a folder opens in one window at a time, and opening it again focuses that window
+- feat: relaunching the app reopens every window from the last session, each on its last open file
+- feat: window titles show the file and folder, so windows are easy to tell apart in the taskbar
+- feat: live mode runs in one window at a time; another window can take it over with a click
+- fix: preferences changed in one window no longer overwrite changes made in another
+- feat: select several files in the file explorer with Ctrl and Shift click, then move or delete them together
+- fix: dragging in the file explorer highlights the folder that would receive the drop, instead of the whole panel
+- feat: drop files or folders from your system's file manager onto the file explorer to copy them into the project
+- feat: paste an image or copied files into the file explorer with Ctrl+V; pasted screenshots are saved as pasted-image.png
+- feat: drag files from one window's file explorer into another window to copy them across projects
+
 ## [0.14.3] - 2026-07-18
 
 - fix: the What's new, update, and Preferences windows scroll long content instead of pushing their buttons off screen, and Esc closes them

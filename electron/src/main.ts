@@ -14,9 +14,14 @@ const isDev = !app.isPackaged;
 // .desktop file's StartupWMClass=Texpile; without this the dock shows "Texpile-desktop").
 // package.json's `name` also names the settings dir on every existing install, so pin the
 // paths BEFORE the rename can move them.
-app.setPath('userData', path.join(app.getPath('appData'), 'texpile-desktop'));
-app.setPath('sessionData', path.join(app.getPath('appData'), 'texpile-desktop'));
-app.setName('Texpile');
+// A dev-channel build (productName ending in "Dev", made with --config.productName="Texpile Dev")
+// gets its OWN settings dir and instance lock, so a test exe runs beside the installed Texpile
+// without touching its settings or fighting its single-instance lock.
+const devChannel = /[ -]dev$/.test(app.getName().toLowerCase());
+const dataDirName = devChannel ? 'texpile-desktop-dev' : 'texpile-desktop';
+app.setPath('userData', path.join(app.getPath('appData'), dataDirName));
+app.setPath('sessionData', path.join(app.getPath('appData'), dataDirName));
+app.setName(devChannel ? 'Texpile Dev' : 'Texpile');
 
 // dev/test hook: userData scopes settings, caches, and the single-instance lock,
 // so without this a dev run can't start while an installed Texpile is open
@@ -25,10 +30,51 @@ if (isDev && process.env.TEXPILE_USER_DATA) {
 	app.setPath('sessionData', process.env.TEXPILE_USER_DATA);
 }
 
-let mainWindow: BrowserWindow | null = null;
+// ---- multi-window registry (one workspace per window, VS Code model) ----
+// what each window has open, keyed by webContents id; null = start screen
+type WindowRoot = { raw: string; norm: string };
+const windowRoots = new Map<number, WindowRoot | null>();
+// a file/folder a freshly-created window should open once its renderer loads
+type PendingOpen = { kind: 'file' | 'folder'; path: string };
+const pendingOpens = new Map<number, PendingOpen>();
+// .tex handed over by the OS before any window exists; consumed at whenReady
+let initialOpenPath: string | null = null;
+// set during shutdown so per-window close cleanup doesn't drain the persisted session
+let quitting = false;
+// first renderer to ask runs the once-per-session startup work (update check, What's New)
+let startupTasksClaimed = false;
 
-// .tex handed over by the OS before the window exists; flushed once the renderer loads
-let pendingOpenPath: string | null = null;
+// Windows hands out the same folder with varying drive-letter case, so root identity
+// must compare case-insensitively there (mirrors the renderer's workspaceStore)
+function normRoot(p: string): string {
+	const s = path.resolve(p).replace(/[\\/]+$/, '');
+	return process.platform === 'win32' ? s.toLowerCase() : s;
+}
+function windowFor(wcId: number): BrowserWindow | null {
+	return BrowserWindow.getAllWindows().find((w) => w.webContents.id === wcId) ?? null;
+}
+function windowWithRoot(root: string): BrowserWindow | null {
+	const n = normRoot(root);
+	for (const [wcId, r] of windowRoots) {
+		if (r && r.norm === n) {
+			const w = windowFor(wcId);
+			if (w) return w;
+		}
+	}
+	return null;
+}
+function focusWindow(w: BrowserWindow): void {
+	if (w.isMinimized()) w.restore();
+	w.focus();
+}
+// session restore: settings.openFolders always mirrors the live registry, EXCEPT while
+// quitting (or when the last window closes), so the snapshot survives for the next launch
+function persistOpenFolders(): void {
+	if (quitting) return;
+	const roots: string[] = [];
+	for (const r of windowRoots.values()) if (r) roots.push(r.raw);
+	writeSettings({ openFolders: roots });
+}
 
 // GUI launches on macOS/Linux inherit a stripped PATH (no TeX/Homebrew dirs), hiding synctex and
 // git. Recover the real PATH from a login shell, reading $PATH between markers so rc noise can't corrupt it.
@@ -139,8 +185,8 @@ function registerProtocolHandlers(): void {
 	});
 }
 
-function createWindow(url: string): void {
-	mainWindow = new BrowserWindow({
+function createWindow(url: string, pending?: PendingOpen): BrowserWindow {
+	const win = new BrowserWindow({
 		width: 1280,
 		height: 860,
 		// below this the panes clip each other and the toolbar overflows
@@ -156,35 +202,49 @@ function createWindow(url: string): void {
 			devTools: !app.isPackaged
 		}
 	});
-	mainWindow.loadURL(url);
-	mainWindow.webContents.on('did-finish-load', () => {
+	// capture now: webContents is gone by the time 'closed' fires
+	const wcId = win.webContents.id;
+	windowRoots.set(wcId, null);
+	if (pending) pendingOpens.set(wcId, pending);
+	win.loadURL(url);
+	win.webContents.on('did-finish-load', () => {
 		// restore the saved whole-window zoom before the first paint the user sees
 		const z = Number(readSettings().uiZoom);
-		if (Number.isFinite(z) && z > 0) mainWindow?.webContents.setZoomFactor(z);
-		if (pendingOpenPath) {
-			mainWindow?.webContents.send('main:open-path', pendingOpenPath);
-			pendingOpenPath = null;
+		if (Number.isFinite(z) && z > 0) win.webContents.setZoomFactor(z);
+		const p = pendingOpens.get(wcId);
+		if (p) {
+			pendingOpens.delete(wcId);
+			win.webContents.send(p.kind === 'file' ? 'main:open-path' : 'main:open-folder', p.path);
 		}
 	});
 	// no native View menu, so wire the DevTools shortcut by hand (dev only). Ctrl+Shift+I only:
 	// F12 belongs to the editor's go-to-definition and must reach the renderer
 	if (!app.isPackaged) {
-		mainWindow.webContents.on('before-input-event', (event, input) => {
+		win.webContents.on('before-input-event', (event, input) => {
 			if (input.type !== 'keyDown') return;
 			const mod = input.control || input.meta;
 			if (mod && input.shift && input.key.toLowerCase() === 'i') {
-				mainWindow?.webContents.toggleDevTools();
+				win.webContents.toggleDevTools();
 				event.preventDefault();
 			}
 		});
 	}
-	mainWindow.webContents.setWindowOpenHandler(({ url: target }) => {
+	win.webContents.setWindowOpenHandler(({ url: target }) => {
 		if (/^https?:/.test(target)) shell.openExternal(target);
 		return { action: 'deny' };
 	});
-	mainWindow.on('closed', () => {
-		mainWindow = null;
+	win.on('closed', () => {
+		windowRoots.delete(wcId);
+		pendingOpens.delete(wcId);
+		// the closing window owned the warm engine: stop it so it doesn't hold memory orphaned
+		if (draftOwner?.wcId === wcId) {
+			draftDaemon.stopDaemon();
+			draftOwner = null;
+		}
+		// last window closing means "quit" on win/linux: keep the snapshot for next launch
+		if (BrowserWindow.getAllWindows().length > 0) persistOpenFolders();
 	});
+	return win;
 }
 
 function startUrl(): string {
@@ -192,8 +252,8 @@ function startUrl(): string {
 	return 'app://bundle/index.html';
 }
 
-ipcMain.handle('dialog:openFolder', async () => {
-	const res = await dialog.showOpenDialog(mainWindow ?? undefined!, {
+ipcMain.handle('dialog:openFolder', async (e) => {
+	const res = await dialog.showOpenDialog(BrowserWindow.fromWebContents(e.sender) ?? undefined!, {
 		title: 'Open Folder',
 		properties: ['openDirectory']
 	});
@@ -212,6 +272,16 @@ function handleFs(channel: string, fn: (...args: never[]) => Promise<unknown>): 
 		}
 	});
 }
+// like handleFs, for handlers that need the sender (dialog parenting, draft-engine ownership)
+function handleFsE(channel: string, fn: (e: Electron.IpcMainInvokeEvent, ...args: never[]) => Promise<unknown>): void {
+	ipcMain.handle(channel, async (e, ...args: unknown[]): Promise<FsResult> => {
+		try {
+			return { ok: true, value: await (fn as (e: Electron.IpcMainInvokeEvent, ...a: unknown[]) => Promise<unknown>)(e, ...args) };
+		} catch (err) {
+			return { ok: false, error: err instanceof Error ? err.message : String(err) };
+		}
+	});
+}
 handleFs('fs:scan', fsService.scan);
 handleFs('fs:read', fsService.read);
 handleFs('fs:write', fsService.write);
@@ -222,24 +292,60 @@ handleFs('fs:search', fsService.search);
 handleFs('fs:stat', fsService.statFile);
 handleFs('fs:formatLatex', fsService.formatLatex);
 handleFs('synctex:call', fsService.synctex);
-handleFs('draft:compile', (body: { root: string; mainFile: string }) => draftService.compileDraft({ ...body, engineDir: luaDir() }));
-handleFs('draft:typeset', (body: { root: string; mainFile: string; text: string; hsize?: number }) =>
-	draftDaemon.typesetParagraph({ ...body, engineDir: luaDir() })
-);
+// One live preview at a time: the warm engine (and its reconcile compiles) belong to one
+// window. A second window asking gets a clean 'engine-busy' value instead of silently
+// thrashing the daemon between roots; its DraftView offers an explicit takeover.
+let draftOwner: { wcId: number; root: string } | null = null;
+function draftBusy(e: Electron.IpcMainInvokeEvent, root: string): boolean {
+	if (!draftOwner) return false;
+	if (draftOwner.wcId === e.sender.id) return false;
+	if (normRoot(draftOwner.root) === normRoot(root)) return false;
+	if (!windowFor(draftOwner.wcId)) {
+		draftOwner = null; // owner window is gone; the engine is free
+		return false;
+	}
+	return true;
+}
+handleFsE('draft:compile', async (e, body: { root: string; mainFile: string }) => {
+	if (draftBusy(e, body.root)) return { ok: false, error: 'engine-busy', ms: 0 };
+	draftOwner = { wcId: e.sender.id, root: body.root };
+	return draftService.compileDraft({ ...body, engineDir: luaDir() });
+});
+handleFsE('draft:typeset', async (e, body: { root: string; mainFile: string; text: string; hsize?: number }) => {
+	if (draftBusy(e, body.root)) return { ok: false, error: 'engine-busy' };
+	draftOwner = { wcId: e.sender.id, root: body.root };
+	return draftDaemon.typesetParagraph({ ...body, engineDir: luaDir() });
+});
 // stop the warm engine when draft mode is switched off / the preview closes, so we don't
-// leave an idle lualatex process holding memory for the rest of the session
-handleFs('draft:stop', async () => {
+// leave an idle lualatex process holding memory for the rest of the session. Only the
+// owner may stop it: another window closing its (blocked) preview must not kill ours.
+handleFsE('draft:stop', async (e) => {
+	if (!draftOwner || draftOwner.wcId === e.sender.id) {
+		draftDaemon.stopDaemon();
+		draftOwner = null;
+	}
+	return { ok: true };
+});
+// explicit user action from the blocked window's DraftView: steal the engine
+handleFsE('draft:takeover', async (e, body: { root: string }) => {
+	// tell the window LOSING the engine to pause right away; without this it only finds
+	// out on its next keystroke and shows a stale "engine ready" state until then
+	if (draftOwner && draftOwner.wcId !== e.sender.id) {
+		const prev = windowFor(draftOwner.wcId);
+		if (prev && !prev.webContents.isDestroyed()) prev.webContents.send('draft:preempted', { root: draftOwner.root });
+	}
 	draftDaemon.stopDaemon();
+	draftOwner = { wcId: e.sender.id, root: body.root };
 	return { ok: true };
 });
 // save the reconcile PDF (the document the live preview mirrors) where the user picks;
 // `to` skips the dialog (tests)
-handleFs('draft:savePdf', async (body: { root: string; defaultName: string; to?: string }) => {
+handleFsE('draft:savePdf', async (e, body: { root: string; defaultName: string; to?: string }) => {
 	const src = path.join(body.root, '_draft', 'draft.pdf');
 	if (!fs.existsSync(src)) throw new Error('No compiled PDF yet.');
 	let dest = body.to;
 	if (!dest) {
-		const res = await dialog.showSaveDialog(mainWindow ?? undefined!, {
+		const res = await dialog.showSaveDialog(BrowserWindow.fromWebContents(e.sender) ?? undefined!, {
 			title: 'Save PDF',
 			defaultPath: path.join(body.root, body.defaultName),
 			filters: [{ name: 'PDF', extensions: ['pdf'] }]
@@ -278,7 +384,8 @@ const DEFAULT_SETTINGS = {
 	checkForUpdates: true,
 	uiZoom: 1, // whole-window zoom factor (webContents.setZoomFactor); the View menu adjusts it
 	mathPreview: true, // live math preview tooltip in source mode
-	uiLocale: 'en' // UI display language, not the LaTeX document language
+	uiLocale: 'en', // UI display language, not the LaTeX document language
+	openFolders: [] as string[] // folders open across windows; maintained here for session restore
 };
 const settingsFile = () => path.join(app.getPath('userData'), 'settings.json');
 function readSettings(): Record<string, unknown> {
@@ -308,8 +415,57 @@ ipcMain.handle('update:install', () => updates.install());
 // panels) crisply, unlike a CSS transform. The renderer persists the value in settings.
 ipcMain.handle('window:setZoom', (_e, factor: number) => {
 	const f = Math.min(2.5, Math.max(0.5, Number(factor) || 1));
-	mainWindow?.webContents.setZoomFactor(f);
+	// the persisted uiZoom is app-wide, so keep every window at the same factor
+	for (const w of BrowserWindow.getAllWindows()) w.webContents.setZoomFactor(f);
 	return f;
+});
+
+// ---- multi-window IPC ----
+// A folder may be open in exactly one window (two autosavers on the same .tex files would
+// silently clobber each other). claim() registers the sender as that folder's window; if
+// another live window already has it, that window is focused instead and the caller aborts.
+ipcMain.handle('workspace:claim', (e, root: string) => {
+	const raw = String(root || '');
+	if (!raw) return { ok: false, reason: 'bad-root' };
+	const norm = normRoot(raw);
+	for (const [wcId, r] of windowRoots) {
+		if (wcId === e.sender.id || !r || r.norm !== norm) continue;
+		const w = windowFor(wcId);
+		if (w) {
+			focusWindow(w);
+			return { ok: false, reason: 'already-open' };
+		}
+		windowRoots.delete(wcId); // stale entry for a dead window
+	}
+	windowRoots.set(e.sender.id, { raw, norm });
+	persistOpenFolders();
+	return { ok: true };
+});
+ipcMain.handle('workspace:release', (e) => {
+	windowRoots.set(e.sender.id, null);
+	persistOpenFolders();
+	return { ok: true };
+});
+ipcMain.handle('window:new', () => {
+	createWindow(startUrl());
+});
+// picker + new window in one step, deduped against windows that already have the folder
+ipcMain.handle('window:openFolderNew', async (e) => {
+	const res = await dialog.showOpenDialog(BrowserWindow.fromWebContents(e.sender) ?? undefined!, {
+		title: 'Open Folder',
+		properties: ['openDirectory']
+	});
+	if (res.canceled || res.filePaths.length === 0) return null;
+	const root = res.filePaths[0]!;
+	const existing = windowWithRoot(root);
+	if (existing) focusWindow(existing);
+	else focusWindow(createWindow(startUrl(), { kind: 'folder', path: root }));
+	return root;
+});
+ipcMain.handle('session:claimStartupTasks', () => {
+	if (startupTasksClaimed) return false;
+	startupTasksClaimed = true;
+	return true;
 });
 
 // node-pty is a native module: if it isn't built for this Electron ABI the require throws,
@@ -403,15 +559,40 @@ ipcMain.on('terminal:kill', (_e, { id } = {} as { id?: string }) => {
 	if (id != null) ptys.delete(id);
 });
 
+// OS "Open With": route the file to the window whose workspace contains it, else an
+// empty start-screen window, else a fresh window (the VS Code model)
 function requestOpenPath(p: string): void {
 	if (!p) return;
-	if (mainWindow && !mainWindow.webContents.isLoading()) {
-		mainWindow.webContents.send('main:open-path', p);
-		if (mainWindow.isMinimized()) mainWindow.restore();
-		mainWindow.focus();
-	} else {
-		pendingOpenPath = p;
+	const fileNorm = normRoot(p);
+	for (const [wcId, r] of windowRoots) {
+		if (!r) continue;
+		if (fileNorm === r.norm || fileNorm.startsWith(r.norm + path.sep)) {
+			const w = windowFor(wcId);
+			if (w && !w.webContents.isLoading()) {
+				w.webContents.send('main:open-path', p);
+				focusWindow(w);
+				return;
+			}
+		}
 	}
+	for (const [wcId, r] of windowRoots) {
+		if (r) continue;
+		const w = windowFor(wcId);
+		if (!w) continue;
+		if (w.webContents.isLoading()) {
+			if (!pendingOpens.has(wcId)) {
+				pendingOpens.set(wcId, { kind: 'file', path: p });
+				focusWindow(w);
+				return;
+			}
+			continue;
+		}
+		w.webContents.send('main:open-path', p);
+		focusWindow(w);
+		return;
+	}
+	if (app.isReady()) focusWindow(createWindow(startUrl(), { kind: 'file', path: p }));
+	else initialOpenPath = p;
 }
 
 // Windows/Linux file associations put the path in argv; macOS uses the open-file event
@@ -429,23 +610,21 @@ app.on('open-file', (event, filePath) => {
 	requestOpenPath(filePath);
 });
 
-// a second launch (double-clicking another .tex) forwards its file to the running window
+// a second launch routes its file to the right window; launching with no file opens a
+// fresh window (VS Code model), instead of just focusing the existing one
 if (!app.requestSingleInstanceLock()) {
 	app.quit();
 } else {
 	app.on('second-instance', (_e, argv) => {
 		const p = fileFromArgv(argv);
 		if (p) requestOpenPath(p);
-		else if (mainWindow) {
-			if (mainWindow.isMinimized()) mainWindow.restore();
-			mainWindow.focus();
-		}
+		else createWindow(startUrl());
 	});
 }
 
 app.whenReady().then(() => {
 	registerProtocolHandlers();
-	if (!pendingOpenPath) pendingOpenPath = fileFromArgv(process.argv);
+	if (!initialOpenPath) initialOpenPath = fileFromArgv(process.argv);
 
 	// The real menu bar lives in the renderer (WorkspaceMenuBar). On macOS the system bar can't
 	// be removed entirely without breaking Cmd+Q and copy/paste in native inputs, so keep ONLY
@@ -458,7 +637,29 @@ app.whenReady().then(() => {
 		Menu.setApplicationMenu(null);
 	}
 
-	createWindow(startUrl());
+	if (initialOpenPath) {
+		// launched via a .tex file: that request wins over session restore
+		createWindow(startUrl(), { kind: 'file', path: initialOpenPath });
+		initialOpenPath = null;
+	} else {
+		// session restore: one window per remembered folder (openFolders), falling back to
+		// the pre-multi-window lastFolder slot for existing installs
+		const s = readSettings();
+		const remembered = Array.isArray(s.openFolders) && s.openFolders.length ? (s.openFolders as string[]) : [];
+		const legacy = typeof s.lastFolder === 'string' && s.lastFolder ? [s.lastFolder] : [];
+		const folders =
+			s.reopenLastFolder !== false
+				? [...new Set((remembered.length ? remembered : legacy).map((f) => path.resolve(f)))].filter((f) => {
+						try {
+							return fs.statSync(f).isDirectory();
+						} catch {
+							return false;
+						}
+					})
+				: [];
+		if (folders.length) for (const f of folders) createWindow(startUrl(), { kind: 'folder', path: f });
+		else createWindow(startUrl());
+	}
 
 	app.on('activate', () => {
 		if (BrowserWindow.getAllWindows().length === 0) createWindow(startUrl());
@@ -470,6 +671,7 @@ app.on('window-all-closed', () => {
 });
 
 app.on('before-quit', () => {
+	quitting = true; // freeze the persisted openFolders snapshot before windows start closing
 	for (const p of ptys.values()) {
 		try {
 			p.kill();

@@ -29,8 +29,13 @@
 		/** type 'include' creates a .tex fragment AND inserts an \input for it at the cursor. */
 		onCreate: (parentDir: string, name: string, type: 'file' | 'dir' | 'include') => void;
 		onRename: (entry: TreeEntry, newName: string) => void;
-		onDelete: (entry: TreeEntry) => void;
-		onMove: (entry: TreeEntry, targetDir: string) => void;
+		/** several entries at once when a multi-selection is deleted/dragged. */
+		onDelete: (entries: TreeEntry[]) => void;
+		onMove: (entries: TreeEntry[], targetDir: string) => void;
+		/** files dropped from the OS file manager or pasted from the clipboard. */
+		onImport?: (items: ImportItem[], targetDir: string) => void;
+		/** absolute paths dragged in from ANOTHER Texpile window; the drop copies them here. */
+		onCopyIn?: (paths: string[], targetDir: string) => void;
 		/** Set (or, if already main, clear) the project's main entry file. */
 		onSetMain?: (entry: TreeEntry) => void;
 	}
@@ -45,8 +50,16 @@
 		onRename,
 		onDelete,
 		onMove,
+		onImport,
+		onCopyIn,
 		onSetMain
 	}: Props = $props();
+
+	interface ImportItem {
+		/** destination path relative to the drop/paste target dir (forward slashes). */
+		relPath: string;
+		file: globalThis.File;
+	}
 
 	const isTex = (e: TreeEntry) => e.type === 'file' && e.name.toLowerCase().endsWith('.tex');
 	const isMain = (e: TreeEntry) => !!mainPath && e.path.replace(/\\/g, '/').toLowerCase() === mainPath.replace(/\\/g, '/').toLowerCase();
@@ -77,8 +90,59 @@
 	let createValue = $state('');
 	let createEdited = $state(false); // did the user actually type, or is this still our pre-fill?
 
+	// ---- selection (ctrl/cmd toggles, shift ranges over the visible order) ----
+	let selected = $state<string[]>([]);
+	let anchorPath: string | null = null; // shift-range pivot; the last plain/ctrl-clicked row
+
+	/** the tree in on-screen order, honouring which folders are expanded (shift-range domain). */
+	function flattenVisible(entries: TreeEntry[] = tree, out: TreeEntry[] = []): TreeEntry[] {
+		for (const e of entries) {
+			out.push(e);
+			if (e.type === 'dir' && expanded[e.path]) flattenVisible(e.children ?? [], out);
+		}
+		return out;
+	}
+	function findEntry(path: string, entries: TreeEntry[] = tree): TreeEntry | null {
+		for (const e of entries) {
+			if (e.path === path) return e;
+			if (e.type === 'dir') {
+				const hit = findEntry(path, e.children ?? []);
+				if (hit) return hit;
+			}
+		}
+		return null;
+	}
+	/** the selected entries with nested ones pruned: moving/deleting a folder covers its children,
+	 *  and handling a child separately after its parent moved would act on a dead path. */
+	function selectedEntries(): TreeEntry[] {
+		const paths = selected.filter((p) => !selected.some((other) => other !== p && isInside(p, other)));
+		return paths.map((p) => findEntry(p)).filter((e): e is TreeEntry => !!e);
+	}
+	function handleRowClick(e: MouseEvent, entry: TreeEntry) {
+		if (e.ctrlKey || e.metaKey) {
+			selected = selected.includes(entry.path) ? selected.filter((p) => p !== entry.path) : [...selected, entry.path];
+			anchorPath = entry.path;
+			return;
+		}
+		if (e.shiftKey && anchorPath) {
+			const order = flattenVisible().map((x) => x.path);
+			const a = order.indexOf(anchorPath);
+			const b = order.indexOf(entry.path);
+			if (a >= 0 && b >= 0) {
+				selected = order.slice(Math.min(a, b), Math.max(a, b) + 1);
+				return;
+			}
+		}
+		selected = [entry.path];
+		anchorPath = entry.path;
+		if (entry.type === 'dir') expanded[entry.path] = !expanded[entry.path];
+		else onOpen(entry);
+	}
+
+	// ---- drag & drop: internal moves and OS-file imports ----
 	let dragging = $state<TreeEntry | null>(null);
-	let dropTarget = $state<string | null>(null); // path of the row being hovered, or ROOT
+	let dragPaths = $state<string[]>([]); // everything the drag carries (the multi-selection)
+	let dropTarget = $state<string | null>(null); // the DIRECTORY that would receive the drop, or ROOT
 	const ROOT = '__root__';
 
 	const sepOf = (p: string) => (p.includes('\\') ? '\\' : '/');
@@ -89,53 +153,181 @@
 	// dropping on a folder targets it; dropping on a file targets its parent folder
 	const dropDir = (entry: TreeEntry) => (entry.type === 'dir' ? entry.path : parentOf(entry.path));
 	const isInside = (path: string, ancestor: string) => path.startsWith(ancestor + sepOf(ancestor));
-	const canDrop = (target: string) => !!dragging && target !== dragging.path && !isInside(target, dragging.path);
-	const canDropFor = (d: TreeEntry, target: string) => target !== d.path && !isInside(target, d.path);
+	// a target is valid when no dragged item IS it or contains it
+	const canDropAll = (target: string) => dragPaths.length > 0 && dragPaths.every((p) => target !== p && !isInside(target, p));
+	/** a drag that comes from outside the app (OS file manager) rather than a tree row. */
+	const isExternalDrag = (e: DragEvent) => !dragging && !!e.dataTransfer?.types?.includes('Files');
+	// A tree drag from ANOTHER Texpile window: our own `dragging` is null, but the payload
+	// carries this MIME tag. Only the TYPE is readable during dragover (drag data is sealed
+	// until drop, by spec), which is exactly why the tag exists: it identifies the drag
+	// without seeing the data, and plain editor text drags don't false-positive.
+	const PATHS_MIME = 'application/x-texpile-paths';
+	const isCrossWindowDrag = (e: DragEvent) => !dragging && !!e.dataTransfer?.types?.includes(PATHS_MIME);
+	// ring the row of the receiving DIRECTORY (not whatever row the pointer is on)
+	const markTarget = (dir: string) => {
+		dropTarget = dir === rootPath ? ROOT : dir;
+	};
 
 	function onRowDragStart(e: DragEvent, entry: TreeEntry) {
+		// dragging an unselected row abandons the selection and drags just that row
+		if (!selected.includes(entry.path)) {
+			selected = [entry.path];
+			anchorPath = entry.path;
+		}
 		dragging = entry;
+		dragPaths = selectedEntries().map((x) => x.path);
 		if (e.dataTransfer) {
-			e.dataTransfer.effectAllowed = 'move';
-			e.dataTransfer.setData('text/plain', entry.path);
+			// move within this window; a drop in another window's tree copies instead
+			e.dataTransfer.effectAllowed = 'copyMove';
+			e.dataTransfer.setData('text/plain', dragPaths.join('\n'));
+			e.dataTransfer.setData(PATHS_MIME, JSON.stringify(dragPaths));
 		}
 	}
 	function onRowDragOver(e: DragEvent, entry: TreeEntry) {
-		if (!canDrop(dropDir(entry))) return;
+		const dir = dropDir(entry);
+		if (isExternalDrag(e) || isCrossWindowDrag(e)) {
+			e.preventDefault();
+			e.stopPropagation();
+			if (e.dataTransfer) e.dataTransfer.dropEffect = 'copy';
+			markTarget(dir);
+			return;
+		}
+		if (!canDropAll(dir)) return;
 		e.preventDefault();
+		e.stopPropagation(); // the container's handler would re-target the drop to ROOT
 		if (e.dataTransfer) e.dataTransfer.dropEffect = 'move';
-		dropTarget = entry.path;
+		markTarget(dir);
 	}
 	function onRowDrop(e: DragEvent, entry: TreeEntry) {
 		e.preventDefault();
 		e.stopPropagation();
-		const d = dragging;
-		const target = dropDir(entry);
-		dragging = null;
-		dropTarget = null;
-		if (d && canDropFor(d, target)) onMove(d, target);
+		finishDrop(e, dropDir(entry));
 	}
 	function onRootDragOver(e: DragEvent) {
-		if (!canDrop(rootPath)) return;
+		if (isExternalDrag(e) || isCrossWindowDrag(e)) {
+			e.preventDefault();
+			if (e.dataTransfer) e.dataTransfer.dropEffect = 'copy';
+			dropTarget = ROOT;
+			return;
+		}
+		if (!canDropAll(rootPath)) return;
 		e.preventDefault();
 		if (e.dataTransfer) e.dataTransfer.dropEffect = 'move';
 		dropTarget = ROOT;
 	}
 	function onRootDrop(e: DragEvent) {
 		e.preventDefault();
-		const d = dragging;
+		finishDrop(e, rootPath);
+	}
+	function finishDrop(e: DragEvent, targetDir: string) {
+		const external = isExternalDrag(e);
+		const crossWindow = isCrossWindowDrag(e);
+		const entries = dragging ? selectedEntries() : [];
+		const valid = canDropAll(targetDir);
 		dragging = null;
+		dragPaths = [];
 		dropTarget = null;
-		if (d && canDropFor(d, rootPath)) onMove(d, rootPath);
+		if (crossWindow) {
+			// a tree drag from another Texpile window: the data is readable now (drop), and
+			// the drop COPIES so the source window's workspace is never mutated behind its back
+			let paths: string[] = [];
+			try {
+				paths = JSON.parse(e.dataTransfer?.getData(PATHS_MIME) || '[]');
+			} catch {
+				/* malformed payload: ignore the drop */
+			}
+			const safe = paths.filter((p) => typeof p === 'string' && p && targetDir !== p && !isInside(targetDir, p));
+			if (safe.length) onCopyIn?.(safe, targetDir);
+		} else if (external) {
+			void collectDropItems(e).then((items) => {
+				if (items.length) onImport?.(items, targetDir);
+			});
+		} else if (entries.length && valid) {
+			onMove(entries, targetDir);
+		}
+	}
+	// clearing on the container, not per row: leaving one row for the next fires a dragleave
+	// that would blank the ring mid-drag; only a true exit of the panel clears it
+	function onTreeDragLeave(e: DragEvent) {
+		const to = e.relatedTarget as Node | null;
+		if (!to || !(e.currentTarget as HTMLElement).contains(to)) dropTarget = null;
 	}
 	function onDragEnd() {
 		dragging = null;
+		dragPaths = [];
 		dropTarget = null;
+	}
+
+	// ---- OS-file imports (drop from the system file manager, or clipboard paste) ----
+	// walks dropped directories via the webkitGetAsEntry tree so folder drops import their
+	// contents; reads file BYTES (no OS paths involved), which also works for clipboard files
+	async function collectDropItems(e: DragEvent): Promise<ImportItem[]> {
+		const out: ImportItem[] = [];
+		const items = [...(e.dataTransfer?.items ?? [])];
+		const entries = items.map((i) => i.webkitGetAsEntry?.()).filter((x): x is FileSystemEntry => !!x);
+		if (!entries.length) {
+			for (const f of e.dataTransfer?.files ?? []) out.push({ relPath: f.name, file: f });
+			return out;
+		}
+		const readAll = (dir: FileSystemDirectoryEntry): Promise<FileSystemEntry[]> =>
+			new Promise((resolve) => {
+				const reader = dir.createReader();
+				const acc: FileSystemEntry[] = [];
+				const step = () =>
+					reader.readEntries(
+						(batch) => {
+							if (!batch.length) return resolve(acc);
+							acc.push(...batch);
+							step(); // readEntries returns at most ~100 per call
+						},
+						() => resolve(acc)
+					);
+				step();
+			});
+		const walk = async (entry: FileSystemEntry, prefix: string): Promise<void> => {
+			if (entry.isFile) {
+				const f = await new Promise<globalThis.File>((resolve, reject) => (entry as FileSystemFileEntry).file(resolve, reject)).catch(
+					() => null
+				);
+				if (f) out.push({ relPath: prefix + entry.name, file: f });
+			} else if (entry.isDirectory) {
+				for (const child of await readAll(entry as FileSystemDirectoryEntry)) await walk(child, prefix + entry.name + '/');
+			}
+		};
+		for (const entry of entries) await walk(entry, '');
+		return out;
+	}
+
+	// Ctrl+V while the editor doesn't own focus: save clipboard files/images into the tree.
+	// A pasted screenshot arrives as a nameless "image.png"; give it a recognizable name.
+	function onPaste(e: ClipboardEvent) {
+		if (!onImport) return;
+		const el = e.target as HTMLElement | null;
+		if (el?.closest('input, textarea, [contenteditable="true"], [contenteditable=""]')) return;
+		const files = [...(e.clipboardData?.files ?? [])];
+		if (!files.length) return;
+		e.preventDefault();
+		const items = files.map((f, i) => {
+			let name = f.name || 'pasted-image.png';
+			if (/^image\.(png|jpe?g|gif|webp)$/i.test(name)) name = name.replace(/^image/i, 'pasted-image');
+			if (files.length > 1 && files.every((x) => x.name === files[0].name)) name = name.replace(/(\.[^.]+)$/, `-${i + 1}$1`);
+			return { relPath: name, file: f };
+		});
+		// paste lands in the single selected folder, else the workspace root
+		const sel = selectedEntries();
+		const target = sel.length === 1 && sel[0].type === 'dir' ? sel[0].path : rootPath;
+		onImport(items, target);
 	}
 
 	let ctxMenu = $state<{ x: number; y: number; entry: TreeEntry | null } | null>(null);
 	function openCtx(e: MouseEvent, entry: TreeEntry | null) {
 		e.preventDefault();
 		e.stopPropagation();
+		// right-clicking outside the selection retargets it (the menu acts on what's selected)
+		if (entry && !selected.includes(entry.path)) {
+			selected = [entry.path];
+			anchorPath = entry.path;
+		}
 		// keep the menu on-screen near the bottom/right edges
 		const x = Math.min(e.clientX, window.innerWidth - 184);
 		const y = Math.min(e.clientY, window.innerHeight - 168);
@@ -209,9 +401,20 @@
 		if (renameEdited) commitRename(e);
 	}
 	function confirmDelete(e: TreeEntry) {
+		// deleting a row that's part of a multi-selection deletes the whole selection
+		if (selected.includes(e.path) && selectedEntries().length > 1) {
+			const entries = selectedEntries();
+			if (confirm(m.filetree_confirm_delete_many({ count: entries.length }))) {
+				onDelete(entries);
+				selected = [];
+			}
+			return;
+		}
 		const message = e.type === 'dir' ? m.filetree_confirm_delete_dir({ name: e.name }) : m.filetree_confirm_delete_file({ name: e.name });
-		if (confirm(message)) onDelete(e);
+		if (confirm(message)) onDelete([e]);
 	}
+	/** how many rows a delete from this entry would remove (for the context-menu label). */
+	const deleteCount = (e: TreeEntry) => (selected.includes(e.path) ? selectedEntries().length : 1);
 </script>
 
 <svelte:window
@@ -221,7 +424,9 @@
 		if (ctxMenu) ctxMenu = null;
 		else if (creatingIn !== null) cancelCreate();
 		else if (renaming !== null) renaming = null;
+		else if (selected.length) selected = [];
 	}}
+	onpaste={onPaste}
 />
 
 {#snippet createInput(depth: number)}
@@ -259,15 +464,14 @@
 		<div
 			class="group flex items-center rounded text-sm transition-colors {activePath === entry.path
 				? 'bg-primary-500/15 text-primary-700 dark:text-primary-300 font-medium'
-				: 'hover:bg-surface-200-800'} {dropTarget === entry.path ? 'ring-primary-500 ring-2 ring-inset' : ''} {dragging?.path === entry.path
-				? 'opacity-50'
-				: ''}"
+				: selected.includes(entry.path)
+					? 'bg-surface-300-700/60'
+					: 'hover:bg-surface-200-800'} {dropTarget === entry.path && entry.type === 'dir'
+				? 'ring-primary-500 ring-2 ring-inset'
+				: ''} {dragPaths.includes(entry.path) ? 'opacity-50' : ''}"
 			draggable={renaming !== entry.path}
 			ondragstart={(e) => onRowDragStart(e, entry)}
 			ondragover={(e) => onRowDragOver(e, entry)}
-			ondragleave={() => {
-				if (dropTarget === entry.path) dropTarget = null;
-			}}
 			ondrop={(e) => onRowDrop(e, entry)}
 			ondragend={onDragEnd}
 			oncontextmenu={(e) => openCtx(e, entry)}
@@ -275,7 +479,7 @@
 			<button
 				class="flex min-w-0 flex-1 items-center gap-1 py-0.5"
 				style="padding-left: {depth * 12 + 4}px"
-				onclick={() => (entry.type === 'dir' ? (expanded[entry.path] = !expanded[entry.path]) : onOpen(entry))}
+				onclick={(e) => handleRowClick(e, entry)}
 				ondblclick={() => entry.type === 'file' && onOpen(entry)}
 			>
 				{#if entry.type === 'dir'}
@@ -348,15 +552,17 @@
 	</div>
 {/snippet}
 
-<!-- empty-space drops and right-clicks target the workspace root -->
-<!-- svelte-ignore a11y_no_static_element_interactions -->
+<!-- empty-space drops and right-clicks target the workspace root; clicking empty space clears
+     the selection (Escape is the keyboard path for that, see the window handler above) -->
 <div
+	role="presentation"
 	class="min-h-full rounded {dropTarget === ROOT ? 'ring-primary-500 ring-2 ring-inset' : ''}"
 	ondragover={onRootDragOver}
-	ondragleave={() => {
-		if (dropTarget === ROOT) dropTarget = null;
-	}}
+	ondragleave={onTreeDragLeave}
 	ondrop={onRootDrop}
+	onclick={(e) => {
+		if (e.target === e.currentTarget) selected = [];
+	}}
 	oncontextmenu={(e) => openCtx(e, null)}
 >
 	{#if creatingIn === rootPath}{@render createInput(0)}{/if}
@@ -415,7 +621,7 @@
 				{m.filetree_menu_new_include()}
 			</button>
 		{/if}
-		{#if ctxMenu.entry && isTex(ctxMenu.entry) && onSetMain}
+		{#if ctxMenu.entry && deleteCount(ctxMenu.entry) === 1 && isTex(ctxMenu.entry) && onSetMain}
 			<button
 				class="hover:preset-tonal-primary flex w-full items-center gap-2.5 px-3 py-1.5 text-left"
 				onclick={() => {
@@ -429,17 +635,19 @@
 			</button>
 		{/if}
 		{#if ctxMenu.entry}
-			<button
-				class="hover:preset-tonal-primary flex w-full items-center gap-2.5 px-3 py-1.5 text-left"
-				onclick={() => {
-					const e = ctxMenu.entry;
-					ctxMenu = null;
-					if (e) startRename(e);
-				}}
-			>
-				<Pencil class="text-surface-500 size-4" />
-				{m.filetree_rename()}
-			</button>
+			{#if deleteCount(ctxMenu.entry) === 1}
+				<button
+					class="hover:preset-tonal-primary flex w-full items-center gap-2.5 px-3 py-1.5 text-left"
+					onclick={() => {
+						const e = ctxMenu.entry;
+						ctxMenu = null;
+						if (e) startRename(e);
+					}}
+				>
+					<Pencil class="text-surface-500 size-4" />
+					{m.filetree_rename()}
+				</button>
+			{/if}
 			<button
 				class="hover:preset-tonal-error text-error-600 flex w-full items-center gap-2.5 px-3 py-1.5 text-left"
 				onclick={() => {
@@ -449,7 +657,7 @@
 				}}
 			>
 				<Trash2 class="size-4" />
-				{m.filetree_delete()}
+				{deleteCount(ctxMenu.entry) > 1 ? m.filetree_delete_many({ count: deleteCount(ctxMenu.entry) }) : m.filetree_delete()}
 			</button>
 		{/if}
 	</div>

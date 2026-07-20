@@ -1,8 +1,8 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { route, navigate } from '$lib/router.svelte';
-	import { native, scanTexFiles, dirname } from '$lib/workspace/fileSystem';
-	import { workspaceRoot, texFiles, activeFilePath, addRecentFolder } from '$lib/workspace/workspaceStore';
+	import { native, claimWorkspace, scanTexFiles, statFile, dirname } from '$lib/workspace/fileSystem';
+	import { workspaceRoot, texFiles, activeFilePath, addRecentFolder, savedLastFile } from '$lib/workspace/workspaceStore';
 	import { updateSettings, loadSettings } from '$lib/settings';
 	import { checkForUpdate, updateModalOpen } from '$lib/updates';
 	import UpdateAvailableModal from '$lib/components/UpdateAvailableModal.svelte';
@@ -22,6 +22,10 @@
 
 	onMount(async () => {
 		const s = await loadSettings();
+		// once per app SESSION, not per window: without this every new window would re-check
+		// for updates and re-show What's New (claim falls back to true in browser dev)
+		const primary = (await native()?.claimStartupTasks?.()) ?? true;
+		if (!primary) return;
 		// every release the user skipped, so upgrading across versions doesn't swallow what's between
 		whatsNewEntries = unseenEntries(whatsNew, s.whatsNewSeen);
 		if (whatsNewEntries.length) whatsNewOpen = true;
@@ -48,6 +52,9 @@
 		return n.onOpenPath(async (filePath) => {
 			try {
 				const root = dirname(filePath);
+				// main routes files to the window already owning the folder, so a failed claim
+				// (folder open elsewhere) only happens in odd races; that window was focused
+				if (!(await claimWorkspace(root)).ok) return;
 				const { files } = await scanTexFiles(root);
 				const match = files.find((f) => f.path === filePath || f.path.toLowerCase() === filePath.toLowerCase());
 				workspaceRoot.set(root);
@@ -58,6 +65,30 @@
 				navigate('/workspace');
 			} catch {
 				/* ignore an OS open we can't honor */
+			}
+		});
+	});
+
+	// session restore + "Open Folder in New Window": the main process pushes a folder for this
+	// window to open (the StartView-side auto-reopen is gone; it would misfire in new windows)
+	onMount(() => {
+		const n = native();
+		if (!n?.onOpenFolder) return;
+		return n.onOpenFolder(async (root) => {
+			try {
+				if (!(await claimWorkspace(root)).ok) return;
+				const { files } = await scanTexFiles(root);
+				// reopen the file the user last had open in this folder, like the old restore did
+				const saved = savedLastFile(root);
+				const active = saved && (await statFile(saved)).exists ? saved : (files[0]?.path ?? null);
+				workspaceRoot.set(root);
+				texFiles.set(files);
+				activeFilePath.set(active);
+				addRecentFolder(root);
+				updateSettings({ lastFolder: root });
+				navigate('/workspace');
+			} catch {
+				/* folder is gone or unreadable: stay on the start screen */
 			}
 		});
 	});

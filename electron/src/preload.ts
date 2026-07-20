@@ -21,6 +21,22 @@ contextBridge.exposeInMainWorld('texpileNative', {
 		ipcRenderer.on('main:open-path', h);
 		return () => ipcRenderer.removeListener('main:open-path', h);
 	},
+	/** subscribe to "open this folder" pushes (session restore, Open Folder in New Window). */
+	onOpenFolder: (cb: (root: string) => void) => {
+		const h = (_e: unknown, root: string) => cb(root);
+		ipcRenderer.on('main:open-folder', h);
+		return () => ipcRenderer.removeListener('main:open-folder', h);
+	},
+	/** register this window as the folder's owner; { ok:false } means another window has it (and was focused). */
+	claimWorkspace: (root: string) => ipcRenderer.invoke('workspace:claim', root),
+	/** mark this window as back on the start screen. */
+	releaseWorkspace: () => ipcRenderer.invoke('workspace:release'),
+	/** open an empty new window. */
+	newWindow: () => ipcRenderer.invoke('window:new'),
+	/** folder picker + new window in one step (deduped against already-open folders). */
+	openFolderNewWindow: () => ipcRenderer.invoke('window:openFolderNew'),
+	/** true exactly once per app session; the winner runs the update check / What's New. */
+	claimStartupTasks: () => ipcRenderer.invoke('session:claimStartupTasks'),
 
 	/** recursively scan a folder for files of the given extensions (CSV, default 'tex'). */
 	fsScan: (root: string, exts?: string) => invokeFs('fs:scan', root, exts),
@@ -47,6 +63,14 @@ contextBridge.exposeInMainWorld('texpileNative', {
 	draftTypeset: (body: { root: string; mainFile: string; text: string; hsize?: number }) => invokeFs('draft:typeset', body),
 	/** Stop the warm daemon (draft mode off / preview closed) so it stops holding memory. */
 	draftStop: () => invokeFs('draft:stop', {}),
+	/** Steal the warm engine from the window that currently owns it (explicit user action). */
+	draftTakeover: (body: { root: string }) => invokeFs('draft:takeover', body),
+	/** subscribe to "another window took the engine" pushes; returns an unsubscribe fn. */
+	onDraftPreempted: (cb: (info: { root: string }) => void) => {
+		const h = (_e: unknown, info: { root: string }) => cb(info);
+		ipcRenderer.on('draft:preempted', h);
+		return () => ipcRenderer.removeListener('draft:preempted', h);
+	},
 	/** Save the live preview's reconcile PDF via a save dialog -> { saved, path? }. */
 	draftSavePdf: (body: { root: string; defaultName: string; to?: string }) => invokeFs('draft:savePdf', body),
 

@@ -42,6 +42,9 @@ export interface AppSettings {
 	mathPreview: boolean;
 	/** UI display language. Not the LaTeX document language (see DocumentLanguage). */
 	uiLocale: 'en' | 'zh-Hans' | 'zh-Hant' | 'de';
+	/** folders open across windows; maintained by the MAIN process for session restore.
+	 *  read-only here: renderers never write it. */
+	openFolders: string[];
 }
 
 /** default compile command. -interaction=nonstopmode keeps errors from parking the engine at its
@@ -71,7 +74,8 @@ const DEFAULTS: AppSettings = {
 	uiZoom: 1,
 	whatsNewSeen: '',
 	mathPreview: true,
-	uiLocale: 'en'
+	uiLocale: 'en',
+	openFolders: []
 };
 
 const LS_KEY = 'texpile:settings';
@@ -134,15 +138,17 @@ export async function getSettings(): Promise<AppSettings> {
 	return loadSettings();
 }
 
-function persist(next: AppSettings): void {
+// send ONLY the changed fields: the main process merges them into settings.json, so two
+// windows writing different settings can't clobber each other's fields with stale copies
+function persist(patch: Partial<AppSettings>): void {
 	const n = native();
 	if (n?.setSettings) {
-		n.setSettings(next).catch(() => {});
+		n.setSettings(patch).catch(() => {});
 		return;
 	}
 	if (browser) {
 		try {
-			localStorage.setItem(LS_KEY, JSON.stringify(next));
+			localStorage.setItem(LS_KEY, JSON.stringify(get(settings)));
 		} catch {
 			/* ignore */
 		}
@@ -153,7 +159,7 @@ function persist(next: AppSettings): void {
 export function updateSettings(partial: Partial<AppSettings>): void {
 	const next = { ...get(settings), ...partial };
 	settings.set(next);
-	persist(next);
+	persist(partial);
 }
 
 // hydrate at module load so the store holds real values before any UI writes,

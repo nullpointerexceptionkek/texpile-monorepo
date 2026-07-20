@@ -154,7 +154,7 @@
 						onclick={onPauseDraft}
 						title={m.wsview_live_preview_running_title()}
 					>
-						<span class="bg-success-500 size-2 animate-pulse rounded-full"></span>
+						<span class="bg-success-500 size-2 rounded-full"></span>
 						{m.wsview_live_label()}
 					</button>
 				{:else if $settings.draftMode && pdfPaneOpen && draftPaused}

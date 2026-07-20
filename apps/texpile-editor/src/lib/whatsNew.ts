@@ -1,8 +1,17 @@
+import { derived, writable } from 'svelte/store';
+import { settings } from '$lib/settings';
+
 export interface ChangelogEntry {
 	version: string;
 	date?: string;
 	notes: string[];
 }
+
+/** open signal for the panel; set from the Help menu and the start screen. */
+export const whatsNewOpen = writable(false);
+
+/** drives the unread dot on the Help menu and the start screen row. */
+export const hasUnseenWhatsNew = derived(settings, ($s) => unseenEntries(__WHATS_NEW__, $s.whatsNewSeen).length > 0);
 
 function isNewer(a: string, b: string): boolean {
 	const x = a.split('.').map(Number);
@@ -34,4 +43,12 @@ export function unseenEntries(all: ChangelogEntry[], seen: string): ChangelogEnt
 		? all.filter((e) => isNewer(e.version, seen)).slice(0, MAX_SHOWN)
 		: all.filter((e) => sameMinor(e.version, all[0].version));
 	return picked.reverse();
+}
+
+/** what to show when the panel is opened deliberately: the unseen releases if there are any,
+ *  otherwise the current minor series, so it is never empty just because you're up to date. */
+export function entriesToShow(all: ChangelogEntry[], seen: string): ChangelogEntry[] {
+	if (!all.length) return [];
+	const unseen = unseenEntries(all, seen);
+	return unseen.length ? unseen : all.filter((e) => sameMinor(e.version, all[0].version)).reverse();
 }

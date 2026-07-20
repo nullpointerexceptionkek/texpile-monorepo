@@ -9,9 +9,6 @@
 	class="preset-filled-primary-500 fixed right-3 bottom-3 z-1200 flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-semibold shadow-lg"
 	{onclick}
 >
-	<span class="relative flex size-2">
-		<span class="absolute inline-flex h-full w-full animate-ping rounded-full bg-white opacity-60"></span>
-		<span class="relative inline-flex size-2 rounded-full bg-white"></span>
-	</span>
+	<span class="size-2 shrink-0 rounded-full bg-white"></span>
 	{m.share_active_badge({ count })}
 </button>

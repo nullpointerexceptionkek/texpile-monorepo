@@ -54,6 +54,9 @@ export interface AppSettings {
 export const DEFAULT_COMPILE_COMMAND =
 	'latexmk -lualatex -interaction=nonstopmode -file-line-error -synctex=1 -output-directory=output {main}';
 
+/** the hosted blind relay; users can point at their own, and the share/join dialogs reset to this */
+export const DEFAULT_COLLAB_RELAY_URL = 'wss://collab.texpile.com';
+
 const DEFAULTS: AppSettings = {
 	reopenLastFolder: true,
 	autosave: true,
@@ -77,7 +80,7 @@ const DEFAULTS: AppSettings = {
 	whatsNewSeen: '',
 	mathPreview: true,
 	uiLocale: 'en',
-	collabRelayUrl: 'wss://collab.texpile.com',
+	collabRelayUrl: DEFAULT_COLLAB_RELAY_URL,
 	openFolders: []
 };
 

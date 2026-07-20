@@ -1,6 +1,8 @@
 <script lang="ts">
 	import { navigate } from '$lib/router.svelte';
-	import { AppWindow, FolderOpen, FolderPlus, GraduationCap, Loader2, Users } from '@lucide/svelte';
+	import { AppWindow, ArrowLeft, Folder, FolderOpen, FolderPlus, Loader2, Settings, Users } from '@lucide/svelte';
+	import { modKey } from '$lib/platform';
+	import { whatsNewOpen, hasUnseenWhatsNew } from '$lib/whatsNew';
 	// dark wordmark for light backgrounds, white one for dark mode
 	import logoOnLight from '$lib/assets/logo/Logo-dark.svg';
 	import logoOnDark from '$lib/assets/logo/Logo-light.svg';
@@ -29,6 +31,7 @@
 	import { updateSettings } from '$lib/settings';
 	import StarterPicker from '$lib/editor/comp/StarterPicker.svelte';
 	import TutorialConfirmModal from '$lib/editor/comp/TutorialConfirmModal.svelte';
+	import PreferencesDialog from '$lib/editor/comp/PreferencesDialog.svelte';
 	import { applyStarter, applyImportedFiles, openTutorialProject, type Starter, type ImportedFile } from '$lib/workspace/starters';
 	import { m } from '$lib/paraglide/messages';
 
@@ -36,6 +39,12 @@
 	let error = $state<string | null>(null);
 	let templateFor = $state<string | null>(null); // an empty folder awaiting a starter-template choice
 	let tutorialModalOpen = $state(false);
+	let prefsOpen = $state(false); // the menu bar isn't on this screen, so settings need a way in from here
+	const appVersion = __APP_VERSION__; // injected by Vite from package.json
+
+	// every entry on this screen is the same row: muted icon, label, optional shortcut on the right
+	const rowClass =
+		'hover:bg-surface-200-800 rounded-base flex w-full items-center gap-2.5 px-2 py-1.5 text-left text-sm disabled:opacity-50';
 
 	async function finishOpen(root: string, active: string | null) {
 		// belt & braces: template/tutorial roots are freshly created, but claiming is cheap
@@ -175,92 +184,103 @@
 
 <svelte:head><title>Texpile</title></svelte:head>
 
-<div class="grid min-h-screen place-items-center px-6 py-12">
-	<div
-		class="border-surface-200-800 bg-surface-50-950 rounded-container w-full border p-7 shadow-sm {templateFor ? 'max-w-2xl' : 'max-w-sm'}"
-	>
-		<img src={logoOnLight} alt="Texpile" class="mx-auto mb-7 h-9 w-auto dark:hidden" />
-		<img src={logoOnDark} alt="Texpile" class="mx-auto mb-7 hidden h-9 w-auto dark:block" />
+<!-- my-auto rather than centering the container: a tall list on a short window would otherwise
+     push the top above the scroll origin, where it can't be reached -->
+<div class="flex min-h-screen justify-center px-6 py-12">
+	<div class="my-auto w-full {templateFor ? 'max-w-2xl' : 'max-w-md'}">
+		<img src={logoOnLight} alt="Texpile" class="mx-auto mb-8 h-9 w-auto dark:hidden" />
+		<img src={logoOnDark} alt="Texpile" class="mx-auto mb-8 hidden h-9 w-auto dark:block" />
 
 		{#if templateFor}
-			<div class="mb-3 flex items-baseline justify-between gap-2">
-				<h2 class="text-surface-500 shrink-0 text-xs font-semibold tracking-wider uppercase">{m.start_new_project_heading()}</h2>
-				<span class="text-surface-400 min-w-0 truncate text-xs" title={templateFor}>{basename(templateFor)}</span>
+			<div class="mb-2 flex items-center gap-3">
+				<span class="text-surface-500 shrink-0 text-xs font-semibold tracking-wider uppercase">{m.start_new_project_heading()}</span>
+				<span class="text-surface-400 min-w-0 shrink truncate text-xs" title={templateFor}>{basename(templateFor)}</span>
+				<span class="border-surface-200-800 h-px flex-1 border-t"></span>
 			</div>
 			<StarterPicker onPick={applyTemplate} onBlank={openBlank} onImport={importOwn} {busy} />
-			<button
-				class="text-surface-500 hover:text-surface-950-50 mt-4 text-sm disabled:opacity-50"
-				onclick={() => (templateFor = null)}
-				disabled={busy}
-			>
-				{m.start_back()}
+			<button class="{rowClass} mt-4" onclick={() => (templateFor = null)} disabled={busy}>
+				<ArrowLeft class="text-surface-500 size-4 shrink-0" />
+				<span>{m.start_back()}</span>
 			</button>
 			{#if error}
-				<p class="text-error-500 mt-2 text-sm">{error}</p>
+				<p class="text-error-500 mt-2 px-2 text-sm">{error}</p>
 			{/if}
 		{:else}
-			<h2 class="text-surface-500 mb-2 text-xs font-semibold tracking-wider uppercase">{m.start_heading()}</h2>
-			<div class="flex flex-col gap-2">
-				<button class="btn preset-filled-primary-500 w-full" onclick={() => openFolder()} disabled={busy}>
-					{#if busy}<Loader2 class="size-4 animate-spin" />{:else}<FolderOpen class="size-4" />{/if}
-					{m.start_open_folder()}
-				</button>
-				<button class="btn preset-outlined-primary-500 w-full" onclick={createNewProject} disabled={busy}>
-					<FolderPlus class="size-4" />
-					{m.start_create_new_project()}
-				</button>
+			<div class="mb-1 flex items-center gap-3">
+				<span class="text-surface-500 shrink-0 text-xs font-semibold tracking-wider uppercase">{m.start_heading()}</span>
+				<span class="border-surface-200-800 h-px flex-1 border-t"></span>
 			</div>
 
-			<div class="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1.5">
-				<button
-					class="text-surface-500 hover:text-surface-950-50 inline-flex items-center gap-1.5 text-sm disabled:opacity-50"
-					onclick={() => (tutorialModalOpen = true)}
-					disabled={busy}
-				>
-					<GraduationCap class="size-4" />
-					{m.start_tutorial_cta()}
+			<button class={rowClass} onclick={() => openFolder()} disabled={busy}>
+				{#if busy}<Loader2 class="text-surface-500 size-4 shrink-0 animate-spin" />{:else}<FolderOpen
+						class="text-surface-500 size-4 shrink-0"
+					/>{/if}
+				<span>{m.start_open_folder()}</span>
+			</button>
+			<button class={rowClass} onclick={createNewProject} disabled={busy}>
+				<FolderPlus class="text-surface-500 size-4 shrink-0" />
+				<span>{m.start_create_new_project()}</span>
+			</button>
+			{#if isDesktop()}
+				<button class={rowClass} onclick={openNewWindow}>
+					<AppWindow class="text-surface-500 size-4 shrink-0" />
+					<span>{m.start_new_window()}</span>
+					<span class="text-surface-400 ml-auto shrink-0 pl-4 text-xs">{modKey('Shift', 'N')}</span>
 				</button>
-				{#if isDesktop()}
-					<button class="text-surface-500 hover:text-surface-950-50 inline-flex items-center gap-1.5 text-sm" onclick={openNewWindow}>
-						<AppWindow class="size-4" />
-						{m.start_new_window()}
-					</button>
-				{/if}
-				<button
-					class="text-surface-500 hover:text-surface-950-50 inline-flex items-center gap-1.5 text-sm"
-					onclick={() => navigate('/session')}
-				>
-					<Users class="size-4" />
-					{m.start_join_session()}
-				</button>
-			</div>
+			{/if}
+			<button class={rowClass} onclick={() => navigate('/session')}>
+				<Users class="text-surface-500 size-4 shrink-0" />
+				<span>{m.start_join_session()}</span>
+			</button>
+			<button class={rowClass} onclick={() => (prefsOpen = true)}>
+				<Settings class="text-surface-500 size-4 shrink-0" />
+				<span>{m.menubar_preferences()}</span>
+			</button>
+
+			<!-- onboarding, not a primary action: light so it doesn't compete with the rows above -->
+			<button
+				class="text-surface-500 hover:text-surface-950-50 mt-2 px-2 text-xs disabled:opacity-50"
+				onclick={() => (tutorialModalOpen = true)}
+				disabled={busy}
+			>
+				{m.start_tutorial_cta()}
+			</button>
 
 			{#if error}
 				<p class="text-error-500 mt-2 px-2 text-sm">{error}</p>
 			{/if}
 
 			{#if $recentFolders.length > 0}
-				<h2 class="text-surface-500 mt-6 mb-1.5 text-xs font-semibold tracking-wider uppercase">{m.start_recent_heading()}</h2>
-				<ul class="space-y-1.5">
-					{#each $recentFolders as folder (folder)}
-						<li>
-							<!-- min-w-0 on the button + path span: flex items default to min-width:auto,
-							     so without it `truncate` never engages and long paths overflow the card -->
-							<button
-								class="group flex w-full min-w-0 items-baseline gap-2 text-left disabled:opacity-60"
-								onclick={() => openFolder(folder)}
-								disabled={busy}
-								title={folder}
-							>
-								<span class="text-blue max-w-[60%] shrink-0 truncate text-sm group-hover:underline">{basename(folder)}</span>
-								<span class="text-surface-400 min-w-0 truncate text-xs group-hover:underline">{folder}</span>
-							</button>
-						</li>
-					{/each}
-				</ul>
+				<div class="mt-7 mb-1 flex items-center gap-3">
+					<span class="text-surface-500 shrink-0 text-xs font-semibold tracking-wider uppercase">{m.start_recent_heading()}</span>
+					<span class="border-surface-200-800 h-px flex-1 border-t"></span>
+				</div>
+				{#each $recentFolders as folder (folder)}
+					<!-- min-w-0 on the row and the path: flex items default to min-width:auto, so
+					     without it `truncate` never engages and long paths overflow -->
+					<button class="{rowClass} group min-w-0" onclick={() => openFolder(folder)} disabled={busy} title={folder}>
+						<Folder class="text-surface-500 size-4 shrink-0" />
+						<!-- inner baseline row: the icon stays centred in the row, but the name (text-sm) and
+						     path (text-xs) sit on a shared baseline, else the smaller one rides low -->
+						<span class="flex min-w-0 flex-1 items-baseline gap-2">
+							<span class="max-w-[45%] shrink-0 truncate group-hover:underline">{basename(folder)}</span>
+							<span class="text-surface-400 min-w-0 truncate text-xs">{folder}</span>
+						</span>
+					</button>
+				{/each}
 			{/if}
+
+			<!-- release notes belong next to the version, not competing with the actions above -->
+			<div class="border-surface-200-800 text-surface-500 mt-8 flex items-center justify-between gap-2 border-t px-2 pt-3 text-xs">
+				<span>{m.menubar_version_footer({ version: appVersion })}</span>
+				<button class="hover:text-surface-950-50 inline-flex items-center gap-1.5" onclick={() => whatsNewOpen.set(true)}>
+					{m.whatsnew_menu_label()}
+					{#if $hasUnseenWhatsNew}<span class="bg-primary-500 size-1.5 shrink-0 rounded-full"></span>{/if}
+				</button>
+			</div>
 		{/if}
 	</div>
 </div>
 
 <TutorialConfirmModal bind:open={tutorialModalOpen} onConfirm={openTutorial} />
+<PreferencesDialog bind:open={prefsOpen} />

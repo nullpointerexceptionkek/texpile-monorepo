@@ -1,9 +1,9 @@
 <script lang="ts">
 	// Host-side share dialog: start/stop the session, show the code, count the guests.
 	import { collabHost } from '$lib/collab/hostStore.svelte';
-	import { settings, updateSettings } from '$lib/settings';
+	import { settings, updateSettings, DEFAULT_COLLAB_RELAY_URL } from '$lib/settings';
 	import { m } from '$lib/paraglide/messages';
-	import { Copy, Check, X } from '@lucide/svelte';
+	import { Copy, Check, X, RotateCcw, ShieldCheck, ChevronDown } from '@lucide/svelte';
 
 	let {
 		open = $bindable(false),
@@ -14,9 +14,14 @@
 	let relayDraft = $state($settings.collabRelayUrl);
 	let relayTouched = $state(false);
 	let copied = $state(false);
+	let advancedOpen = $state(false);
 	$effect(() => {
 		const url = $settings.collabRelayUrl;
-		if (!relayTouched) relayDraft = url;
+		// reveal the relay field unprompted only when it isn't the default one
+		if (!relayTouched) {
+			relayDraft = url;
+			advancedOpen = url.trim().replace(/\/+$/, '') !== DEFAULT_COLLAB_RELAY_URL;
+		}
 	});
 
 	async function start() {
@@ -51,6 +56,13 @@
 	}
 
 	const guestCount = $derived(collabHost.guestCount());
+	// trailing slashes are stripped by the transport, so treat them as the same address here too
+	const relayIsDefault = $derived(relayDraft.trim().replace(/\/+$/, '') === DEFAULT_COLLAB_RELAY_URL);
+
+	function resetRelay() {
+		relayDraft = DEFAULT_COLLAB_RELAY_URL;
+		relayTouched = true;
+	}
 </script>
 
 <svelte:window onkeydown={open ? onKeydown : undefined} />
@@ -71,15 +83,42 @@
 
 			{#if !collabHost.active}
 				<p class="text-surface-600-300 mb-4 text-sm">{m.share_desc()}</p>
-				<label class="mb-4 block">
-					<span class="mb-1 block text-sm font-medium">{m.share_relay_label()}</span>
-					<input class="input w-full text-sm" bind:value={relayDraft} oninput={() => (relayTouched = true)} />
-					<span class="text-surface-500 mt-1 block text-xs">{m.share_relay_hint()}</span>
-				</label>
 				{#if collabHost.lastError}
 					<p class="text-error-600-400 mb-3 text-sm">{m.share_error_generic({ message: collabHost.lastError })}</p>
 				{/if}
-				<div class="flex justify-end">
+
+				<!-- plumbing almost nobody changes: collapsed unless they're already on a custom relay -->
+				<button
+					type="button"
+					class="text-surface-500 hover:text-surface-950-50 inline-flex items-center gap-1 text-xs"
+					onclick={() => (advancedOpen = !advancedOpen)}
+				>
+					<ChevronDown class="size-3.5 transition-transform {advancedOpen ? '' : '-rotate-90'}" />
+					{m.share_relay_label()}
+				</button>
+				{#if advancedOpen}
+					<div class="mt-2 flex gap-2">
+						<input class="input flex-1 text-sm" bind:value={relayDraft} oninput={() => (relayTouched = true)} />
+						<button
+							type="button"
+							class="btn-icon btn-icon-sm hover:preset-tonal shrink-0"
+							onclick={resetRelay}
+							disabled={relayIsDefault}
+							title={m.collab_relay_reset_title()}
+							aria-label={m.collab_relay_reset()}
+						>
+							<RotateCcw class="size-4" />
+						</button>
+					</div>
+					<span class="text-surface-500 mt-1 block text-xs">{m.share_relay_hint()}</span>
+				{/if}
+
+				<p class="text-surface-500 border-surface-200-800 mt-4 flex items-start gap-1.5 border-t pt-3 text-xs">
+					<ShieldCheck class="text-success-600-400 mt-px size-3.5 shrink-0" />
+					<span>{m.collab_e2ee_note()}</span>
+				</p>
+
+				<div class="mt-4 flex justify-end">
 					<button class="btn preset-filled-primary-500" disabled={collabHost.status === 'starting' || !root} onclick={start}>
 						{collabHost.status === 'starting' ? m.share_starting() : m.share_start()}
 					</button>
@@ -97,11 +136,15 @@
 						</button>
 					</div>
 				</div>
-				<p class="text-surface-600-300 mb-4 text-sm">
+				<p class="text-surface-600-300 mb-2 text-sm">
 					{guestCount === 0 ? m.share_guests_zero() : guestCount === 1 ? m.share_guests_one() : m.share_guests_other({ count: guestCount })}
 					{#if collabHost.status === 'reconnecting'}<span class="text-warning-600-400"> · {m.session_status_reconnecting()}</span>{/if}
 				</p>
-				<div class="flex justify-end">
+				<p class="text-surface-500 border-surface-200-800 mt-4 flex items-start gap-1.5 border-t pt-3 text-xs">
+					<ShieldCheck class="text-success-600-400 mt-px size-3.5 shrink-0" />
+					<span>{m.collab_e2ee_note()}</span>
+				</p>
+				<div class="mt-4 flex justify-end">
 					<button class="btn preset-tonal-error" onclick={endSession}>{m.share_end()}</button>
 				</div>
 			{/if}

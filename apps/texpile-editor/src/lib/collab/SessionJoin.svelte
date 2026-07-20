@@ -4,16 +4,22 @@
 	import { navigate } from '$lib/router.svelte';
 	import { collabGuest } from '$lib/collab/guestStore.svelte';
 	import { isValidShareCode } from '$lib/collab/e2e/shareCode';
-	import { settings, updateSettings } from '$lib/settings';
+	import { settings, updateSettings, DEFAULT_COLLAB_RELAY_URL } from '$lib/settings';
 	import { m } from '$lib/paraglide/messages';
+	import { RotateCcw, ShieldCheck, ChevronDown } from '@lucide/svelte';
 
 	let codeInput = $state('');
 	let nameInput = $state(loadName());
 	let relayDraft = $state($settings.collabRelayUrl);
 	let relayTouched = $state(false);
+	let advancedOpen = $state(false);
 	$effect(() => {
 		const url = $settings.collabRelayUrl;
-		if (!relayTouched) relayDraft = url;
+		// reveal the relay field unprompted only when it isn't the default one
+		if (!relayTouched) {
+			relayDraft = url;
+			advancedOpen = url.trim().replace(/\/+$/, '') !== DEFAULT_COLLAB_RELAY_URL;
+		}
 	});
 
 	function loadName(): string {
@@ -41,6 +47,13 @@
 	}
 
 	const joinDisabled = $derived(collabGuest.status === 'joining' || !isValidShareCode(codeInput) || !nameInput.trim());
+	// trailing slashes are stripped by the transport, so treat them as the same address here too
+	const relayIsDefault = $derived(relayDraft.trim().replace(/\/+$/, '') === DEFAULT_COLLAB_RELAY_URL);
+
+	function resetRelay() {
+		relayDraft = DEFAULT_COLLAB_RELAY_URL;
+		relayTouched = true;
+	}
 
 	function errorText(err: string): string {
 		if (err === 'invalid-code') return m.session_error_invalid_code();
@@ -78,14 +91,41 @@
 				<span class="mb-1 block text-sm font-medium">{m.session_name_label()}</span>
 				<input class="input w-full" maxlength={40} bind:value={nameInput} onkeydown={(e) => e.key === 'Enter' && !joinDisabled && join()} />
 			</label>
-			<label class="mb-4 block">
-				<span class="mb-1 block text-sm font-medium">{m.session_relay_label()}</span>
-				<input class="input w-full text-sm" bind:value={relayDraft} oninput={() => (relayTouched = true)} />
-			</label>
 			{#if collabGuest.joinError}
 				<p class="text-error-600-400 mb-3 text-sm">{errorText(collabGuest.joinError)}</p>
 			{/if}
-			<div class="flex justify-end gap-2">
+
+			<!-- plumbing almost nobody changes: collapsed unless they're already on a custom relay -->
+			<button
+				type="button"
+				class="text-surface-500 hover:text-surface-950-50 inline-flex items-center gap-1 text-xs"
+				onclick={() => (advancedOpen = !advancedOpen)}
+			>
+				<ChevronDown class="size-3.5 transition-transform {advancedOpen ? '' : '-rotate-90'}" />
+				{m.session_relay_label()}
+			</button>
+			{#if advancedOpen}
+				<div class="mt-2 flex gap-2">
+					<input class="input flex-1 text-sm" bind:value={relayDraft} oninput={() => (relayTouched = true)} />
+					<button
+						type="button"
+						class="btn-icon btn-icon-sm hover:preset-tonal shrink-0"
+						onclick={resetRelay}
+						disabled={relayIsDefault}
+						title={m.collab_relay_reset_title()}
+						aria-label={m.collab_relay_reset()}
+					>
+						<RotateCcw class="size-4" />
+					</button>
+				</div>
+			{/if}
+
+			<p class="text-surface-500 border-surface-200-800 mt-4 flex items-start gap-1.5 border-t pt-3 text-xs">
+				<ShieldCheck class="text-success-600-400 mt-px size-3.5 shrink-0" />
+				<span>{m.collab_e2ee_note()}</span>
+			</p>
+
+			<div class="mt-4 flex justify-end gap-2">
 				<button class="btn preset-tonal" onclick={() => navigate('/')}>{m.session_cancel()}</button>
 				<button class="btn preset-filled-primary-500" disabled={joinDisabled} onclick={join}>
 					{collabGuest.status === 'joining' ? m.session_joining() : m.session_join_button()}

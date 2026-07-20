@@ -24,11 +24,15 @@ export const isDirty = writable<boolean>(false);
 /** most-recent first, persisted to localStorage. */
 export const recentFolders = writable<string[]>(loadRecent());
 
+const MAX_RECENT = 8;
+
+// cap on READ as well as write: the stored value is just localStorage, so a hand-edited or
+// older-format entry would otherwise render an unbounded list until the next folder open trims it
 function loadRecent(): string[] {
 	if (!browser) return [];
 	try {
 		const v = JSON.parse(localStorage.getItem(RECENT_KEY) || '[]');
-		return Array.isArray(v) ? v : [];
+		return Array.isArray(v) ? v.filter((p): p is string => typeof p === 'string').slice(0, MAX_RECENT) : [];
 	} catch {
 		return [];
 	}
@@ -36,7 +40,7 @@ function loadRecent(): string[] {
 
 export function addRecentFolder(path: string): void {
 	recentFolders.update((list) => {
-		const next = [path, ...list.filter((p) => p !== path)].slice(0, 8);
+		const next = [path, ...list.filter((p) => p !== path)].slice(0, MAX_RECENT);
 		if (browser) localStorage.setItem(RECENT_KEY, JSON.stringify(next));
 		return next;
 	});

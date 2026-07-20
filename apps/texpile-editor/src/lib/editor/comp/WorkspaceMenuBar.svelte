@@ -21,6 +21,7 @@
 	import { createLocalImageSettings } from '$lib/editor/extensions/image/imageplugin.svelte';
 	import { run, insertNode, activeCm, cmReplace, editSelect, formatSelect } from './menuBarCommands';
 	import { checkForUpdate, updateModalOpen, updateState } from '$lib/updates';
+	import { whatsNewOpen, hasUnseenWhatsNew } from '$lib/whatsNew';
 	import { toaster } from '$lib/modals/toaster-svelte';
 	import type { Node as PMNode } from 'prosemirror-model';
 	import { m } from '$lib/paraglide/messages';
@@ -120,6 +121,7 @@
 	let copied = $state(false);
 	function helpSelect(value: string) {
 		if (value === 'shortcuts') shortcutsOpen = true;
+		else if (value === 'whatsnew') whatsNewOpen.set(true);
 		else if (value === 'discord') window.open('https://discord.gg/7wanVzCBWf', '_blank', 'noopener,noreferrer');
 		else if (value === 'support') {
 			copied = false;
@@ -168,6 +170,7 @@
 		{
 			group: m.menubar_shortcut_group_general(),
 			items: [
+				{ keys: combo({ shift: true }, 'N'), label: m.menubar_new_window() },
 				{ keys: combo({}, 'S'), label: m.menubar_save() },
 				{ keys: combo({}, 'F'), label: m.menubar_shortcut_find_in_document() },
 				{ keys: combo({ shift: true }, 'F'), label: m.menubar_shortcut_find_in_files() },
@@ -424,7 +427,9 @@
 					</Menu>
 					{#if isDesktop()}
 						<Menu.Separator class="border-surface-200-800 my-1 border-t" />
-						<Menu.Item value="new-window" class={itemClass}><Menu.ItemText>{m.menubar_new_window()}</Menu.ItemText></Menu.Item>
+						<Menu.Item value="new-window" class={itemClass}>
+							<Menu.ItemText>{m.menubar_new_window()}</Menu.ItemText><span class="opacity-50">{combo({ shift: true }, 'N')}</span>
+						</Menu.Item>
 						<Menu.Item value="open-folder-new-window" class={itemClass}>
 							<Menu.ItemText>{m.menubar_open_folder_new_window()}</Menu.ItemText>
 						</Menu.Item>
@@ -606,6 +611,9 @@
 			{#if $updateState.phase === 'downloaded'}
 				<!-- an update finished downloading in the background; the menu item installs it -->
 				<span class="bg-primary-500 mb-1.5 ml-0.5 inline-block size-1.5 rounded-full" title={m.menubar_update_ready_title()}></span>
+			{:else if $hasUnseenWhatsNew}
+				<!-- release notes the user hasn't opened yet; replaces the old launch popup -->
+				<span class="bg-primary-500 mb-1.5 ml-0.5 inline-block size-1.5 rounded-full" title={m.whatsnew_menu_label()}></span>
 			{/if}
 		</Menu.Trigger>
 		<Portal>
@@ -615,6 +623,12 @@
 					{#if onOpenTutorial}
 						<Menu.Item value="tutorial" class={itemClass}><Menu.ItemText>{m.menubar_open_tutorial()}</Menu.ItemText></Menu.Item>
 					{/if}
+					<Menu.Item value="whatsnew" class={itemClass}>
+						<Menu.ItemText>{m.whatsnew_menu_label()}</Menu.ItemText>
+						{#if $hasUnseenWhatsNew}
+							<span class="bg-primary-500 inline-block size-1.5 rounded-full"></span>
+						{/if}
+					</Menu.Item>
 					<Menu.Separator class="border-surface-200-800 my-1 border-t" />
 					<Menu.Item value="discord" class={itemClass}><Menu.ItemText>{m.menubar_join_discord()}</Menu.ItemText></Menu.Item>
 					<Menu.Item value="support" class={itemClass}><Menu.ItemText>{m.menubar_contact_support()}</Menu.ItemText></Menu.Item>
@@ -640,10 +654,7 @@
 			onclick={() => onShareSession?.()}
 			title={m.menubar_share_session()}
 		>
-			<span class="relative flex size-2">
-				<span class="bg-success-500 absolute inline-flex h-full w-full animate-ping rounded-full opacity-60"></span>
-				<span class="bg-success-500 relative inline-flex size-2 rounded-full"></span>
-			</span>
+			<span class="bg-success-500 size-2 shrink-0 rounded-full"></span>
 			<Users class="text-surface-500 size-4" />
 			<div class="flex items-center -space-x-1.5">
 				{#each collabHost.peers.slice(0, 5) as peer, i (i)}

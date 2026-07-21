@@ -23,6 +23,7 @@
 	import { editorViewStore, sourceCmView, viewMode as viewModeStore } from '$lib/stores/editorStore';
 	import { synctexForward, synctexInverse } from '$lib/workspace/synctex';
 	import { sourceTocStore } from '$lib/editor/extensions/tableofcontents/tocStore';
+	import { buildBlockMap, blockAtPm, blockAtSource, sourceStartAt, pmPosToSourceOffset, sourceOffsetToPmPos } from '$lib/editor/sourceMap';
 	import { parseOutlineRaw, assembleProjectOutline } from '$lib/editor/extensions/tableofcontents/latexHeadings';
 	import { refreshProjectIntel } from '$lib/workspace/projectIntel';
 	import { projectIntelStore } from '$lib/stores/projectIntel';
@@ -60,6 +61,7 @@
 	import { refreshGitStatus, isGitRepo, gitChanges, takeNoGitHint } from '$lib/workspace/gitStore';
 	import { gitShowHead, gitInit, gitStage, gitUnstage, gitDiscard, gitCommit, type GitStatusEntry } from '$lib/workspace/git';
 	import { settings, loadSettings, updateSettings, DEFAULT_COMPILE_COMMAND } from '$lib/settings';
+	import { confirmAsk } from '$lib/modals/confirm.svelte';
 	import { detectMainFile, findDocRoots, gatherProjectMacros } from '$lib/workspace/project';
 	import {
 		basename,
@@ -1780,10 +1782,21 @@
 	// load the active file whenever it changes
 	$effect(() => {
 		const path = $activeFilePath;
-		// autosave off: the outgoing file's edit wasn't auto-written, so warn before tearing it down
+		// autosave off: the outgoing file's edit wasn't auto-written, so ask before tearing it down.
+		// The in-app confirm is async, so the switch proceeds immediately (as it always did after the
+		// old blocking confirm returned) and the save/discard resolves against a captured snapshot.
+		// supersedeValue: true — if you switch again before answering, the earlier file SAVES rather
+		// than silently discarding (the blocking confirm couldn't be superseded; this one can).
 		if (!autosaveActive() && loadedPath && path !== loadedPath && pendingSave?.path === loadedPath) {
-			if (confirm(m.wsview_confirm_save_before_switch({ name: basename(loadedPath) }))) flushSave();
-			else pendingSave = null; // discard the unsaved edit
+			const outgoing = pendingSave;
+			const outgoingEol = docEol; // the outgoing file's EOL, before the switch changes docEol
+			pendingSave = null; // detach so loadFile's teardown / the new file's queue can't touch it
+			void confirmAsk(m.wsview_confirm_save_before_switch({ name: basename(loadedPath) }), {
+				confirmLabel: m.wsview_save_label(),
+				supersedeValue: true
+			}).then((ok) => {
+				if (ok) writeChain = writeChain.then(() => doWrite(outgoing.path, outgoing.content, false, outgoingEol));
+			});
 		} else {
 			flushSave(); // persist the outgoing file's queued edit before tearing down its buffers
 		}
@@ -2056,56 +2069,33 @@
 	function captureVisualAnchor(): { scroll: number | null; cursor: number | null } | null {
 		const v = get(editorViewStore);
 		if (!v) return null;
-		const bodyOffset = docMeta?.preamble.length ?? 0;
 		const doc = v.state.doc;
+		const map = buildBlockMap(doc, docMeta?.preamble.length ?? 0);
 		const scRect = findScrollParent(v.dom)?.getBoundingClientRect();
 		const scTop = (scRect?.top ?? 0) + 4;
 		const scBottom = scRect?.bottom ?? Number.POSITIVE_INFINITY;
 
-		// per-block PM positions + parse-time source offsets (orig.start; null on editor-created blocks)
-		const positions: number[] = [];
-		const starts: (number | null)[] = [];
-		for (let i = 0, pos = 0; i < doc.childCount; i++) {
-			positions.push(pos);
-			const start = (doc.child(i).attrs?.orig as { start?: number } | undefined)?.start;
-			starts.push(typeof start === 'number' ? start : null);
-			pos += doc.child(i).nodeSize;
-		}
-		// absolute source offset for a block, falling back to the nearest stamped block above
-		const sourceAt = (index: number): number | null => {
-			for (let i = index; i >= 0; i--) if (starts[i] != null) return bodyOffset + (starts[i] as number);
-			return null;
-		};
-
 		// scroll anchor: the topmost visible block
-		let topIndex = -1;
-		for (let i = 0; i < doc.childCount; i++) {
-			const dom = v.nodeDOM(positions[i]);
+		let scroll: number | null = null;
+		for (const b of map) {
+			const dom = v.nodeDOM(b.pmPos);
 			if (dom instanceof HTMLElement && dom.getBoundingClientRect().bottom > scTop) {
-				topIndex = i;
+				scroll = sourceStartAt(map, b.index);
 				break;
 			}
 		}
-		const scroll = topIndex >= 0 ? sourceAt(topIndex) : null;
 
-		// cursor anchor: the caret's block, proportional within its slice; only when on-screen
+		// cursor anchor: only when the caret's block is on-screen (an off-screen caret must not
+		// yank the incoming view away from the reading position)
 		let cursor: number | null = null;
 		const head = v.state.selection.head;
-		for (let i = 0; i < doc.childCount; i++) {
-			if (head < positions[i] || head >= positions[i] + doc.child(i).nodeSize) continue;
-			const dom = v.nodeDOM(positions[i]);
+		const cb = blockAtPm(map, head);
+		if (cb) {
+			const dom = v.nodeDOM(cb.pmPos);
 			const r = dom instanceof HTMLElement ? dom.getBoundingClientRect() : null;
 			if (r && r.bottom > scTop && r.top < scBottom) {
-				const block = doc.child(i);
-				const orig = block.attrs?.orig as { start?: number; latex?: string } | undefined;
-				if (typeof orig?.start === 'number' && orig.latex?.length) {
-					const frac = Math.min(1, Math.max(0, (head - positions[i] - 1) / Math.max(1, block.content.size)));
-					cursor = bodyOffset + orig.start + Math.round(frac * orig.latex.length);
-				} else {
-					cursor = sourceAt(i);
-				}
+				cursor = pmPosToSourceOffset(doc, map, head) ?? sourceStartAt(map, cb.index);
 			}
-			break;
 		}
 
 		return scroll == null && cursor == null ? null : { scroll, cursor };
@@ -2141,36 +2131,18 @@
 				try {
 					if (v.isDestroyed) return; // the view can be torn down between consume and resolve
 					const doc = v.state.doc; // live doc (includes normalization blocks, which carry no orig)
-					const bodyOffset = docMeta?.preamble.length ?? 0;
-					// last block whose orig.start <= the given body-relative offset
-					const blockAt = (bodyRel: number): { index: number; pos: number; start: number } | null => {
-						let found: { index: number; pos: number; start: number } | null = null;
-						for (let i = 0, pos = 0; i < doc.childCount; i++) {
-							const start = (doc.child(i).attrs?.orig as { start?: number } | undefined)?.start;
-							if (typeof start === 'number' && start <= bodyRel) found = { index: i, pos, start };
-							pos += doc.child(i).nodeSize;
-						}
-						return found;
-					};
+					const map = buildBlockMap(doc, docMeta?.preamble.length ?? 0);
 					// scroll: restore the reading position (the block that topped the source viewport)
-					const scrollHit = blockAt(anchor.scroll - bodyOffset);
+					const scrollHit = blockAtSource(map, anchor.scroll);
 					if (scrollHit) {
-						const dom = v.nodeDOM(scrollHit.pos);
+						const dom = v.nodeDOM(scrollHit.pmPos);
 						if (dom instanceof HTMLElement) dom.scrollIntoView({ block: 'start' });
 					}
-					// caret: land in the block containing the source cursor, proportionally inside it
-					// (markup and rendered text aren't 1:1); falls back to the scroll block. no
-					// scrollIntoView on the tr: the scroll anchor owns the viewport.
-					const caretHit = (anchor.cursor != null ? blockAt(anchor.cursor - bodyOffset) : null) ?? scrollHit;
-					if (!caretHit) return; // everything resolved into the preamble, stay at the top
-					const block = doc.child(caretHit.index);
-					let inner = 1;
-					const orig = block.attrs?.orig as { start?: number; latex?: string } | undefined;
-					if (anchor.cursor != null && orig?.latex?.length) {
-						const frac = Math.min(1, Math.max(0, (anchor.cursor - bodyOffset - caretHit.start) / orig.latex.length));
-						inner = 1 + Math.round(frac * Math.max(0, block.content.size - 1));
-					}
-					const caretPos = Math.min(caretHit.pos + inner, caretHit.pos + Math.max(1, block.nodeSize - 1));
+					// caret: text-anchored inside the block containing the source cursor, falling back
+					// to the scroll block. no scrollIntoView on the tr: the scroll anchor owns the viewport.
+					const caretPos =
+						(anchor.cursor != null ? sourceOffsetToPmPos(doc, map, anchor.cursor) : null) ?? (scrollHit ? scrollHit.pmPos + 1 : null);
+					if (caretPos == null) return; // everything resolved into the preamble, stay at the top
 					v.dispatch(v.state.tr.setSelection(TextSelection.near(v.state.doc.resolve(caretPos))).setMeta('addToHistory', false));
 					// reclaim DOM focus for PM: the mount-time selection can sit inside a CM-backed
 					// nodeview that focuses its inner CodeMirror; PM then never syncs the DOM caret
@@ -2178,7 +2150,8 @@
 					v.focus();
 					// flash the caret's block, same amber as the SyncTeX flash. a node decoration
 					// (flash-plugin) because a bare classList.add doesn't survive PM redraws.
-					flashNodeAt(v, caretHit.pos);
+					const flashBlock = blockAtPm(map, caretPos);
+					if (flashBlock) flashNodeAt(v, flashBlock.pmPos);
 				} catch {
 					/* best-effort; never break the mode switch over a scroll */
 				}
@@ -2339,7 +2312,7 @@
 			changes.length === 1
 				? m.wsview_confirm_discard_one({ name: basename(changes[0].path) })
 				: m.wsview_confirm_discard_other({ count: changes.length });
-		if (!confirm(confirmMsg)) return;
+		if (!(await confirmAsk(confirmMsg, { confirmLabel: m.vcs_discard_changes(), danger: true }))) return;
 		scmBusy = true;
 		// untracked files are deleted; tracked files are reverted to their staged/committed state
 		const untracked = changes.filter((c) => c.x === '?').map((c) => c.path);

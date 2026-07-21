@@ -16,6 +16,7 @@
 		splitCell
 	} from 'prosemirror-tables';
 	import { toaster } from '$lib/modals/toaster-svelte';
+	import { sliceToLatex, pasteLatexText } from '$lib/editor/extensions/latexClipboard';
 	import { Popover, Portal } from '@skeletonlabs/skeleton-svelte';
 	import { Copy, Clipboard, Plus, Trash2, Combine, SplitSquareHorizontal } from '@lucide/svelte';
 	import Kbd from '$lib/components/Kbd.svelte';
@@ -67,10 +68,19 @@
 				div.appendChild(serializer.serializeFragment(fragment));
 				const html = div.innerHTML;
 
+				// both flavors: HTML for rich internal paste, LaTeX as the plain-text form so
+				// pasting into source mode / another app yields markup, not an empty clipboard
+				let latex: string;
+				try {
+					latex = sliceToLatex(slice);
+				} catch {
+					latex = state.doc.textBetween(from, to, '\n\n');
+				}
 				navigator.clipboard
 					.write([
 						new ClipboardItem({
-							'text/html': new Blob([html], { type: 'text/html' })
+							'text/html': new Blob([html], { type: 'text/html' }),
+							'text/plain': new Blob([latex], { type: 'text/plain' })
 						})
 					])
 					.then(() => {
@@ -97,7 +107,8 @@
 						} else if (item.types.includes('text/plain')) {
 							const blob = await item.getType('text/plain');
 							const text = await blob.text();
-							$editorViewStore.pasteText(text);
+							// LaTeX text pastes as rich nodes, same as the Ctrl+V path
+							if (!pasteLatexText($editorViewStore, text)) $editorViewStore.pasteText(text);
 						} else {
 							toaster.warning({
 								title: m.ctxmenu_paste_images_hint_toast(),

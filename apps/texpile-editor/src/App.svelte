@@ -88,6 +88,7 @@
 
 	import { Toast } from '@skeletonlabs/skeleton-svelte';
 	import { toaster } from '$lib/modals/toaster-svelte';
+	import ConfirmHost from '$lib/modals/ConfirmHost.svelte';
 
 	import MobileSupportBanner from '$lib/components/MobileSupportBanner.svelte';
 </script>
@@ -108,6 +109,8 @@
 		</Toast>
 	{/snippet}
 </Toast.Group>
+
+<ConfirmHost />
 
 <div class="pointer-events-none fixed inset-x-0 top-0 z-[1100] flex flex-col">
 	<div class="pointer-events-auto">

@@ -28,6 +28,7 @@
 	import { imagePlugin } from './extensions/image';
 	import { createCursorPlugin } from './extensions/cursor-plugin';
 	import { pasteUUIDFixPlugin } from './extensions/paste-uuid-fix';
+	import { latexClipboardPlugin } from './extensions/latexClipboard';
 	import './styles/cursor.css';
 	import { createListPlugins, listInputRules, listKeymap } from 'prosemirror-flat-list';
 	import { inputRules, InputRule, smartQuotes, ellipsis, undoInputRule } from 'prosemirror-inputrules';
@@ -154,6 +155,7 @@
 			menuUpdatePlugin(),
 			createCursorPlugin(),
 			createLinkPlugin(),
+			latexClipboardPlugin,
 			pasteUUIDFixPlugin,
 			search(),
 			tableOfContentsPlugin,

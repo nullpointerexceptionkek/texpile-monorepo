@@ -16,6 +16,7 @@
 	import { gitKey } from '$lib/workspace/gitStore';
 	import type { GitBadge } from '$lib/workspace/git';
 	import { m } from '$lib/paraglide/messages';
+	import { confirmAsk } from '$lib/modals/confirm.svelte';
 
 	interface Props {
 		tree: TreeEntry[];
@@ -379,11 +380,20 @@
 		createValue = '';
 		if (v && dir) onCreate(dir, v, createType);
 	}
-	// Blur is not consent. A menu closing hands focus back to its trigger a tick after we mount
-	// (Skeleton/Zag does this), so an untouched field going blurry means the naming step never
-	// started, not that the user accepted our pre-filled name. Leave it open for them instead.
-	function blurCreate() {
-		if (createEdited) commitCreate();
+	// Blur is not consent: an untouched field losing focus means dismiss, not "accept the pre-fill".
+	// But a menu closing hands focus back to its trigger a tick after we mount (Skeleton/Zag), and
+	// focusSelect re-grabs it one frame later. So defer the decision a frame: if focus genuinely
+	// left the field, dismiss it; if it came back (spurious refocus, or the window just blurred),
+	// leave it. Directly checking activeElement beats a time window.
+	function blurCreate(e: FocusEvent) {
+		if (createEdited) {
+			commitCreate();
+			return;
+		}
+		const input = e.currentTarget as HTMLElement;
+		requestAnimationFrame(() => {
+			if (creatingIn !== null && document.activeElement !== input) cancelCreate();
+		});
 	}
 	function cancelCreate() {
 		creatingIn = null;
@@ -400,22 +410,31 @@
 		const v = renameValue.trim();
 		if (v && v !== e.name) onRename(e, v);
 	}
-	/** same reasoning as blurCreate: an untouched field losing focus is not the user committing. */
-	function blurRename(e: TreeEntry) {
-		if (renameEdited) commitRename(e);
+	/** same deferred-dismiss reasoning as blurCreate. */
+	function blurRename(e: FocusEvent, entry: TreeEntry) {
+		if (renameEdited) {
+			commitRename(entry);
+			return;
+		}
+		const input = e.currentTarget as HTMLElement;
+		requestAnimationFrame(() => {
+			if (renaming === entry.path && document.activeElement !== input) renaming = null;
+		});
 	}
-	function confirmDelete(e: TreeEntry) {
+	async function confirmDelete(e: TreeEntry) {
 		// deleting a row that's part of a multi-selection deletes the whole selection
 		if (selected.includes(e.path) && selectedEntries().length > 1) {
 			const entries = selectedEntries();
-			if (confirm(m.filetree_confirm_delete_many({ count: entries.length }))) {
+			if (
+				await confirmAsk(m.filetree_confirm_delete_many({ count: entries.length }), { confirmLabel: m.filetree_delete(), danger: true })
+			) {
 				onDelete(entries);
 				selected = [];
 			}
 			return;
 		}
 		const message = e.type === 'dir' ? m.filetree_confirm_delete_dir({ name: e.name }) : m.filetree_confirm_delete_file({ name: e.name });
-		if (confirm(message)) onDelete([e]);
+		if (await confirmAsk(message, { confirmLabel: m.filetree_delete(), danger: true })) onDelete([e]);
 	}
 	/** how many rows a delete from this entry would remove (for the context-menu label). */
 	const deleteCount = (e: TreeEntry) => (selected.includes(e.path) ? selectedEntries().length : 1);
@@ -511,7 +530,7 @@
 							if (e.key === 'Enter') commitRename(entry);
 							else if (e.key === 'Escape') renaming = null;
 						}}
-						onblur={() => blurRename(entry)}
+						onblur={(e) => blurRename(e, entry)}
 					/>
 				{:else}
 					<span class="truncate">{entry.name}</span>

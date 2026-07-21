@@ -45,7 +45,9 @@ function processFragment(fragment: Fragment): Fragment {
 	return Fragment.from(nodes);
 }
 
-function regenerateTableUUIDs(slice: Slice): Slice {
+/** relabel pasted tables/images/equations so a copy never duplicates a label. Exported for the
+ *  LaTeX-paste path, which bypasses this plugin's handlePaste. */
+export function regenerateCopiedLabels(slice: Slice): Slice {
 	const newContent = processFragment(slice.content);
 	return new Slice(newContent, slice.openStart, slice.openEnd);
 }
@@ -54,7 +56,7 @@ export const pasteUUIDFixPlugin = new Plugin({
 	props: {
 		// returning true skips default paste handling AND transformPasted
 		handlePaste(view, event, slice) {
-			const modifiedSlice = regenerateTableUUIDs(slice);
+			const modifiedSlice = regenerateCopiedLabels(slice);
 			const tr = view.state.tr.replaceSelection(modifiedSlice);
 			view.dispatch(tr);
 			return true;

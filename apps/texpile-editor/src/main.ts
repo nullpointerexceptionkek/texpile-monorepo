@@ -2,10 +2,12 @@ import { mount } from 'svelte';
 import './app.css';
 import '$lib/theme'; // side-effect: applies the saved appearance and watches OS changes
 import { loadSettings } from '$lib/settings';
+import { focusDoctor } from '$lib/debug/focusDoctor';
 import App from './App.svelte';
 
 // console.log is silenced unless window.texpile.debug (settable from DevTools)
 window.texpile = window.texpile || { debug: import.meta.env.DEV };
+window.texpileFocusDoctor = focusDoctor;
 const originalLog = console.log;
 console.log = (...args: unknown[]) => {
 	if (window.texpile?.debug) {

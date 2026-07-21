@@ -1189,7 +1189,12 @@
 					}
 				: undefined
 		);
-		if (pdfPath) watchPdf(gen, pdfPath, before);
+		// with the completion marker on, finalizeCompile loads the finished PDF once the command
+		// exits. Don't ALSO poll-load here: LaTeX rewrites the PDF across passes (and truncates it
+		// mid-write), so an early poll would load a partial/pass-1 PDF, then finalize reloads the
+		// final one -- a double reload that flashes. Without the marker there's no exit signal, so
+		// watchPdf is the fallback, and it now waits for the file to stop changing before loading.
+		if (!track && pdfPath) watchPdf(gen, pdfPath, before);
 		if (logPath) watchLog(gen, logPath, logBefore);
 		// reload the explorer as the build writes its output (also covers builds that produce no PDF)
 		[2000, 6000].forEach((d) => setTimeout(refreshTree, d));
@@ -1329,23 +1334,32 @@
 		setPdfPaneOpen(true);
 		refreshTree(); // the compiled output landed; reload the file explorer
 	}
-	// poll the expected PDF after a compile; when it's newer than before, load it and open the pane
-	function watchPdf(gen: number, pdfPath: string, before: number, elapsed = 0) {
+	// poll the expected PDF after a compile (no-completion-marker fallback); load it once it has
+	// stopped changing, so a mid-write partial or an intermediate latexmk pass isn't shown. `stableAt`
+	// is the mtime seen on the previous poll; a match means the file settled.
+	function watchPdf(gen: number, pdfPath: string, before: number, elapsed = 0, stableAt = 0) {
 		if (pdfWatchTimer) clearTimeout(pdfWatchTimer);
-		pdfWatchTimer = setTimeout(async () => {
-			if (gen !== compileGen) return; // superseded: a newer compile, finalize, or folder switch
-			const s = await statFile(pdfPath);
-			if (s.exists && s.size > 0 && s.mtimeMs > before) {
-				showCompiledPdf(pdfPath, s.mtimeMs);
-				pdfWatchTimer = null;
-				compiling = false; // the PDF landed: the run succeeded
-			} else if (elapsed < 180000) {
-				watchPdf(gen, pdfPath, before, elapsed + 1200); // keep polling up to 3 min
-			} else {
-				pdfWatchTimer = null;
-				compiling = false;
-			}
-		}, 1200);
+		pdfWatchTimer = setTimeout(
+			async () => {
+				if (gen !== compileGen) return; // superseded: a newer compile, finalize, or folder switch
+				const s = await statFile(pdfPath);
+				if (s.exists && s.size > 0 && s.mtimeMs > before) {
+					if (s.mtimeMs === stableAt) {
+						showCompiledPdf(pdfPath, s.mtimeMs); // unchanged since the last poll: it's done
+						pdfWatchTimer = null;
+						compiling = false;
+					} else {
+						watchPdf(gen, pdfPath, before, elapsed + 600, s.mtimeMs); // still changing: re-check soon
+					}
+				} else if (elapsed < 180000) {
+					watchPdf(gen, pdfPath, before, elapsed + 1200); // keep polling up to 3 min
+				} else {
+					pdfWatchTimer = null;
+					compiling = false;
+				}
+			},
+			stableAt ? 600 : 1200 // poll faster once the file has started changing, to catch it settling
+		);
 	}
 
 	// on load and main-file change, show the already-compiled PDF sitting on disk; clears the

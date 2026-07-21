@@ -128,6 +128,20 @@
 				<LocateFixed class="size-4" />
 			</button>
 		{/if}
+		{#if $compileLog && ($compileLog.errors.length > 0 || $compileLog.warnings.length > 0)}
+			<button
+				class="btn btn-sm gap-1 {$compileLog.errors.length > 0 ? 'preset-tonal-error' : 'preset-tonal-warning'}"
+				onclick={onShowProblems}
+				title={m.wsview_show_problems_title()}
+			>
+				{#if $compileLog.errors.length > 0}
+					<CircleAlert class="size-3.5" /> {$compileLog.errors.length}
+				{/if}
+				{#if $compileLog.warnings.length > 0}
+					<TriangleAlert class="size-3.5" /> {$compileLog.warnings.length}
+				{/if}
+			</button>
+		{/if}
 		{#if terminalAvailable}
 			{#if viewMode === 'source' && kind === 'tex'}
 				<button
@@ -212,20 +226,6 @@
 					</div>
 				{/if}
 			</div>
-			{#if $compileLog && ($compileLog.errors.length > 0 || $compileLog.warnings.length > 0)}
-				<button
-					class="btn btn-sm gap-1 {$compileLog.errors.length > 0 ? 'preset-tonal-error' : 'preset-tonal-warning'}"
-					onclick={onShowProblems}
-					title={m.wsview_show_problems_title()}
-				>
-					{#if $compileLog.errors.length > 0}
-						<CircleAlert class="size-3.5" /> {$compileLog.errors.length}
-					{/if}
-					{#if $compileLog.warnings.length > 0}
-						<TriangleAlert class="size-3.5" /> {$compileLog.warnings.length}
-					{/if}
-				</button>
-			{/if}
 			<button
 				class="btn-icon btn-icon-sm hover:preset-tonal {pdfPaneOpen ? 'text-primary-500' : ''}"
 				onclick={onTogglePdf}

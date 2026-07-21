@@ -11,6 +11,7 @@
 		dockShrunk: boolean;
 		cwd: string;
 		pdfPaneOpen: boolean;
+		terminalEnabled?: boolean;
 		view: 'terminal' | 'problems';
 		dock?: BottomDock;
 		onStartResize: (e: MouseEvent) => void;
@@ -26,6 +27,7 @@
 		dockShrunk,
 		cwd,
 		pdfPaneOpen,
+		terminalEnabled = true,
 		view = $bindable(),
 		dock = $bindable(),
 		onStartResize,
@@ -40,7 +42,7 @@
 	<!-- the WAI-ARIA window-splitter pattern (role=separator + tabindex); svelte's a11y rule doesn't special-case it -->
 	<!-- eslint-disable-next-line svelte/valid-compile -->
 	<div
-		class="hover:bg-primary-500/40 active:bg-primary-500/60 h-1 shrink-0 cursor-row-resize bg-transparent transition-colors"
+		class="hover:bg-primary-500/40 active:bg-primary-500/60 relative z-20 -my-[3px] h-1.5 shrink-0 cursor-row-resize bg-transparent transition-colors"
 		style="grid-row: 3; grid-column: {dockShrunk ? '1' : '1 / -1'}"
 		onmousedown={onStartResize}
 		onkeydown={onResizeByKey}
@@ -54,5 +56,5 @@
 	class="border-surface-200-800 flex shrink-0 flex-col border-t"
 	style={`${visible ? `height: ${height}px` : 'display: none'}; grid-row: 4; grid-column: ${dockShrunk ? '1' : '1 / -1'}`}
 >
-	<BottomDock bind:this={dock} bind:view {cwd} {pdfPaneOpen} {shrink} {onToggleShrink} {onClose} {onProblemJump} />
+	<BottomDock bind:this={dock} bind:view {cwd} {pdfPaneOpen} {shrink} {terminalEnabled} {onToggleShrink} {onClose} {onProblemJump} />
 </section>

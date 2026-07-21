@@ -23,8 +23,10 @@
 			tabindex="-1"
 			autofocus
 			onkeydown={(e) => {
-				if (e.key === 'Enter') answerConfirm(true);
-				else if (e.key === 'Escape') dismissConfirm();
+				if (e.key === 'Escape') dismissConfirm();
+				// Enter confirms only from the dialog body, never when a button has focus: there the
+				// button's own activation runs, so Tab-to-Cancel then Enter cancels instead of confirming
+				else if (e.key === 'Enter' && !(e.target instanceof HTMLButtonElement)) answerConfirm(true);
 			}}
 		>
 			<p class="text-surface-600-300 text-sm whitespace-pre-line">{state.message}</p>

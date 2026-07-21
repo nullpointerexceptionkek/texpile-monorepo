@@ -364,6 +364,8 @@
 			window.removeEventListener('resize', onResize);
 			if (pdfWatchTimer) clearTimeout(pdfWatchTimer);
 			if (logWatchTimer) clearTimeout(logWatchTimer);
+			if (autosaveTimer) clearTimeout(autosaveTimer);
+			if (draftEditTimer) clearTimeout(draftEditTimer);
 		};
 	});
 
@@ -449,6 +451,7 @@
 			const { files } = await scanTexFiles(root);
 			resolveMainConfirm(root); // before the stores flip, so the modal effect can't see a stale state
 			workspaceRoot.set(root);
+			tabs.bind(root, hostMode); // rebind before refreshTree's prune, so tabs persist under the NEW root
 			texFiles.set(files);
 			addRecentFolder(root);
 			updateSettings({ lastFolder: root });
@@ -564,6 +567,7 @@
 		try {
 			const to = joinPath(dirname(entry.path), newName);
 			await renameEntry(entry.path, to);
+			retargetPendingSave(entry.path, to); // don't let a queued write recreate the old path
 			tabs.rename(entry.path, to);
 			if (get(activeFilePath) === entry.path) activeFilePath.set(to);
 			await refreshTree();
@@ -598,6 +602,7 @@
 			const to = targetDir.replace(/[\\/]+$/, '') + sep + entry.name;
 			if (to === entry.path) return; // already in this folder
 			await renameEntry(entry.path, to);
+			retargetPendingSave(entry.path, to); // don't let a queued write recreate the old path
 			tabs.rename(entry.path, to);
 			// keep the open file pointed at its new location if it (or its folder) moved
 			const active = get(activeFilePath);
@@ -1023,6 +1028,39 @@
 		compileGen++; // any pollers still watching the previous folder's paths stand down
 		compileCommand = resolveCompileCommand(root, get(settings).compileCommand);
 	});
+	// guests: surface the host's shared compile diagnostics through the same Problems UI the
+	// host has (the raw log never crosses the wire; this rebuilds the parsed shape from intel)
+	$effect(() => {
+		if (!guest) return;
+		const intel = session.compileIntel;
+		if (!intel) {
+			compileLog.set(null);
+			return;
+		}
+		const entries = intel.log.map((e) => ({
+			level: e.level,
+			message: e.message,
+			file: e.file,
+			line: e.line,
+			lineEnd: e.lineEnd,
+			column: e.column,
+			anchorText: e.anchorText,
+			hint: e.hint,
+			command: e.command,
+			raw: e.message
+		}));
+		compileLog.set({
+			entries,
+			errors: entries.filter((e) => e.level === 'error'),
+			warnings: entries.filter((e) => e.level === 'warning'),
+			badboxes: entries.filter((e) => e.level === 'badbox'),
+			files: [],
+			status: { fatal: false, emergencyStop: false, noPages: false },
+			logPath: '',
+			updatedAt: Date.now()
+		});
+	});
+
 	// last compile's problems for the file open in source mode; badboxes ride along
 	// as "info" so they underline without alarming colors
 	const sourceDiagnostics = $derived.by(() => {
@@ -1072,15 +1110,15 @@
 	let gotoToken = 0;
 
 	function showTerminal() {
-		terminalMounted = true; // mounts BottomDock, which creates its first shell
+		terminalMounted = true; // mounts BottomDock, which creates its first shell (host only)
 		terminalVisible = true;
-		updateSettings({ terminalVisible: true });
+		if (!guest) updateSettings({ terminalVisible: true });
 		setTimeout(() => dock?.refit(), 0);
 	}
 	function toggleTerminal() {
 		if (terminalVisible) {
 			terminalVisible = false;
-			updateSettings({ terminalVisible: false });
+			if (!guest) updateSettings({ terminalVisible: false });
 		} else {
 			showTerminal();
 			setTimeout(() => dock?.focusActive(), 40);
@@ -1147,7 +1185,9 @@
 		// quote a path containing spaces so the shell keeps it one argument;
 		// a {main} the user already wrapped in quotes stays untouched
 		const quoted = /\s/.test(rel) ? `"${rel}"` : rel;
-		return cmd.replace(/(["']){main}\1/g, `$1${rel}$1`).replaceAll('{main}', quoted);
+		// function replacements so a path containing $&, $1, $` etc. is inserted literally, not as a
+		// replacement-pattern reference
+		return cmd.replace(/(["']){main}\1/g, (_m, q: string) => `${q}${rel}${q}`).replaceAll('{main}', () => quoted);
 	}
 
 	// show the terminal, wait for mount, then run (the shell queues the command until it has
@@ -2027,6 +2067,8 @@
 	async function checkExternalChange() {
 		const path = loadedPath;
 		if (!path || (kind !== 'tex' && kind !== 'text' && kind !== 'bib') || conflict) return;
+		await writeChain; // let any in-flight autosave finish, so we don't read our own half-written file
+		if (loadedPath !== path) return; // the file switched while we waited
 		let raw: string;
 		try {
 			raw = await readTextFile(path);
@@ -2052,6 +2094,9 @@
 			rawContent = disk;
 		}
 		isDirty.set(false);
+		// the buffer now matches disk: drop any queued autosave of the edits we just replaced, or a
+		// later flush would clobber the version the user chose to keep
+		discardPendingSave();
 		// shared session: fold the adopted disk content into the shared doc so guests see it too
 		// (the host materializer's lastWritten update prevents an echo write back to disk)
 		if (loadedPath) session.edit(loadedPath, disk);
@@ -2151,6 +2196,15 @@
 			autosaveTimer = null;
 		}
 		pendingSave = null;
+	}
+
+	/** repoint a queued autosave when its file (or a parent folder) is renamed/moved, so the edit
+	 *  lands in the new path instead of re-creating the old one. */
+	function retargetPendingSave(from: string, to: string) {
+		if (!pendingSave) return;
+		const sep = from.includes('\\') ? '\\' : '/';
+		if (samePath(pendingSave.path, from)) pendingSave = { ...pendingSave, path: to };
+		else if (pendingSave.path.startsWith(from + sep)) pendingSave = { ...pendingSave, path: to + pendingSave.path.slice(from.length) };
 	}
 
 	// append a write to the serial chain (never overlap, never reject: errors are toasted). snapshot
@@ -2455,6 +2509,9 @@
 				? m.wsview_confirm_discard_one({ name: basename(changes[0].path) })
 				: m.wsview_confirm_discard_other({ count: changes.length });
 		if (!(await confirmAsk(confirmMsg, { confirmLabel: m.vcs_discard_changes(), danger: true }))) return;
+		// if the open file is being discarded, drop its queued autosave first: otherwise a debounced
+		// write scheduled just before the confirm lands after git reverts and re-creates the changes
+		if (loadedPath && changes.some((c) => samePath(c.path, loadedPath))) discardPendingSave();
 		scmBusy = true;
 		// untracked files are deleted; tracked files are reverted to their staged/committed state
 		const untracked = changes.filter((c) => c.x === '?').map((c) => c.path);
@@ -2745,7 +2802,7 @@
 			<!-- same WAI-ARIA window-splitter pattern as above; svelte's a11y rule doesn't special-case it -->
 			<!-- eslint-disable-next-line svelte/valid-compile -->
 			<div
-				class="hover:bg-primary-500/40 active:bg-primary-500/60 w-1 shrink-0 cursor-col-resize bg-transparent transition-colors"
+				class="hover:bg-primary-500/40 active:bg-primary-500/60 relative z-20 -mx-[3px] w-1.5 shrink-0 cursor-col-resize bg-transparent transition-colors"
 				onmousedown={startResize}
 				onkeydown={resizeSidebarByKey}
 				role="separator"
@@ -2856,8 +2913,9 @@
 				{/if}
 			</div>
 
-			{#if terminalMounted && terminalAvailable}
+			{#if terminalMounted && (terminalAvailable || guest)}
 				<TerminalDock
+					terminalEnabled={terminalAvailable}
 					visible={terminalVisible}
 					height={terminalHeight}
 					shrink={terminalShrink}

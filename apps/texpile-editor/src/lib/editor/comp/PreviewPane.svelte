@@ -49,7 +49,7 @@
 <!-- the WAI-ARIA window-splitter pattern (role=separator + tabindex); svelte's a11y rule doesn't special-case it -->
 <!-- eslint-disable-next-line svelte/valid-compile -->
 <div
-	class="hover:bg-primary-500/40 active:bg-primary-500/60 w-1 shrink-0 cursor-col-resize bg-transparent transition-colors"
+	class="hover:bg-primary-500/40 active:bg-primary-500/60 relative z-20 -mx-[3px] w-1.5 shrink-0 cursor-col-resize bg-transparent transition-colors"
 	style="grid-column: 2; grid-row: {dockShrunk ? '2 / -1' : '2'}"
 	onmousedown={onStartResize}
 	onkeydown={onResizeByKey}

@@ -17,6 +17,7 @@
 		view = $bindable<'terminal' | 'problems'>('terminal'),
 		pdfPaneOpen = false,
 		shrink = false,
+		terminalEnabled = true,
 		onToggleShrink,
 		onClose,
 		onProblemJump
@@ -25,6 +26,8 @@
 		view?: 'terminal' | 'problems';
 		pdfPaneOpen?: boolean;
 		shrink?: boolean;
+		/** false for guests: no shells, the dock is a Problems panel only. */
+		terminalEnabled?: boolean;
 		onToggleShrink: () => void;
 		onClose: () => void;
 		onProblemJump: (file: string, line: number, selectText?: string) => void;
@@ -67,12 +70,16 @@
 		else setTimeout(() => activeRef()?.refit(), 0);
 	}
 
-	// a fresh terminal appears the moment the dock mounts, so opening it never shows an empty pane
-	ensure();
+	// a fresh terminal appears the moment the dock mounts, so opening it never shows an empty
+	// pane. Mount-time read on purpose: a dock is host (shells) or guest (problems-only) for life.
+	// svelte-ignore state_referenced_locally
+	if (terminalEnabled) ensure();
+	else view = 'problems';
 
 	// ---- parent API (via bind:this) ----
 	/** show + run a command on the active shell, retrying until it has spawned. */
 	export function runCommand(cmd: string, onDone?: (output: string) => void, tries = 0): void {
+		if (terminalEnabled) ensure(); // self-heal: the last shell may have been killed, leaving none to run in
 		const ref = activeRef();
 		if (ref) {
 			ref.run(cmd, onDone);
@@ -105,14 +112,19 @@
 
 <div class="bg-surface-100-900 text-surface-600-300 flex h-8 shrink-0 items-center justify-between gap-2 px-2 text-xs">
 	<div class="flex min-w-0 items-center gap-1">
+		{#if terminalEnabled}
+			<button
+				class="rounded px-2 py-1 {view === 'terminal' ? 'preset-tonal' : 'hover:preset-tonal'}"
+				onclick={() => {
+					view = 'terminal';
+					ensure(); // a fresh shell if the last one was killed, so the pane is never empty
+				}}
+			>
+				{m.wsview_terminal_label()}
+			</button>
+		{/if}
 		<button
-			class="rounded px-2 py-1 {view === 'terminal' ? 'preset-tonal font-medium' : 'hover:preset-tonal'}"
-			onclick={() => (view = 'terminal')}
-		>
-			{m.wsview_terminal_label()}
-		</button>
-		<button
-			class="flex items-center gap-1 rounded px-2 py-1 {view === 'problems' ? 'preset-tonal font-medium' : 'hover:preset-tonal'}"
+			class="flex items-center gap-1 rounded px-2 py-1 {view === 'problems' ? 'preset-tonal' : 'hover:preset-tonal'}"
 			onclick={() => (view = 'problems')}
 		>
 			{m.wsview_problems_label()}

@@ -62,7 +62,10 @@
 	class="border-surface-200-800 flex shrink-0 flex-col border-l"
 	style="width: {width}px; grid-column: 3; grid-row: {dockShrunk ? '2 / -1' : '2'}"
 >
-	<div class="bg-surface-100-900 text-surface-600-300 flex h-8 shrink-0 items-center justify-between border-b px-3 text-xs">
+	<!-- h-9 matches the editor column's tab strip, so the two header borders draw one line -->
+	<div
+		class="bg-surface-100-900 text-surface-600-300 border-surface-200-800 flex h-9 shrink-0 items-center justify-between border-b px-3 text-xs"
+	>
 		<span class="font-medium">{!guest && $settings.draftMode ? m.wsview_live_preview_label() : m.wsview_pdf_preview_label()}</span>
 		<button
 			class="hover:preset-tonal rounded p-0.5"

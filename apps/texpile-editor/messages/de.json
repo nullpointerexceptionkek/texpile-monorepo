@@ -463,6 +463,7 @@
 	"toc_label_frame": "Folie",
 	"toc_label_untitled": "Ohne Titel",
 	"preamble_title_placeholder": "Dokumenttitel",
+	"tabs_close": "Schließen",
 	"terminal_error_needs_rebuild": "Das Terminal benötigt eine für Electron kompilierte node-pty. Installieren Sie C/C++-Build-Tools, führen Sie dann `pnpm electron:rebuild` aus und starten Sie neu.",
 	"terminal_error_failed_start": "Die Shell konnte nicht gestartet werden.",
 	"terminal_error_desktop_only": "Das Terminal ist nur in der Desktop-App verfügbar.",

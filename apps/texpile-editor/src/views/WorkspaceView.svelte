@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { onMount, onDestroy, tick } from 'svelte';
+	import { onMount, onDestroy, tick, untrack } from 'svelte';
 	import { get } from 'svelte/store';
 	import { browser } from '$lib/runtime';
 	import { navigate } from '$lib/router.svelte';
@@ -21,6 +21,7 @@
 	import { applyStarter, applyImportedFiles, openTutorialProject, type Starter, type ImportedFile } from '$lib/workspace/starters';
 	import { pdfStore } from '$lib/stores/pdfStore';
 	import { editorViewStore, sourceCmView, viewMode as viewModeStore } from '$lib/stores/editorStore';
+	import { tabs } from '$lib/workspace/tabs.svelte';
 	import { synctexForward, synctexInverse } from '$lib/workspace/synctex';
 	import { sourceTocStore } from '$lib/editor/extensions/tableofcontents/tocStore';
 	import { buildBlockMap, blockAtPm, blockAtSource, sourceStartAt, pmPosToSourceOffset, sourceOffsetToPmPos } from '$lib/editor/sourceMap';
@@ -299,6 +300,7 @@
 			resolveMainConfirm(root); // storage first, before anything can want a compile
 			void initProject(root);
 		}
+		tabs.bind(root, hostMode); // restore this folder's open tabs (guests start fresh)
 		terminalAvailable = isDesktop() && hostMode; // client-only; set here so SSR/CSR agree
 		if (guest) pdfPaneOpen = true; // guests land with the host's PDF visible
 		loadRefs(root);
@@ -365,6 +367,31 @@
 		};
 	});
 
+	// every file that opens gains a tab (file tree, SyncTeX jumps, include links, restores)
+	$effect(() => {
+		const p = $activeFilePath;
+		if (p) tabs.noteOpened(p);
+	});
+
+	function activateTab(path: string) {
+		activeFilePath.set(path);
+	}
+	// closing the active tab activates its neighbor; the load effect runs the usual save guards.
+	// When that guard will prompt, the tab must survive until the dialog resolves (the store
+	// reverts to it meanwhile), so the removal is deferred to the held-switch resolution.
+	let pendingTabClose: string | null = null;
+	function closeTab(path: string) {
+		const active = get(activeFilePath);
+		if (active && samePath(active, path)) {
+			if (!autosaveActive() && pendingSave && samePath(pendingSave.path, path)) pendingTabClose = path;
+			activeFilePath.set(tabs.neighborOf(path));
+			if (pendingTabClose) return;
+		}
+		tabs.close(path);
+	}
+
+	const flatFiles = (es: TreeEntry[]): string[] => es.flatMap((e) => (e.type === 'dir' ? flatFiles(e.children ?? []) : [e.path]));
+
 	async function refreshTree() {
 		const root = get(workspaceRoot);
 		if (!root) return;
@@ -374,6 +401,7 @@
 		try {
 			const { children } = await scanTree(root);
 			fileTree.set(children);
+			tabs.prune(flatFiles(children)); // tabs for files that vanished (remote deletes, external rm)
 		} catch (e) {
 			console.error('Failed to read folder tree:', e);
 		}
@@ -536,6 +564,7 @@
 		try {
 			const to = joinPath(dirname(entry.path), newName);
 			await renameEntry(entry.path, to);
+			tabs.rename(entry.path, to);
 			if (get(activeFilePath) === entry.path) activeFilePath.set(to);
 			await refreshTree();
 			void afterRename(entry.path, to);
@@ -554,6 +583,7 @@
 				discardPendingSave(); // don't let a queued autosave write the file back after we delete it
 				activeFilePath.set(null); // clears the editor buffers via the load effect
 			}
+			tabs.closeUnder(entry.path);
 			await deleteEntry(entry.path);
 			await refreshTree();
 		} catch (e) {
@@ -568,6 +598,7 @@
 			const to = targetDir.replace(/[\\/]+$/, '') + sep + entry.name;
 			if (to === entry.path) return; // already in this folder
 			await renameEntry(entry.path, to);
+			tabs.rename(entry.path, to);
 			// keep the open file pointed at its new location if it (or its folder) moved
 			const active = get(activeFilePath);
 			if (active === entry.path) activeFilePath.set(to);
@@ -1859,32 +1890,57 @@
 		return () => clearTimeout(labelTimer);
 	});
 
-	// load the active file whenever it changes
+	// a switch held back by the save-before-switch dialog: the store reverts to the outgoing file
+	// (tabs and tree stay visually on it) and this carries where the user was headed
+	let heldSwitch: { target: string | null } | null = null;
+
+	// load the active file whenever it changes. Everything but the store read is untracked, so
+	// this runs exactly once per path change (loadedPath updating mid-load must not re-fire it).
 	$effect(() => {
 		const path = $activeFilePath;
-		// autosave off: the outgoing file's edit wasn't auto-written, so ask before tearing it down.
-		// The in-app confirm is async, so the switch proceeds immediately (as it always did after the
-		// old blocking confirm returned) and the save/discard resolves against a captured snapshot.
-		// supersedeValue: true — if you switch again before answering, the earlier file SAVES rather
-		// than silently discarding (the blocking confirm couldn't be superseded; this one can).
-		if (!autosaveActive() && loadedPath && path !== loadedPath && pendingSave?.path === loadedPath) {
-			const outgoing = pendingSave;
-			const outgoingEol = docEol; // the outgoing file's EOL, before the switch changes docEol
-			pendingSave = null; // detach so loadFile's teardown / the new file's queue can't touch it
-			void confirmAsk(m.wsview_confirm_save_before_switch({ name: basename(loadedPath) }), {
-				confirmLabel: m.wsview_save_label(),
-				supersedeValue: true
-			}).then((ok) => {
-				if (ok) writeChain = writeChain.then(() => doWrite(outgoing.path, outgoing.content, false, outgoingEol));
-			});
-		} else {
+		untrack(() => {
+			// while the dialog is up, keep the UI parked on the outgoing file; remember the newest
+			// destination (Ctrl+Tab still works under the modal) and resolve it after the answer
+			if (heldSwitch) {
+				if (path !== loadedPath) {
+					heldSwitch.target = path;
+					activeFilePath.set(loadedPath);
+				}
+				return;
+			}
+			// autosave off: the outgoing file's edit wasn't auto-written, so ask BEFORE switching.
+			// The dialog decides the content's fate (Escape/backdrop = save; only the explicit
+			// Discard button drops it), then the held switch proceeds.
+			if (!autosaveActive() && loadedPath && path !== loadedPath && pendingSave?.path === loadedPath) {
+				const outgoing = pendingSave;
+				const outgoingEol = docEol; // the outgoing file's EOL, before the switch changes docEol
+				pendingSave = null; // detach so loadFile's teardown / the new file's queue can't touch it
+				heldSwitch = { target: path };
+				activeFilePath.set(loadedPath);
+				void confirmAsk(m.wsview_confirm_save_before_switch({ name: basename(loadedPath) }), {
+					confirmLabel: m.wsview_save_label(),
+					cancelLabel: m.vcs_discard_changes(), // "Cancel" here would read as cancel-the-switch
+					supersedeValue: true,
+					dismissValue: true
+				}).then((ok) => {
+					if (ok) writeChain = writeChain.then(() => doWrite(outgoing.path, outgoing.content, false, outgoingEol));
+					if (pendingTabClose) {
+						tabs.close(pendingTabClose);
+						pendingTabClose = null;
+					}
+					const target = heldSwitch?.target ?? null;
+					heldSwitch = null;
+					if (target !== get(activeFilePath)) activeFilePath.set(target);
+				});
+				return;
+			}
 			flushSave(); // persist the outgoing file's queued edit before tearing down its buffers
-		}
-		loadError = null;
-		// the outgoing file stays on screen until loadFile has the new one ready: clearing here
-		// first is what made every switch blink through the "Opening…" placeholder
-		if (path) loadFile(path);
-		else closeOpenFile();
+			loadError = null;
+			// the outgoing file stays on screen until loadFile has the new one ready: clearing here
+			// first is what made every switch blink through the "Opening…" placeholder
+			if (path) loadFile(path);
+			else closeOpenFile();
+		});
 	});
 
 	/** drop the open file's buffers. per-file state (anchors, cross-mode history) must not leak. */
@@ -2581,7 +2637,14 @@
 	const uiZoomReset = () => setUiZoom(1);
 
 	function onKeydown(e: KeyboardEvent) {
-		if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 's') {
+		if ((e.metaKey || e.ctrlKey) && !e.shiftKey && !e.altKey && e.key.toLowerCase() === 'w') {
+			e.preventDefault();
+			if (loadedPath) closeTab(loadedPath);
+		} else if (e.ctrlKey && e.key === 'Tab') {
+			e.preventDefault();
+			const next = tabs.cycle(get(activeFilePath), e.shiftKey ? -1 : 1);
+			if (next) activeFilePath.set(next);
+		} else if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 's') {
 			e.preventDefault(); // block the browser save dialog; guests have nothing to save (edits are live)
 			if (!guest) save();
 		} else if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.key.toLowerCase() === 'f') {
@@ -2729,6 +2792,9 @@
 			     display:contents so editor/splitter/preview place themselves on main's grid -->
 			<div class="contents">
 				<EditorPane
+					openTabs={tabs.list}
+					onActivateTab={activateTab}
+					onCloseTab={closeTab}
 					{loadedPath}
 					{kind}
 					{nameOnly}

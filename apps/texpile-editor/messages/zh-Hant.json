@@ -463,6 +463,7 @@
 	"toc_label_frame": "投影片",
 	"toc_label_untitled": "無標題",
 	"preamble_title_placeholder": "文件標題",
+	"tabs_close": "關閉",
 	"terminal_error_needs_rebuild": "終端機需要為 Electron 建置 node-pty。請安裝 C/C++ 建置工具，然後執行 `pnpm electron:rebuild` 並重新啟動。",
 	"terminal_error_failed_start": "啟動 Shell 失敗。",
 	"terminal_error_desktop_only": "終端機僅在桌面應用程式中可用。",

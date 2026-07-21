@@ -20,13 +20,17 @@
 	import type { BibLaTeXReference } from '$lib/workspace/citations';
 	import type { Starter, ImportedFile } from '$lib/workspace/starters';
 	import { basename, dirname } from '$lib/workspace/fileSystem';
-	import { activeFilePath } from '$lib/workspace/workspaceStore';
+	import { activeFilePath, isDirty } from '$lib/workspace/workspaceStore';
+	import TabBar from './TabBar.svelte';
 	import { m } from '$lib/paraglide/messages';
 
 	type FileKind = 'tex' | 'bib' | 'pdf' | 'image' | 'binary' | 'text' | null;
 
 	interface Props {
 		loadedPath: string | null;
+		openTabs: string[];
+		onActivateTab: (path: string) => void;
+		onCloseTab: (path: string) => void;
 		kind: FileKind;
 		/** a shared session serves this file by name only (no body): show a note, not an empty editor */
 		nameOnly?: boolean;
@@ -70,6 +74,9 @@
 	}
 	let {
 		loadedPath,
+		openTabs,
+		onActivateTab,
+		onCloseTab,
 		kind,
 		nameOnly = false,
 		viewMode,
@@ -114,6 +121,7 @@
 </script>
 
 <div class="flex min-h-0 min-w-0 flex-col" style="grid-column: 1; grid-row: 2">
+	<TabBar tabs={openTabs} activePath={loadedPath} dirty={$isDirty && !session.isGuest} onActivate={onActivateTab} onClose={onCloseTab} />
 	{#if visualDoc && loadedPath && kind === 'tex' && viewMode === 'visual'}
 		<div class="border-surface-200-800 toolbar-hscroll overflow-x-auto border-b">
 			<Toolbar minimal />

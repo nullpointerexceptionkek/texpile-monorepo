@@ -1,7 +1,7 @@
 <script lang="ts">
-	// The editor's top bar: sidebar toggle, filename + unsaved dot + word count, the visual/source
-	// toggle, and the compile / preview / save controls. Pure chrome driven by props + callbacks.
-	import { basename } from '$lib/workspace/fileSystem';
+	// The editor's top bar: sidebar toggle, word count, the visual/source toggle, and the
+	// compile / preview / save controls. Pure chrome driven by props + callbacks. The open-file
+	// tabs live on their own strip below (TabBar in EditorPane).
 	import { settings } from '$lib/settings';
 	import { isDirty } from '$lib/workspace/workspaceStore';
 	import { compileLog } from '$lib/stores/compileLogStore';
@@ -86,11 +86,12 @@
 		>
 			<PanelLeft class="size-4" />
 		</button>
-		<FileText class="text-surface-400 size-4 shrink-0" />
-		<span class="truncate text-sm font-medium">{loadedPath ? basename(loadedPath) : m.wsview_no_file()}</span>
-		{#if $isDirty && !guest}<span class="bg-warning-500 size-2 shrink-0 rounded-full" title={m.wsview_unsaved_changes()}></span>{/if}
+		{#if !loadedPath}
+			<FileText class="text-surface-400 size-4 shrink-0" />
+			<span class="truncate text-sm font-medium">{m.wsview_no_file()}</span>
+		{/if}
 		{#if loadedPath && kind === 'tex' && (viewMode === 'visual' || viewMode === 'source')}
-			<span class="border-surface-300-700 ml-2 shrink-0 border-l pl-3"><WordCount /></span>
+			<span class="shrink-0"><WordCount /></span>
 		{/if}
 	</div>
 	<div class="flex items-center gap-2">

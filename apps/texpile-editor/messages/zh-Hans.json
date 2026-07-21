@@ -463,6 +463,7 @@
 	"toc_label_frame": "幻灯片",
 	"toc_label_untitled": "无标题",
 	"preamble_title_placeholder": "文档标题",
+	"tabs_close": "关闭",
 	"terminal_error_needs_rebuild": "终端需要为 Electron 构建 node-pty。请安装 C/C++ 构建工具，然后运行 `pnpm electron:rebuild` 并重启。",
 	"terminal_error_failed_start": "启动 Shell 失败。",
 	"terminal_error_desktop_only": "终端仅在桌面应用中可用。",

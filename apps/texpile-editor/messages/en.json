@@ -463,6 +463,7 @@
 	"toc_label_frame": "Frame",
 	"toc_label_untitled": "Untitled",
 	"preamble_title_placeholder": "Document title",
+	"tabs_close": "Close",
 	"terminal_error_needs_rebuild": "The terminal needs node-pty built for Electron. Install C/C++ build tools, then run `pnpm electron:rebuild` and restart.",
 	"terminal_error_failed_start": "Failed to start the shell.",
 	"terminal_error_desktop_only": "The terminal is only available in the desktop app.",

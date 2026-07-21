@@ -27,6 +27,7 @@
 	import './extensions/image/styles/sideResize.css';
 	import { imagePlugin } from './extensions/image';
 	import { createCursorPlugin } from './extensions/cursor-plugin';
+	import { remoteCursorsPlugin } from './extensions/remoteCursors';
 	import { pasteUUIDFixPlugin } from './extensions/paste-uuid-fix';
 	import { latexClipboardPlugin } from './extensions/latexClipboard';
 	import './styles/cursor.css';
@@ -157,6 +158,7 @@
 			imagePlugin(imageDir ? createLocalImageSettings(imageDir) : createTemplateEditorSettings()),
 			menuUpdatePlugin(),
 			createCursorPlugin(),
+			remoteCursorsPlugin,
 			createLinkPlugin(),
 			latexClipboardPlugin,
 			pasteUUIDFixPlugin,

@@ -7,7 +7,7 @@ import { generateShareCode } from '$lib/collab/e2e/shareCode';
 import type { RelayNotice } from '$lib/collab/protocol';
 import type { Transport, TransportStatus } from '$lib/collab/transport';
 import { CollabSession, manifestOf, locksOf, textOf } from '$lib/collab/session';
-import { HostMaterializer, spliceDiff, isShared, isTextFile } from '$lib/collab/materialize';
+import { HostMaterializer, spliceDiff, isShared, isTextFile, EDIT_ORIGIN } from '$lib/collab/materialize';
 
 class FakeHub {
 	transports = new Set<FakeTransport>();
@@ -153,6 +153,44 @@ describe('collab session end-to-end', () => {
 		});
 		// the merged result lands on disk (guest edit written by the materializer)
 		await until(() => disk.get('main.tex')!.content.includes('G: ') && disk.get('main.tex')!.content.includes('H-line'));
+
+		mat.destroy();
+		host.session.destroy();
+		guest.session.destroy();
+	});
+
+	// the visual editors' fold-in contract on both sides: a local splice carries EDIT_ORIGIN (so
+	// the editor's own Y.Text observer can filter it), while the far side receives it under a
+	// different origin (so its remote re-parse observer fires) and the edit still lands on disk
+	it('tags fold-in splices EDIT_ORIGIN locally, a different origin remotely', async () => {
+		const key = (await deriveSessionKeys(generateShareCode())).contentKey;
+		const hub = new FakeHub();
+		const { disk, fs } = fakeFs({ 'main.tex': 'Hello\n' });
+
+		const host = await makeParty(hub, 'host', 'Host', key);
+		const mat = new HostMaterializer(host.doc, 'root', fs, join);
+		await mat.seed();
+		const guest = await makeParty(hub, 'guest', 'Guest', key);
+		await until(() => textOf(guest.doc, 'main.tex').toString() === 'Hello\n');
+
+		const localOrigins: unknown[] = [];
+		const remoteOrigins: unknown[] = [];
+		textOf(guest.doc, 'main.tex').observe((ev) => localOrigins.push(ev.transaction.origin));
+		textOf(host.doc, 'main.tex').observe((ev) => remoteOrigins.push(ev.transaction.origin));
+
+		// guestSession.edit's body: minimal splice under EDIT_ORIGIN
+		const t = textOf(guest.doc, 'main.tex');
+		const diff = spliceDiff(t.toString(), 'Hello\nGuest line\n')!;
+		guest.doc.transact(() => {
+			if (diff.remove > 0) t.delete(diff.index, diff.remove);
+			if (diff.insert) t.insert(diff.index, diff.insert);
+		}, EDIT_ORIGIN);
+
+		await until(() => textOf(host.doc, 'main.tex').toString() === 'Hello\nGuest line\n');
+		expect(localOrigins).toEqual([EDIT_ORIGIN]);
+		expect(remoteOrigins.length).toBeGreaterThan(0);
+		expect(remoteOrigins.every((o) => o !== EDIT_ORIGIN)).toBe(true);
+		await until(() => disk.get('main.tex')!.content === 'Hello\nGuest line\n');
 
 		mat.destroy();
 		host.session.destroy();

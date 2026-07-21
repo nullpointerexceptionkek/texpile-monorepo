@@ -183,7 +183,7 @@ class HostCollabController {
 	}
 
 	/** every host edit funnels through here (called from scheduleSave, per keystroke). */
-	hostEdit(absPath: string, content: string): void {
+	edit(absPath: string, content: string): void {
 		const rel = this.active ? this.rel(absPath) : null;
 		if (rel && isShared(rel) && isTextFile(rel)) this.materializer?.hostEdit(rel, toLf(content));
 	}

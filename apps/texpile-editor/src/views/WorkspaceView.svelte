@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { onMount, onDestroy, tick, untrack } from 'svelte';
+	import { onMount, onDestroy, tick } from 'svelte';
 	import { get } from 'svelte/store';
 	import { browser } from '$lib/runtime';
 	import { navigate } from '$lib/router.svelte';
@@ -28,6 +28,7 @@
 	import { refreshProjectIntel } from '$lib/workspace/projectIntel';
 	import { projectIntelStore } from '$lib/stores/projectIntel';
 	import { setGraphicResolver } from '$lib/editor/extensions/intellisense/hover';
+	import { setEditorFileAccess } from '$lib/editor/fileAccess';
 	import { replacePreambleFrontmatter } from '$lib/editor/extensions/raw-latex/frontmatterView';
 	import { initSpellcheckConfig } from '$lib/editor/extensions/spellcheck/spellcheckConfig';
 	import WorkspaceMenuBar from '$lib/editor/comp/WorkspaceMenuBar.svelte';
@@ -35,6 +36,7 @@
 	import { collabGuest } from '$lib/collab/guestStore.svelte';
 	import type { EditSession } from '$lib/collab/editSession';
 	import SessionShareModal from '$lib/collab/SessionShareModal.svelte';
+	import VisualCollab from '$lib/collab/VisualCollab.svelte';
 	import GuestBar from '$lib/collab/GuestBar.svelte';
 	import * as cc from '$lib/workspace/compileCommand';
 	import { references, loadReferences, bibItemsToReferences, type BibLaTeXReference } from '$lib/workspace/citations';
@@ -106,24 +108,41 @@
 	// lifecycle (folder claim, terminal, main-file/macro scan, on-disk change checks) so this same
 	// view can run over a shared session.
 	const hostMode = $derived(provider.caps.manageTree);
-	// a guest session: source-mode-only, host chrome (compile/terminal/git/file-ops/share) hidden
+	// a guest session: host chrome (compile/terminal/git/file-ops/share) hidden
 	const guest = $derived(session.isGuest);
-	// guests never enter visual/diff (no local parse pipeline, no disk to diff against)
+	// guests never enter diff (no disk/git to diff against); visual is fine, it runs on the
+	// shared Y.Text like everything else
 	$effect(() => {
-		if (guest && viewMode !== 'source') viewMode = 'source';
+		if (guest && viewMode === 'diff') viewMode = 'source';
+	});
+	// guests: resolve the main file + cross-file macro context from the shared doc (the host-only
+	// initProject never runs for them), re-gathered when the shared file set changes, so visual
+	// parses see the project's custom macro signatures and can't mis-serialize a guest edit
+	$effect(() => {
+		if (!guest || !session.active) return;
+		void session.manifestRev;
+		const root = get(workspaceRoot);
+		if (!root) return;
+		void (async () => {
+			try {
+				const files = await provider.scanTexFiles(root);
+				const main = await detectMainFile(files, provider.readText);
+				const macros = main ? await gatherProjectMacros(main, root, provider.readText) : '';
+				if (macros === projectMacros) return;
+				projectMacros = macros;
+				// signatures changed: a doc parsed without them is stale, re-derive the open one
+				lastParsedSource = '';
+				if (loadedPath && kind === 'tex' && viewMode === 'visual') rebuildVisualFromSource();
+			} catch {
+				projectMacros = '';
+			}
+		})();
 	});
 	import { modLabel } from '$lib/platform';
-	import { serializeLatexFile, createStarterLatex, type ParsedLatexFile } from '$lib/workspace/latexRoundtrip';
+	import { serializeLatexFile, createStarterLatex, bodyOffsetOf, type ParsedLatexFile } from '$lib/workspace/latexRoundtrip';
 	import { parseLatexFileAsync, PARSE_TIMEOUT } from '$lib/workspace/latexParserClient';
 	import type { Node as PMNode } from 'prosemirror-model';
-	import { TextSelection, EditorState } from 'prosemirror-state';
-	import type { EditorView as PMEditorView } from 'prosemirror-view';
-	import { fixTables } from 'prosemirror-tables';
-	import * as Y from 'yjs';
-	import { schema } from '$lib/schema/schema';
-	import { buildTrailingParagraphTr } from '$lib/editor/extensions/trailing-paragraph-plugin';
-	import { computeBlockPatch, syncOrigAttrs } from '$lib/editor/blockPatch';
-	import { spliceDiff, HOST_EDIT_ORIGIN, SEED_ORIGIN } from '$lib/collab/materialize';
+	import { TextSelection } from 'prosemirror-state';
 	import { flashNodeAt } from '$lib/editor/extensions/flash-plugin';
 	import { toaster } from '$lib/modals/toaster-svelte';
 	import { m } from '$lib/paraglide/messages';
@@ -1706,6 +1725,44 @@
 	// \includegraphics hover preview: candidate texfile:// URLs (current dir, root, and any
 	// \graphicspath dirs, adding raster extensions when the path has none); the tooltip's img
 	// advances past misses
+	// the visual editor's shared-session machinery (remote patches, presence) lives in
+	// VisualCollab; this api hands it doc-state access, the ref carries its editor hooks
+	let visualCollab = $state<{ noteLocalEdit(): void; noteFreshParse(): void; publishCursor(): void } | null>(null);
+	const visualCollabApi = {
+		get texSource() {
+			return texSource;
+		},
+		set texSource(v: string) {
+			texSource = v;
+		},
+		get lastParsedSource() {
+			return lastParsedSource;
+		},
+		set lastParsedSource(v: string) {
+			lastParsedSource = v;
+		},
+		get docMeta() {
+			return docMeta;
+		},
+		parse: async (text: string) => (await tryParseVisual(text)).parsed ?? null,
+		adopt(parsed: ParsedLatexFile, liveDoc: PMNode) {
+			docMeta = { preamble: parsed.preamble, postamble: parsed.postamble, hadDocumentEnv: parsed.hadDocumentEnv };
+			// reference handshake: EditorView sees its own live doc and skips the state swap
+			visualDoc = liveDoc;
+			lastDoc = liveDoc;
+		},
+		commit(path: string, content: string) {
+			isDirty.set(true);
+			scheduleSave(path, content);
+		}
+	};
+
+	// visual-editor file access (figure previews, image paste) resolves through the provider,
+	// so a guest's images come from the session blob cache and uploads go through the session
+	setEditorFileAccess(
+		(p) => provider.fileUrl(p),
+		(p, data) => provider.writeBinary(p, data)
+	);
 	setGraphicResolver((rel) => {
 		const root = get(workspaceRoot);
 		const base = loadedPath ? dirname(loadedPath) : null;
@@ -1723,7 +1780,10 @@
 		for (const dir of dirs) if (dir) for (const n of names) urls.push(fileUrl(joinPath(dir, n)));
 		return [...new Set(urls)];
 	});
-	onDestroy(() => setGraphicResolver(null));
+	onDestroy(() => {
+		setGraphicResolver(null);
+		setEditorFileAccess(null, null);
+	});
 
 	// shared session: guests can ask for a compile; leaving the workspace ends the session
 	let shareModalOpen = $state(false);
@@ -1937,8 +1997,8 @@
 		}
 		isDirty.set(false);
 		// shared session: fold the adopted disk content into the shared doc so guests see it too
-		// (hostEdit's own lastWritten update prevents an echo write back to disk)
-		if (loadedPath) session.hostEdit(loadedPath, disk);
+		// (the host materializer's lastWritten update prevents an echo write back to disk)
+		if (loadedPath) session.edit(loadedPath, disk);
 	}
 
 	function resolveConflict(choice: 'reload' | 'keep') {
@@ -1965,6 +2025,8 @@
 		texSource = serializeLatexFile(docMeta, doc);
 		isDirty.set(true);
 		scheduleSave(loadedPath, texSource);
+		// live session: the doc's orig stamps just went stale; VisualCollab re-stamps on the lull
+		visualCollab?.noteLocalEdit();
 		// the user is editing: a still-pending mode-switch scroll anchor is moot, and restoring
 		// it later would yank the view away from where they're typing
 		pendingVisualAnchor = null;
@@ -1997,9 +2059,9 @@
 	// so switching files can never drop the previous file's edit
 	function scheduleSave(path: string | null, content: string) {
 		if (!path) return;
-		// shared session: every host edit streams into the shared doc per keystroke (a no-op
-		// splice when the source editor is already Y-bound)
-		session.hostEdit(path, content);
+		// shared session: every edit streams into the shared doc per keystroke, host and guest
+		// alike (a no-op splice when the source editor is already Y-bound)
+		session.edit(path, content);
 		if (pendingSave && pendingSave.path !== path) flushSave();
 		pendingSave = { path, content };
 		// autosave off: track the edit (so Save / the switch-guard have it) but don't auto-write.
@@ -2086,11 +2148,15 @@
 	 * (cursor), the exact inverse of the source-to-visual mapping. An off-screen caret is ignored:
 	 * flashing a line the user wasn't looking at would read as a wrong jump.
 	 */
+	// orig.start stamps are body-relative; bodyOffsetOf knows where the body begins in the FILE
+	// (fragments synthesize a preamble that is not in the file, so theirs starts at 0)
+	const visualBodyOffset = () => (docMeta ? bodyOffsetOf(docMeta) : 0);
+
 	function captureVisualAnchor(): { scroll: number | null; cursor: number | null } | null {
 		const v = get(editorViewStore);
 		if (!v) return null;
 		const doc = v.state.doc;
-		const map = buildBlockMap(doc, docMeta?.preamble.length ?? 0);
+		const map = buildBlockMap(doc, visualBodyOffset());
 		const scRect = findScrollParent(v.dom)?.getBoundingClientRect();
 		const scTop = (scRect?.top ?? 0) + 4;
 		const scBottom = scRect?.bottom ?? Number.POSITIVE_INFINITY;
@@ -2151,7 +2217,7 @@
 				try {
 					if (v.isDestroyed) return; // the view can be torn down between consume and resolve
 					const doc = v.state.doc; // live doc (includes normalization blocks, which carry no orig)
-					const map = buildBlockMap(doc, docMeta?.preamble.length ?? 0);
+					const map = buildBlockMap(doc, visualBodyOffset());
 					// scroll: restore the reading position (the block that topped the source viewport)
 					const scrollHit = blockAtSource(map, anchor.scroll);
 					if (scrollHit) {
@@ -2445,147 +2511,9 @@
 			// quirk: this records the CURRENT texSource, which may be post-edit text if the user
 			// typed while the parse was in flight. harmless: onChange clears the anchor on edits.
 			lastParsedSource = texSource;
+			visualCollab?.noteFreshParse(); // a full re-parse stamped everything fresh
 			// EditorView reacts to the new localValue and swaps state on the existing instance: no remount, no flicker
 		});
-	}
-
-	// ---- shared session: the visual editor consumes remote edits ----
-	// a collaborator's splice lands in this file's Y.Text; after a lull (scaled to the last parse
-	// cost) the merged source re-parses in the worker and only the changed top-level blocks patch
-	// into the mounted view, so NodeViews, plugin state, history and the caret survive.
-	let remotePatchTimer: ReturnType<typeof setTimeout> | null = null;
-	let remoteParseMs = 0;
-
-	function scheduleRemotePatch(delay = Math.max(150, remoteParseMs * 2)) {
-		if (remotePatchTimer) return;
-		remotePatchTimer = setTimeout(() => {
-			remotePatchTimer = null;
-			void runRemotePatch();
-		}, delay);
-	}
-
-	async function runRemotePatch(): Promise<void> {
-		const path = loadedPath;
-		const binding = session.collabFor(path);
-		const v = get(editorViewStore);
-		if (!binding || !v || kind !== 'tex' || viewMode !== 'visual') return;
-		if (v.composing) return scheduleRemotePatch(250); // never patch under an IME composition
-		const snapshot = binding.ytext.toString();
-		if (snapshot === texSource) return;
-		const t0 = performance.now();
-		const o = await tryParseVisual(snapshot);
-		remoteParseMs = performance.now() - t0;
-		// superseded: the file/mode/view moved on, or more edits landed while parsing
-		if (loadedPath !== path || viewMode !== 'visual' || get(editorViewStore) !== v) return;
-		if (session.collabFor(path)?.ytext !== binding.ytext) return;
-		if (binding.ytext.toString() !== snapshot) return scheduleRemotePatch();
-		if (o.failure || !o.parsed) return; // unparsable mid-edit state; the next change retries
-		const oldPreLen = docMeta?.preamble.length ?? 0;
-		const oldSource = texSource;
-		const newDoc = normalizeParsedDoc(o.parsed.doc);
-		docMeta = { preamble: o.parsed.preamble, postamble: o.parsed.postamble, hadDocumentEnv: o.parsed.hadDocumentEnv };
-		texSource = snapshot;
-		lastParsedSource = snapshot;
-		applyRemotePatch(v, newDoc, oldSource, snapshot, oldPreLen, o.parsed.preamble.length);
-		visualDoc = v.state.doc; // reference handshake: EditorView sees its own live doc, skips the state swap
-		lastDoc = v.state.doc;
-		isDirty.set(true);
-		scheduleSave(path, snapshot); // same shape as source mode's remote flow: no-op splice, aligned write pipeline
-	}
-
-	// the mount path's normalization, applied to a fresh parse so it diffs cleanly against the live doc
-	function normalizeParsedDoc(doc: PMNode): PMNode {
-		let s = EditorState.create({ schema, doc });
-		const fix = fixTables(s);
-		if (fix) s = s.apply(fix);
-		const trail = buildTrailingParagraphTr(s);
-		if (trail) s = s.apply(trail);
-		return s.doc;
-	}
-
-	function applyRemotePatch(
-		v: PMEditorView,
-		newDoc: PMNode,
-		oldSource: string,
-		newSource: string,
-		oldPreLen: number,
-		newPreLen: number
-	): void {
-		const patch = computeBlockPatch(v.state.doc, newDoc);
-		// caret inside the replaced range: re-anchor it through the source (outside it, PM maps it)
-		let srcOffset: number | null = null;
-		const head = v.state.selection.head;
-		if (patch && head > patch.from && head < patch.to) {
-			const map = buildBlockMap(v.state.doc, oldPreLen);
-			srcOffset = pmPosToSourceOffset(v.state.doc, map, head);
-			const d = srcOffset != null ? spliceDiff(oldSource, newSource) : null;
-			if (d && srcOffset != null && srcOffset > d.index) {
-				// carry the offset across the remote edit so the re-anchor searches the right region
-				srcOffset = srcOffset >= d.index + d.remove ? srcOffset + d.insert.length - d.remove : d.index + d.insert.length;
-			}
-		}
-		const tr = v.state.tr;
-		if (patch) tr.replaceWith(patch.from, patch.to, patch.nodes);
-		syncOrigAttrs(tr, newDoc);
-		if (!tr.steps.length) return;
-		tr.setMeta('addToHistory', false).setMeta('collabRemotePatch', true);
-		if (srcOffset != null) {
-			const map = buildBlockMap(tr.doc, newPreLen);
-			const pos = sourceOffsetToPmPos(tr.doc, map, srcOffset);
-			if (pos != null) tr.setSelection(TextSelection.near(tr.doc.resolve(pos)));
-		}
-		v.dispatch(tr);
-	}
-
-	// watch the open file's Y.Text while it's in the visual editor; local host edits carry
-	// HOST_EDIT_ORIGIN (and seeds SEED_ORIGIN), everything else is a collaborator
-	$effect(() => {
-		void session.manifestRev; // rebind when the shared file set changes
-		const path = loadedPath;
-		const binding = session.active && kind === 'tex' && viewMode === 'visual' ? session.collabFor(path) : null;
-		if (!binding) return;
-		const t = binding.ytext;
-		const onRemote = (ev: Y.YTextEvent) => {
-			const origin = ev.transaction.origin;
-			if (origin === HOST_EDIT_ORIGIN || origin === SEED_ORIGIN) return;
-			scheduleRemotePatch();
-		};
-		t.observe(onRemote);
-		// edits that landed before this bind (e.g. while this file sat closed or in another mode)
-		untrack(() => {
-			if (t.toString() !== texSource) scheduleRemotePatch();
-		});
-		return () => {
-			t.unobserve(onRemote);
-			if (remotePatchTimer) {
-				clearTimeout(remotePatchTimer);
-				remotePatchTimer = null;
-			}
-			binding.awareness.setLocalStateField('cursor', null); // drop our visual caret from presence
-		};
-	});
-
-	// visual-mode presence: publish the caret as Y-relative source positions in y-codemirror's
-	// awareness shape, so guests' source editors draw the host's cursor natively
-	let visualCursorTimer: ReturnType<typeof setTimeout> | null = null;
-	function publishVisualCursor() {
-		if (visualCursorTimer) return;
-		visualCursorTimer = setTimeout(() => {
-			visualCursorTimer = null;
-			const binding = session.collabFor(loadedPath);
-			const v = get(editorViewStore);
-			if (!binding || !v || kind !== 'tex' || viewMode !== 'visual') return;
-			const map = buildBlockMap(v.state.doc, docMeta?.preamble.length ?? 0);
-			const sel = v.state.selection;
-			const a = pmPosToSourceOffset(v.state.doc, map, sel.anchor);
-			const h = sel.head === sel.anchor ? a : pmPosToSourceOffset(v.state.doc, map, sel.head);
-			if (a == null || h == null) return;
-			const clamp = (n: number) => Math.min(Math.max(0, n), binding.ytext.length);
-			binding.awareness.setLocalStateField('cursor', {
-				anchor: Y.createRelativePositionFromTypeIndex(binding.ytext, clamp(a)),
-				head: Y.createRelativePositionFromTypeIndex(binding.ytext, clamp(h))
-			});
-		}, 120);
 	}
 
 	// manual save (Ctrl/Cmd+S or the Save button); autosave handles the rest
@@ -2830,7 +2758,7 @@
 					{onTexInput}
 					{onRawInput}
 					onVisualChange={onChange}
-					onVisualSelection={publishVisualCursor}
+					onVisualSelection={() => visualCollab?.publishCursor()}
 					onEditFrontmatter={editPreambleFrontmatter}
 					onSyncToPdf={syncForwardLine}
 					onHistoryBoundary={workspaceHistoryStep}
@@ -2918,4 +2846,7 @@
 <TutorialConfirmModal bind:open={tutorialModalOpen} onConfirm={openTutorial} />
 {#if !guest}
 	<SessionShareModal bind:open={shareModalOpen} root={$workspaceRoot} onBeforeStart={flushSaveAndWait} />
+{/if}
+{#if session.active}
+	<VisualCollab bind:this={visualCollab} {session} path={loadedPath} {kind} {viewMode} api={visualCollabApi} />
 {/if}

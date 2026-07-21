@@ -55,7 +55,9 @@ export interface EditSession {
 	/** guest: the host's shared compile products; null for the host (it has the real thing). */
 	readonly compileIntel: SharedCompileIntel | null;
 	collabFor(path: string | null): CollabBinding | null;
-	hostEdit(path: string, content: string): void;
+	/** fold the local editor's serialized content into the shared doc as a minimal splice (the
+	 *  visual editor's write path on both sides; a no-op splice when the source editor is Y-bound). */
+	edit(path: string, content: string): void;
 	beforeOpen(path: string): Promise<void>;
 	setVisualLock(path: string | null): void;
 	syncTree(): Promise<void>;

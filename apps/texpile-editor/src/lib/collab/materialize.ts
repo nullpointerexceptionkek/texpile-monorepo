@@ -27,7 +27,7 @@ const MAX_TEXT_BYTES = 2 * 1024 * 1024; // a text file bigger than this is share
 const WRITE_DEBOUNCE_MS = 400;
 
 export const SEED_ORIGIN = 'collab-seed';
-export const HOST_EDIT_ORIGIN = 'collab-host-edit';
+export const EDIT_ORIGIN = 'collab-edit'; // a local editor's fold-in splice (host or guest)
 
 const toLf = (s: string) => s.replace(/\r\n?/g, '\n');
 const detectEol = (s: string): '\r\n' | '\n' => (s.includes('\r\n') ? '\r\n' : '\n');
@@ -171,7 +171,7 @@ export class HostMaterializer {
 		this.doc.transact(() => {
 			if (diff.remove > 0) t.delete(diff.index, diff.remove);
 			if (diff.insert) t.insert(diff.index, diff.insert);
-		}, HOST_EDIT_ORIGIN);
+		}, EDIT_ORIGIN);
 	}
 
 	/** re-sync the manifest after host-side file ops (create/delete/rename/import). */
@@ -233,7 +233,7 @@ export class HostMaterializer {
 			const locks = locksOf(this.doc);
 			if (prevRel && locks.has(prevRel)) locks.delete(prevRel);
 			if (rel) locks.set(rel, this.doc.clientID);
-		}, HOST_EDIT_ORIGIN);
+		}, EDIT_ORIGIN);
 	}
 
 	destroy(): void {

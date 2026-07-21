@@ -7,6 +7,7 @@ import { get } from 'svelte/store';
 import { deriveSessionKeys } from './e2e/keys';
 import { isValidShareCode } from './e2e/shareCode';
 import { CollabSession, manifestOf, locksOf, metaOf, textOf, type PeerInfo, type ManifestEntry } from './session';
+import { spliceDiff, EDIT_ORIGIN } from './materialize';
 import { RelayTransport } from './transport';
 import type { EditSession, SharedCompileIntel } from './editSession';
 import type { ControlPayload } from './protocol';
@@ -395,7 +396,20 @@ export const guestSession: EditSession = {
 		const awareness = collabGuest.awareness;
 		return ytext && awareness ? { ytext, awareness, readOnly: collabGuest.isLocked(path) } : null;
 	},
-	hostEdit() {},
+	// the guest visual editor's write path: fold the serialized doc into the shared Y.Text as a
+	// minimal splice; the change syncs to the host, whose materializer lands it on disk. The
+	// source editor is Y-bound, so its calls arrive content-equal and splice nothing.
+	edit(path, content) {
+		if (!path || collabGuest.isLocked(path)) return;
+		const t = collabGuest.ytextFor(path);
+		if (!t) return;
+		const diff = spliceDiff(t.toString(), content.replace(/\r\n?/g, '\n'));
+		if (!diff) return;
+		t.doc?.transact(() => {
+			if (diff.remove > 0) t.delete(diff.index, diff.remove);
+			if (diff.insert) t.insert(diff.index, diff.insert);
+		}, EDIT_ORIGIN);
+	},
 	async beforeOpen() {},
 	setVisualLock() {},
 	async syncTree() {},

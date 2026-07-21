@@ -1,0 +1,53 @@
+/* remote collaborator presence in the visual editor; everything here is layout-inert */
+
+.pm-remote-caret {
+	position: relative;
+	display: inline;
+}
+.pm-remote-caret::before {
+	content: '';
+	position: absolute;
+	left: -1px;
+	top: 0;
+	bottom: 0;
+	width: 2px;
+	background-color: var(--peer-color);
+}
+
+.pm-remote-caret-label {
+	position: absolute;
+	top: -1.35em;
+	left: -1px;
+	padding: 0 4px;
+	border-radius: 3px;
+	font-size: 0.7em;
+	font-weight: 600;
+	line-height: 1.5;
+	color: white;
+	background-color: var(--peer-color);
+	white-space: nowrap;
+	user-select: none;
+	pointer-events: none;
+	z-index: 30;
+	opacity: 0;
+	transition: opacity 0.15s ease;
+	/* visible on arrival, then fades; hovering the caret brings it back */
+	animation: pm-remote-label-linger 3s ease;
+}
+.pm-remote-caret:hover > .pm-remote-caret-label {
+	opacity: 1;
+}
+@keyframes pm-remote-label-linger {
+	0%,
+	70% {
+		opacity: 1;
+	}
+	100% {
+		opacity: 0;
+	}
+}
+
+/* the block a peer is editing: a colored edge inside the block, no layout impact */
+.pm-remote-block {
+	box-shadow: inset 2.5px 0 0 var(--peer-color);
+}

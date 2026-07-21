@@ -1,7 +1,10 @@
 // multi-file support: pick the main entry .tex and gather macro-defining text from its preamble
 // include-chain, so fragments can round-trip custom commands whose signatures live in the main
-// file. signature scanning only, never written back to disk.
+// file. signature scanning only, never written back to disk. `read` is injectable so a shared
+// session resolves through the workspace provider instead of the disk.
 import { readTextFile, dirname, joinPath, type TexFile } from './fileSystem';
+
+type ReadFn = (path: string) => Promise<string>;
 
 const BEGIN_DOC = /\\begin\s*\{document\}/;
 
@@ -19,7 +22,7 @@ function preambleOf(text: string): string {
 const normPath = (p: string) => p.replace(/\\/g, '/').toLowerCase();
 
 /** picks the main entry .tex: conventional names first, else the shallowest file with a real \begin{document}. */
-export async function detectMainFile(files: TexFile[]): Promise<string | null> {
+export async function detectMainFile(files: TexFile[], read: ReadFn = readTextFile): Promise<string | null> {
 	if (files.length === 0) return null;
 	if (files.length === 1) return files[0].path;
 
@@ -29,7 +32,7 @@ export async function detectMainFile(files: TexFile[]): Promise<string | null> {
 	const scanned = await Promise.all(
 		files.map(async (f) => {
 			try {
-				return { f, hasDoc: BEGIN_DOC.test(decomment(await readTextFile(f.path))) };
+				return { f, hasDoc: BEGIN_DOC.test(decomment(await read(f.path))) };
 			} catch {
 				return { f, hasDoc: false };
 			}
@@ -68,14 +71,14 @@ const INCLUDE_RE = /\\(?:input|include|subfile|subfileinclude)\s*\{([^}]+)\}/g;
 const PKG_RE = /\\(?:usepackage|RequirePackage)\s*(?:\[[^\]]*\])?\s*\{([^}]+)\}/g;
 
 /** resolves a reference against a base dir, trying extensions; the first that reads wins. */
-async function resolveRead(baseDir: string, ref: string, exts: string[]): Promise<{ path: string; text: string } | null> {
+async function resolveRead(baseDir: string, ref: string, exts: string[], read: ReadFn): Promise<{ path: string; text: string } | null> {
 	const cand = ref.trim().replace(/\\/g, '/');
 	if (!cand) return null;
 	const tries = /\.[a-z]+$/i.test(cand) ? [cand] : exts.map((e) => cand + e);
 	for (const rel of tries) {
 		const path = joinPath(baseDir, rel);
 		try {
-			return { path, text: await readTextFile(path) };
+			return { path, text: await read(path) };
 		} catch {
 			/* try the next candidate */
 		}
@@ -89,7 +92,7 @@ async function resolveRead(baseDir: string, ref: string, exts: string[]): Promis
  * would drag in whole sections); fragments are scanned whole. Over-gathering is harmless,
  * the result feeds signature scanning only.
  */
-export async function gatherProjectMacros(mainFilePath: string, root: string): Promise<string> {
+export async function gatherProjectMacros(mainFilePath: string, root: string, read: ReadFn = readTextFile): Promise<string> {
 	const seen = new Set<string>();
 	const chunks: string[] = [];
 
@@ -105,7 +108,7 @@ export async function gatherProjectMacros(mainFilePath: string, root: string): P
 
 		for (const { ref, exts } of refs) {
 			// referrer's own dir first, then the project root
-			const got = (await resolveRead(dirname(filePath), ref, exts)) ?? (await resolveRead(root, ref, exts));
+			const got = (await resolveRead(dirname(filePath), ref, exts, read)) ?? (await resolveRead(root, ref, exts, read));
 			if (!got) continue; // standard package or missing file
 			const key = normPath(got.path);
 			if (seen.has(key)) continue;
@@ -115,7 +118,7 @@ export async function gatherProjectMacros(mainFilePath: string, root: string): P
 	}
 
 	try {
-		const text = await readTextFile(mainFilePath);
+		const text = await read(mainFilePath);
 		seen.add(normPath(mainFilePath));
 		await walk(mainFilePath, text, 0);
 	} catch {

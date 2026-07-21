@@ -94,8 +94,9 @@
 		{/if}
 	</div>
 	<div class="flex items-center gap-2">
-		{#if loadedPath && (kind === 'tex' || kind === 'bib') && !guest}
-			<!-- visual/source toggle; for .bib it's the reference editor vs raw BibTeX. guests are source-only -->
+		{#if loadedPath && (kind === 'tex' || (kind === 'bib' && !guest))}
+			<!-- visual/source toggle; for .bib it's the reference editor vs raw BibTeX (BibManager
+			     stays host-only: it isn't wired to the shared doc yet) -->
 			<div class="border-surface-300-700 inline-flex shrink-0 overflow-hidden rounded-md border text-xs">
 				<button
 					class="flex items-center gap-1 px-2.5 py-1 {viewMode === 'visual' ? 'preset-filled-primary-500' : 'hover:preset-tonal'}"

@@ -174,19 +174,7 @@ export class PDFPageView {
 	}
 
 	reset(): void {
-		this.cancelRendering();
-		this.renderingState = RenderingStates.INITIAL;
-
-		if (this.canvas) {
-			this.canvas.width = 0;
-			this.canvas.height = 0;
-			this.canvas.remove();
-			this.canvas = null;
-		}
-		if (this.canvasWrapper) {
-			this.canvasWrapper.remove();
-			this.canvasWrapper = null;
-		}
+		this.resetCanvas();
 
 		this.selectionAbort?.abort();
 		this.selectionAbort = null;

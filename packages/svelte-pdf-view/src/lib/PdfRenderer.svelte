@@ -111,6 +111,9 @@
 		viewerState.error = null;
 		if (!viewer) viewerState.loading = true;
 		let overlay: HTMLDivElement | null = null;
+		// the loading task / parsed document we still OWN: cleared once the live viewer adopts it. On
+		// any early exit or error, whatever this points at must be destroyed or it leaks in the worker.
+		let toDestroy: { destroy(): Promise<void> } | null = null;
 
 		try {
 			const pdfjs = await getPdfJs();
@@ -178,8 +181,11 @@
 			}
 
 			const loadingTask = pdfjs.getDocument(documentSource);
+			toDestroy = loadingTask; // if the parse rejects, the task itself still needs freeing
 			const loadedPdfDocument = await loadingTask.promise;
+			toDestroy = loadedPdfDocument; // destroying the doc frees the task too
 			if (gen !== loadGen) {
+				toDestroy = null;
 				void loadedPdfDocument.destroy().catch(() => {});
 				return;
 			}
@@ -192,6 +198,15 @@
 			overlay = snapshotOverlay();
 
 			await v.setDocument(loadedPdfDocument);
+			// setDocument awaits every page; the component may have been destroyed in that window, which
+			// nulls the viewer. Its cleanup never sees this document, so free it here.
+			if (!viewer) {
+				toDestroy = null;
+				void loadedPdfDocument.destroy().catch(() => {});
+				overlay?.remove();
+				return;
+			}
+			toDestroy = null; // the live viewer now owns it; a later load's cleanup() will destroy it
 			findController?.setDocument(loadedPdfDocument);
 			presentationMode.setDocument(loadedPdfDocument);
 			v.restoreScrollAnchor(anchor ?? { page: 1, fraction: 0 });
@@ -212,6 +227,8 @@
 		} catch (e) {
 			// parse failed: the currently loaded document (if any) was never touched and stays up
 			overlay?.remove();
+			// a task/document we parsed but never handed to the viewer would otherwise leak in the worker
+			if (toDestroy) void toDestroy.destroy().catch(() => {});
 			const errorMessage = e instanceof Error ? e.message : 'Failed to load PDF';
 			viewerState.error = errorMessage;
 			viewerState.loading = false;

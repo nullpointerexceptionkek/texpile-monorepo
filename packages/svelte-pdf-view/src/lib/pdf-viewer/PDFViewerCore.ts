@@ -37,6 +37,13 @@ const DEFAULT_SCALE_DELTA = 0.1;
 // pages to render around the visible ones
 const PAGES_TO_PRERENDER = 2;
 
+// page layout, mirroring renderer-styles.ts (.pdf-renderer-container padding + flex gap). The scroll
+// model below reconstructs page offsets arithmetically (no per-page DOM reads on scroll), so these
+// must track that CSS: the first page starts CONTAINER_PAD from the top, pages are PAGE_GAP apart,
+// and each rendered height is floored (PDFPageView sets style.height = Math.floor(height)).
+const CONTAINER_PAD = 20;
+const PAGE_GAP = 16;
+
 export class PDFViewerCore {
 	readonly container: HTMLElement;
 	readonly viewer: HTMLDivElement;
@@ -188,12 +195,11 @@ export class PDFViewerCore {
 		let lastVisible = -1;
 		const visibleIds = new Set<number>();
 
-		let currentTop = 0;
+		let top = CONTAINER_PAD;
 		for (let i = 0; i < this.pages.length; i++) {
-			const page = this.pages[i];
-			const pageBottom = currentTop + page.height + 10; // 10px margin
+			const bottom = top + Math.floor(this.pages[i].height);
 
-			if (pageBottom >= containerTop && currentTop <= containerBottom) {
+			if (bottom >= containerTop && top <= containerBottom) {
 				if (firstVisible === -1) {
 					firstVisible = i;
 				}
@@ -201,7 +207,7 @@ export class PDFViewerCore {
 				visibleIds.add(i + 1); // Page numbers are 1-indexed
 			}
 
-			currentTop = pageBottom;
+			top = bottom + PAGE_GAP;
 		}
 
 		return {
@@ -321,13 +327,13 @@ export class PDFViewerCore {
 	getScrollAnchor(): { page: number; fraction: number } | null {
 		if (!this.pages.length) return null;
 		const scrollTop = this.container.scrollTop;
-		let top = 0;
+		let top = CONTAINER_PAD;
 		for (let i = 0; i < this.pages.length; i++) {
-			const h = this.pages[i].height;
-			if (scrollTop < top + h + 10 || i === this.pages.length - 1) {
+			const h = Math.floor(this.pages[i].height);
+			if (scrollTop < top + h + PAGE_GAP || i === this.pages.length - 1) {
 				return { page: i + 1, fraction: (scrollTop - top) / Math.max(1, h) };
 			}
-			top += h + 10; // 10px inter-page margin, matching getVisiblePages
+			top += h + PAGE_GAP; // inter-page gap, matching getVisiblePages
 		}
 		return null;
 	}
@@ -335,9 +341,9 @@ export class PDFViewerCore {
 	restoreScrollAnchor(anchor: { page: number; fraction: number }): void {
 		if (!this.pages.length) return;
 		const idx = Math.min(Math.max(0, anchor.page - 1), this.pages.length - 1);
-		let top = 0;
-		for (let i = 0; i < idx; i++) top += this.pages[i].height + 10;
-		this.container.scrollTop = Math.max(0, top + anchor.fraction * this.pages[idx].height);
+		let top = CONTAINER_PAD;
+		for (let i = 0; i < idx; i++) top += Math.floor(this.pages[i].height) + PAGE_GAP;
+		this.container.scrollTop = Math.max(0, top + anchor.fraction * Math.floor(this.pages[idx].height));
 		this.updateVisiblePages();
 	}
 

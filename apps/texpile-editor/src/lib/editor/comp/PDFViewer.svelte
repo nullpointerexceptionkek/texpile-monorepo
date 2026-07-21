@@ -29,10 +29,12 @@
 	// viewer keeps its scroll, changed when a different PDF opens so it resets to the top
 	let docKey = $state<string | undefined>(undefined);
 	const docKeyOf = (url: string) => url.replace(/[?&]t=\d+/, '');
+	let fetchGen = 0;
 
 	async function fetchPdf(url: string) {
 		// keep the current PDF (and its scroll) on screen while a recompile's bytes fetch; only show
 		// the blocking "Loading" state on the very first load, when there's nothing to keep
+		const gen = ++fetchGen;
 		const firstLoad = pdfSource === null;
 		if (firstLoad) loading = true;
 		error = null;
@@ -40,21 +42,24 @@
 			const res = await fetch(url, { cache: 'no-store' });
 			if (!res.ok) throw new Error(`Could not load the PDF (${res.status}).`);
 			const buf = await res.arrayBuffer();
+			if (gen !== fetchGen) return; // a newer load started while we fetched; don't clobber its result
 			if (buf.byteLength === 0) throw new Error('The PDF is empty.');
 			docKey = docKeyOf(url);
 			pdfSource = buf;
 			lastUrl = url;
 		} catch (e) {
-			// a recompile's PDF can be caught mid-write (truncated/empty for a beat). On the first
-			// load there's nothing to keep, so surface the error; on a reload keep the current PDF up
-			// rather than blanking it, which would remount the viewer (loading flash + lost cross-fade).
-			// lastUrl stays unchanged so the next poll with a fresh mtime refetches.
-			if (firstLoad) {
+			// a recompile's PDF can be caught mid-write (truncated/empty for a beat): keep the current
+			// PDF up rather than blanking it, which would remount the viewer (loading flash + lost
+			// cross-fade). But surface the error on the first load, or on a genuine switch to a
+			// DIFFERENT document, instead of silently leaving the old one on screen.
+			const switching = firstLoad || docKeyOf(url) !== docKey;
+			if (switching && gen === fetchGen) {
 				error = e instanceof Error ? e.message : 'Could not load the PDF.';
 				pdfSource = null;
+				docKey = undefined;
 			}
 		} finally {
-			loading = false;
+			if (gen === fetchGen) loading = false;
 		}
 	}
 

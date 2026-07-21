@@ -88,10 +88,10 @@ function scanTexIntel(text: string, file: string, into: ProjectIntel) {
 	into.outlines[file] = parseOutlineRaw(text);
 }
 
-async function readAux(auxPath: string, into: ProjectIntel) {
+async function readAux(auxPath: string, into: ProjectIntel, read: (p: string) => Promise<string>) {
 	let aux: string;
 	try {
-		aux = await readTextFile(auxPath);
+		aux = await read(auxPath);
 	} catch {
 		return; // never compiled (or aux elsewhere): completion just shows no numbers
 	}
@@ -114,7 +114,11 @@ export async function refreshProjectIntel(
 	texFiles: TexFile[],
 	bibPaths: string[],
 	auxPath: string | null,
-	activePath: string | null
+	activePath: string | null,
+	// injectable so a guest session reads through its provider (files live in the shared doc)
+	read: (p: string) => Promise<string> = readTextFile,
+	// a guest has no .aux on disk; the host shares its parsed label numbers instead
+	auxOverride?: { numbers: Record<string, string>; pages: Record<string, string> } | null
 ): Promise<void> {
 	const token = ++scanToken;
 	const into: ProjectIntel = {
@@ -135,7 +139,7 @@ export async function refreshProjectIntel(
 	await Promise.all(
 		texTargets.map(async (f) => {
 			try {
-				scanTexIntel(await readTextFile(f.path), f.path, into);
+				scanTexIntel(await read(f.path), f.path, into);
 			} catch {
 				/* unreadable file: skip */
 			}
@@ -144,7 +148,7 @@ export async function refreshProjectIntel(
 	await Promise.all(
 		bibPaths.slice(0, MAX_FILES).map(async (path) => {
 			try {
-				const text = await readTextFile(path);
+				const text = await read(path);
 				BIB_ENTRY_RE.lastIndex = 0;
 				for (let m = BIB_ENTRY_RE.exec(text); m; m = BIB_ENTRY_RE.exec(text)) {
 					into.bibEntries.push({ key: m[1], file: path, line: text.slice(0, m.index).split('\n').length });
@@ -154,7 +158,10 @@ export async function refreshProjectIntel(
 			}
 		})
 	);
-	if (auxPath) await readAux(auxPath, into);
+	if (auxOverride) {
+		Object.assign(into.auxNumbers, auxOverride.numbers);
+		Object.assign(into.auxPages, auxOverride.pages);
+	} else if (auxPath) await readAux(auxPath, into, read);
 
 	// dedupe the repetition-mining pools
 	into.sub = [...new Set(into.sub)];

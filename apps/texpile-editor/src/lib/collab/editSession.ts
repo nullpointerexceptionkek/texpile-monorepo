@@ -11,8 +11,27 @@ export interface CollabBinding {
 	awareness: Awareness;
 	/** the file is held elsewhere (host's visual editor): edit read-only. */
 	readOnly?: boolean;
-	/** drop the filesystem-backed editor extensions (guests have no disk). */
-	minimal?: boolean;
+}
+
+/** one diagnostic from the host's compile, file already root-relative. */
+export interface SharedDiagnostic {
+	file: string;
+	line: number;
+	lineEnd?: number;
+	level: 'error' | 'warning' | 'badbox';
+	message: string;
+	hint?: string;
+	column?: number;
+	anchorText?: string;
+	command?: string;
+}
+
+/** the host's parsed compile products (aux label numbers + log), shared once instead of every
+ *  guest re-parsing artifacts; rides the session meta map so late joiners get it from doc state. */
+export interface SharedCompileIntel {
+	auxNumbers: Record<string, string>;
+	auxPages: Record<string, string>;
+	log: SharedDiagnostic[];
 }
 
 export interface EditSession {
@@ -25,7 +44,16 @@ export interface EditSession {
 	onCompileRequest: (() => void) | null;
 	/** host: resolve a guest's SyncTeX request and reply. Unused (null) on the guest side. */
 	onSyncRequest: ((payload: ControlPayload, from: number) => void) | null;
+	/** host: a guest changed files on disk (upload / rename / delete); refresh the tree UI. */
+	onFileOp: (() => void) | null;
 
+	/** how the session shares this file: 'binary' can mean a text file shared as name only
+	 *  (too large or an unsupported extension). null = not session-managed, trust the disk. */
+	sharedKindOf(path: string | null): 'text' | 'binary' | null;
+	/** host: publish the parsed compile products to guests. No-op on the guest side. */
+	shareCompileIntel(intel: SharedCompileIntel): void;
+	/** guest: the host's shared compile products; null for the host (it has the real thing). */
+	readonly compileIntel: SharedCompileIntel | null;
 	collabFor(path: string | null): CollabBinding | null;
 	hostEdit(path: string, content: string): void;
 	beforeOpen(path: string): Promise<void>;

@@ -39,7 +39,6 @@
 		/** Set (or, if already main, clear) the project's main entry file. */
 		onSetMain?: (entry: TreeEntry) => void;
 		/** guest session: browse + open only, no rename/delete/internal-move. */
-		readOnly?: boolean;
 		/** allow adding new files by drop-from-OS / paste (true even for a read-only guest). */
 		allowImport?: boolean;
 	}
@@ -57,7 +56,6 @@
 		onImport,
 		onCopyIn,
 		onSetMain,
-		readOnly = false,
 		allowImport = true
 	}: Props = $props();
 
@@ -175,10 +173,6 @@
 	};
 
 	function onRowDragStart(e: DragEvent, entry: TreeEntry) {
-		if (readOnly) {
-			e.preventDefault(); // guests can't rearrange the host's files
-			return;
-		}
 		// dragging an unselected row abandons the selection and drags just that row
 		if (!selected.includes(entry.path)) {
 			selected = [entry.path];
@@ -232,8 +226,6 @@
 	function finishDrop(e: DragEvent, targetDir: string) {
 		const external = isExternalDrag(e);
 		const crossWindow = isCrossWindowDrag(e);
-		// read-only (guest) can still ADD files by dropping from outside; it just can't move its own
-		if (readOnly && !(external && allowImport)) return;
 		const entries = dragging ? selectedEntries() : [];
 		const valid = canDropAll(targetDir);
 		dragging = null;
@@ -333,7 +325,6 @@
 
 	let ctxMenu = $state<{ x: number; y: number; entry: TreeEntry | null } | null>(null);
 	function openCtx(e: MouseEvent, entry: TreeEntry | null) {
-		if (readOnly) return; // guests browse only: no rename/delete/new-file context menu
 		e.preventDefault();
 		e.stopPropagation();
 		// right-clicking outside the selection retargets it (the menu acts on what's selected)

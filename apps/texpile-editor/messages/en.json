@@ -116,6 +116,7 @@
 	"wsview_start_new_doc_desc_pre": "This folder has no",
 	"wsview_start_new_doc_desc_post": "files yet. Pick a template to begin.",
 	"wsview_binary_file_note": "{name} (binary file, not editable here)",
+	"wsview_shared_name_only": "The host shares {name} by name only. It is too large or not a file type sessions sync.",
 	"wsview_opening": "Opening…",
 	"wsview_select_file_prompt": "Select a file to edit.",
 	"wsview_live_preview_label": "Live preview",

@@ -8,7 +8,7 @@ import { deriveSessionKeys } from './e2e/keys';
 import { isValidShareCode } from './e2e/shareCode';
 import { CollabSession, manifestOf, locksOf, metaOf, textOf, type PeerInfo, type ManifestEntry } from './session';
 import { RelayTransport } from './transport';
-import type { EditSession } from './editSession';
+import type { EditSession, SharedCompileIntel } from './editSession';
 import type { ControlPayload } from './protocol';
 import { settings } from '$lib/settings';
 
@@ -32,8 +32,10 @@ class GuestCollabController {
 	rev = $state(0);
 	// bumped when a host-served file (image) arrives, so fileUrl() callers re-render
 	imageRev = $state(0);
-	private imageCache = new Map<string, string>(); // rel -> object URL of the host's bytes
-	private imageReq = new Set<string>(); // in-flight requests, so we ask once
+	// the host's parsed compile products (aux numbers + diagnostics), from the session meta map
+	compileIntel = $state<SharedCompileIntel | null>(null);
+	private imageCache = new Map<string, { rev: number; url: string }>(); // rel -> the host's bytes at a rev
+	private imageReq = new Set<string>(); // in-flight 'rel@rev' requests, so we ask once per revision
 	private syncResolvers = new Map<number, (r: ControlPayload) => void>();
 	private syncSeq = 0;
 	// intact master; `pdf` is always a copy, because pdf.js detaches the ArrayBuffer it renders and
@@ -48,6 +50,10 @@ class GuestCollabController {
 	private joinTimer: ReturnType<typeof setTimeout> | null = null;
 	// fired when the shared file set changes; the guest's WorkspaceProvider re-scans off this
 	private fileWatchers = new Set<() => void>();
+	// guest-local empty folders (git model: a folder is nothing until a file lands inside it).
+	// They live only in this tree view; the first file created inside reaches the host and makes
+	// the folder real, at which point the ghost is pruned.
+	private ghosts = new Set<string>();
 
 	/** subscribe to file-tree changes (the CRDT manifest); returns an unsubscribe. */
 	subscribe(cb: () => void): () => void {
@@ -86,7 +92,7 @@ class GuestCollabController {
 							this.pdfMaster = bytes.slice();
 							this.pdf = this.pdfMaster.slice().buffer; // a copy for the viewer to consume/detach
 						} else if (blobName.startsWith('f:')) {
-							this.receiveFileBlob(blobName.slice(2), bytes);
+							this.receiveFileBlob(blobName.slice(2), rev, bytes);
 						}
 					},
 					onControl: (payload) => {
@@ -156,9 +162,54 @@ class GuestCollabController {
 			out.push({ rel, kind: e.kind, locked: locks.has(rel) });
 		}
 		out.sort((a, b) => a.rel.localeCompare(b.rel));
+		// a ghost folder becomes real once a shared file lands inside it
+		for (const g of this.ghosts) if (out.some((f) => f.rel.startsWith(g + '/'))) this.ghosts.delete(g);
 		this.files = out;
 		this.rev++;
 		for (const cb of this.fileWatchers) cb();
+	}
+
+	private notifyTree(): void {
+		this.rev++;
+		for (const cb of this.fileWatchers) cb();
+	}
+
+	get ghostDirs(): string[] {
+		return [...this.ghosts];
+	}
+
+	addGhostDir(rel: string): void {
+		if (!rel) return;
+		this.ghosts.add(rel);
+		this.notifyTree();
+	}
+
+	/** true when rel was a ghost (handled locally); false means it's a real, host-side entry. */
+	dropGhostDir(rel: string): boolean {
+		const hit = this.ghosts.delete(rel);
+		// deleting a ghost parent takes its ghost children with it
+		for (const g of this.ghosts) if (g.startsWith(rel + '/')) this.ghosts.delete(g);
+		if (hit) this.notifyTree();
+		return hit;
+	}
+
+	/** true when rel was a ghost and got renamed locally. */
+	renameGhostDir(from: string, to: string): boolean {
+		if (!this.ghosts.delete(from)) return false;
+		this.ghosts.add(to);
+		for (const g of [...this.ghosts]) {
+			if (g.startsWith(from + '/')) {
+				this.ghosts.delete(g);
+				this.ghosts.add(to + g.slice(from.length));
+			}
+		}
+		this.notifyTree();
+		return true;
+	}
+
+	/** ask the host (the only disk-writer) to rename/delete; the manifest brings the result back. */
+	requestFileOp(op: 'rename' | 'delete', from: string, to?: string): void {
+		this.session?.sendControl({ kind: 'file-op', op, from, to });
 	}
 
 	private onMeta(): void {
@@ -170,6 +221,14 @@ class GuestCollabController {
 		if (rev > this.seenPdfRev && rev > this.requestedPdfRev) {
 			this.requestedPdfRev = rev;
 			this.session.requestBlob('pdf');
+		}
+		const intel = metaOf(this.doc).get('compileIntel');
+		if (typeof intel === 'string') {
+			try {
+				this.compileIntel = JSON.parse(intel) as SharedCompileIntel;
+			} catch {
+				/* a malformed payload just means no shared numbers */
+			}
 		}
 	}
 
@@ -189,24 +248,35 @@ class GuestCollabController {
 		return this.doc ? textOf(this.doc, rel) : null;
 	}
 
-	private receiveFileBlob(rel: string, bytes: Uint8Array): void {
+	private receiveFileBlob(rel: string, rev: number, bytes: Uint8Array): void {
 		const old = this.imageCache.get(rel);
-		if (old) URL.revokeObjectURL(old);
-		this.imageCache.set(rel, URL.createObjectURL(new Blob([bytes as BlobPart])));
-		this.imageReq.delete(rel);
+		if (old) URL.revokeObjectURL(old.url);
+		this.imageCache.set(rel, { rev, url: URL.createObjectURL(new Blob([bytes as BlobPart])) });
+		this.imageReq.delete(rel + '@' + rev);
 		this.imageRev++;
+	}
+
+	/** the host's revision for a shared binary; changes when the bytes on its disk do. */
+	private fileRevOf(rel: string): number {
+		if (!this.doc) return 0;
+		return Number((manifestOf(this.doc).get(rel) as ManifestEntry | undefined)?.rev ?? 0);
 	}
 
 	/** object URL for a file the host serves on demand (images); '' until it arrives. */
 	fileUrl(rel: string): string {
 		void this.imageRev; // reactive: re-run when the bytes land
+		void this.rev; // and when the manifest moves, since that is what carries a new file rev
+		const rev = this.fileRevOf(rel);
 		const hit = this.imageCache.get(rel);
-		if (hit) return hit;
-		if (rel && !this.imageReq.has(rel) && this.session) {
-			this.imageReq.add(rel);
+		if (hit && hit.rev === rev) return hit.url;
+		// missing, or the host replaced the file since we cached it: fetch that revision once
+		const key = rel + '@' + rev;
+		if (rel && !this.imageReq.has(key) && this.session) {
+			this.imageReq.add(key);
 			this.session.requestBlob('f:' + rel);
 		}
-		return '';
+		// keep showing the stale copy while the fresh one is in flight, rather than blanking
+		return hit?.url ?? '';
 	}
 
 	/** send a new file to the host, which writes it to disk (drag-in / paste / upload). */
@@ -265,6 +335,12 @@ class GuestCollabController {
 	private teardown(destroySession: boolean): void {
 		this.clearJoinTimer();
 		this.fileWatchers.clear();
+		// revoke, don't just drop: these are object URLs, and a surviving entry would also let the
+		// next session render a previous host's image for a path that happens to match
+		for (const { url } of this.imageCache.values()) URL.revokeObjectURL(url);
+		this.imageCache.clear();
+		this.imageReq.clear();
+		this.ghosts.clear();
 		const session = this.session;
 		this.session = null;
 		this.transport = null;
@@ -275,6 +351,7 @@ class GuestCollabController {
 		this.pdfMaster = null;
 		this.pdfName = '';
 		this.hostOnline = true;
+		this.compileIntel = null;
 		this.seenPdfRev = 0;
 		this.requestedPdfRev = 0;
 		if (destroySession) session?.destroy();
@@ -303,11 +380,20 @@ export const guestSession: EditSession = {
 	},
 	onCompileRequest: null,
 	onSyncRequest: null,
+	onFileOp: null,
+	shareCompileIntel() {},
+	get compileIntel() {
+		return collabGuest.compileIntel;
+	},
+	sharedKindOf(path) {
+		if (!path) return null;
+		return collabGuest.files.find((f) => f.rel === path)?.kind ?? null;
+	},
 	collabFor(path) {
 		if (!path) return null;
 		const ytext = collabGuest.ytextFor(path);
 		const awareness = collabGuest.awareness;
-		return ytext && awareness ? { ytext, awareness, readOnly: collabGuest.isLocked(path), minimal: true } : null;
+		return ytext && awareness ? { ytext, awareness, readOnly: collabGuest.isLocked(path) } : null;
 	},
 	hostEdit() {},
 	async beforeOpen() {},

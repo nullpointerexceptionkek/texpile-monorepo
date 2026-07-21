@@ -28,6 +28,8 @@
 	interface Props {
 		loadedPath: string | null;
 		kind: FileKind;
+		/** a shared session serves this file by name only (no body): show a note, not an empty editor */
+		nameOnly?: boolean;
 		viewMode: 'visual' | 'source' | 'diff';
 		session: EditSession;
 		folderEmpty: boolean;
@@ -67,6 +69,7 @@
 	let {
 		loadedPath,
 		kind,
+		nameOnly = false,
 		viewMode,
 		session,
 		folderEmpty,
@@ -140,6 +143,10 @@
 				<div class="text-error-600 mx-auto mt-12 flex max-w-md flex-col items-center gap-2 text-center">
 					<CircleAlert class="size-8" />
 					<p class="text-sm">{loadError}</p>
+				</div>
+			{:else if loadedPath && nameOnly}
+				<div class="text-surface-500 mt-12 text-center text-sm">
+					{m.wsview_shared_name_only({ name: basename(loadedPath) })}
 				</div>
 			{:else if loadedPath && viewMode === 'diff' && (kind === 'tex' || kind === 'bib' || kind === 'text')}
 				<DiffPane

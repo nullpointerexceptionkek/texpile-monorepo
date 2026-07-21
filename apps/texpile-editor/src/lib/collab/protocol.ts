@@ -39,7 +39,15 @@ export type ControlPayload =
 	| { kind: 'synctex-inverse'; reqId: number; page: number; x: number; y: number }
 	| { kind: 'synctex-inverse-result'; reqId: number; file: string; line: number; selectText?: string }
 	| { kind: 'synctex-forward'; reqId: number; file: string; line: number }
-	| { kind: 'synctex-forward-result'; reqId: number; page: number; x: number; y: number; w?: number; h?: number };
+	| { kind: 'synctex-forward-result'; reqId: number; page: number; x: number; y: number; w?: number; h?: number }
+	// guest asks the host (the only disk-writer) to mutate a file; paths are manifest-relative
+	| { kind: 'file-op'; op: 'rename' | 'delete'; from: string; to?: string };
+
+/** a manifest-relative path a guest may name in a file-op: forward slashes, inside the root. */
+export function isSafeRel(rel: string): boolean {
+	if (!rel || rel.includes('\\') || rel.startsWith('/') || /^[a-z]:/i.test(rel)) return false;
+	return rel.split('/').every((seg) => seg !== '' && seg !== '.' && seg !== '..');
+}
 
 export type Frame =
 	| { type: FrameType.Sync; from: number; to: number; payload: Uint8Array }

@@ -7,7 +7,8 @@ import { parseRelayNotice, type RelayNotice } from './protocol';
 export type TransportStatus = 'connecting' | 'connected' | 'disconnected' | 'closed';
 
 export interface Transport {
-	send(data: Uint8Array): void;
+	/** ArrayBuffer-backed: a SharedArrayBuffer-backed view is not a valid BufferSource for send() */
+	send(data: Uint8Array<ArrayBuffer>): void;
 	close(): void;
 	/** fromHost = the relay stamped this frame as coming from the authenticated host socket. */
 	onMessage: ((data: Uint8Array, fromHost: boolean) => void) | null;
@@ -108,7 +109,7 @@ export class RelayTransport implements Transport {
 		}, delay);
 	}
 
-	send(data: Uint8Array): void {
+	send(data: Uint8Array<ArrayBuffer>): void {
 		// drops while disconnected are fine: the session re-runs its sync handshake on reconnect
 		if (this.ws?.readyState === WebSocket.OPEN) this.ws.send(data);
 	}

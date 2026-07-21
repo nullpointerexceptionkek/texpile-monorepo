@@ -88,22 +88,20 @@
 			{$workspaceRoot ? basename($workspaceRoot) : m.wsview_no_folder()}
 		</span>
 		<div class="flex items-center gap-1">
-			{#if !guest}
-				<button
-					class="btn-icon btn-icon-sm hover:preset-tonal"
-					title={m.wsview_new_file_title()}
-					onclick={() => fileTreeRef?.newAtRoot('file')}
-				>
-					<FilePlus class="size-4" />
-				</button>
-				<button
-					class="btn-icon btn-icon-sm hover:preset-tonal"
-					title={m.wsview_new_folder_title()}
-					onclick={() => fileTreeRef?.newAtRoot('dir')}
-				>
-					<FolderPlus class="size-4" />
-				</button>
-			{/if}
+			<button
+				class="btn-icon btn-icon-sm hover:preset-tonal"
+				title={m.wsview_new_file_title()}
+				onclick={() => fileTreeRef?.newAtRoot('file')}
+			>
+				<FilePlus class="size-4" />
+			</button>
+			<button
+				class="btn-icon btn-icon-sm hover:preset-tonal"
+				title={m.wsview_new_folder_title()}
+				onclick={() => fileTreeRef?.newAtRoot('dir')}
+			>
+				<FolderPlus class="size-4" />
+			</button>
 			<button class="btn-icon btn-icon-sm hover:preset-tonal" title={m.wsview_refresh_tree_title()} onclick={onRefreshTree}>
 				<RefreshCw class="size-4" />
 			</button>
@@ -163,8 +161,7 @@
 					{onMove}
 					{onImport}
 					{onCopyIn}
-					{onSetMain}
-					readOnly={guest}
+					onSetMain={guest ? undefined : onSetMain}
 				/>
 			</div>
 			{#if showToc}

@@ -7,6 +7,7 @@ import {
 	BlobAssembler,
 	BLOB_CHUNK_SIZE,
 	parseRelayNotice,
+	isSafeRel,
 	BROADCAST,
 	type Frame
 } from '$lib/collab/protocol';
@@ -19,9 +20,18 @@ describe('collab protocol', () => {
 			{ type: FrameType.Hello, from: 1, to: BROADCAST, payload: { name: 'Ada', color: '#f00', role: 'guest' } },
 			{ type: FrameType.BlobRequest, from: 2, to: 3, name: 'pdf' },
 			{ type: FrameType.BlobChunk, from: 3, to: 2, payload: { name: 'pdf', rev: 4, index: 1, total: 2, bytes: new Uint8Array([9]) } },
-			{ type: FrameType.Control, from: 2, to: BROADCAST, payload: { kind: 'compile-request' } }
+			{ type: FrameType.Control, from: 2, to: BROADCAST, payload: { kind: 'compile-request' } },
+			{ type: FrameType.Control, from: 4, to: BROADCAST, payload: { kind: 'file-op', op: 'rename', from: 'a.tex', to: 'b/c.tex' } }
 		];
 		for (const f of frames) expect(decodeFrame(encodeFrame(f))).toEqual(f);
+	});
+
+	// the host runs guest file-ops against its real disk, so this is the traversal gate
+	it('isSafeRel admits manifest-relative paths and nothing that escapes the root', () => {
+		for (const ok of ['a.tex', 'chapters/intro.tex', 'a b/fig.png', '.gitignore']) expect(isSafeRel(ok), ok).toBe(true);
+		for (const bad of ['', '/etc/passwd', 'C:/x', 'c:\\x', '..', '../x', 'a/../../x', 'a\\b', 'a//b', 'a/./b', 'a/']) {
+			expect(isSafeRel(bad), bad).toBe(false);
+		}
 	});
 
 	it('chunks and reassembles blobs, including chunk-boundary sizes', () => {

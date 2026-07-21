@@ -10,8 +10,9 @@ import { manifestOf, locksOf, textOf } from './session';
 export interface MaterializeFs {
 	readText(absPath: string): Promise<string>;
 	writeText(absPath: string, content: string): Promise<void>;
-	/** flat file list, root-relative forward-slash paths. */
-	listFiles(root: string): Promise<{ rel: string; size: number }[]>;
+	/** flat file list, root-relative forward-slash paths. mtimeMs is only meaningful for binaries;
+	 *  it becomes the manifest rev a guest uses to notice its cached copy went stale. */
+	listFiles(root: string): Promise<{ rel: string; size: number; mtimeMs?: number }[]>;
 }
 
 const TEXT_EXT = /\.(tex|bib|cls|sty|txt|md|csv|dat|bbl|def|tikz|pgf|json|yml|yaml|toml|lco|ldf|clo|bst)$/i;
@@ -87,7 +88,7 @@ export class HostMaterializer {
 					if (t.length > 0) t.delete(0, t.length);
 					t.insert(0, body.text);
 				} else {
-					manifest.set(f.rel, { kind: 'binary', size: f.size });
+					manifest.set(f.rel, { kind: 'binary', size: f.size, rev: f.mtimeMs ?? 0 });
 				}
 			}
 		}, SEED_ORIGIN);
@@ -206,9 +207,10 @@ export class HostMaterializer {
 					if (t.length > 0) t.delete(0, t.length);
 					t.insert(0, body.text);
 				} else if (!existing || existing.gone) {
-					manifest.set(f.rel, { kind: 'binary', size: f.size });
+					manifest.set(f.rel, { kind: 'binary', size: f.size, rev: f.mtimeMs ?? 0 });
 				} else if (existing.kind === 'binary') {
-					manifest.set(f.rel, { ...existing, size: f.size });
+					// a replaced image keeps its path, so the rev is the only thing telling a guest to refetch
+					manifest.set(f.rel, { ...existing, size: f.size, rev: f.mtimeMs ?? existing.rev ?? 0 });
 				}
 			}
 			for (const [rel, entry] of manifest.entries()) {

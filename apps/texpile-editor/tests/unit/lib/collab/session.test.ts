@@ -37,7 +37,7 @@ class FakeTransport implements Transport {
 		this.hub.transports.add(this);
 		setTimeout(() => this.onStatus?.('connected'), 0);
 	}
-	send(data: Uint8Array): void {
+	send(data: Uint8Array<ArrayBuffer>): void {
 		if (!this.closed) this.hub.deliver(this, data);
 	}
 	close(): void {
@@ -56,6 +56,8 @@ const until = async (cond: () => boolean, ms = 4000): Promise<void> => {
 
 interface FakeFsFile {
 	content: string;
+	/** binaries only, mirroring the real host: it stats them so a replaced file gets a new rev */
+	mtimeMs?: number;
 }
 function fakeFs(files: Record<string, string>) {
 	const disk = new Map<string, FakeFsFile>(Object.entries(files).map(([rel, content]) => [rel, { content }]));
@@ -70,7 +72,7 @@ function fakeFs(files: Record<string, string>) {
 			writeText: async (p: string, content: string) => {
 				disk.set(p.replace(/^root\//, ''), { content });
 			},
-			listFiles: async () => [...disk.entries()].map(([rel, f]) => ({ rel, size: f.content.length }))
+			listFiles: async () => [...disk.entries()].map(([rel, f]) => ({ rel, size: f.content.length, mtimeMs: f.mtimeMs }))
 		}
 	};
 }
@@ -151,6 +153,63 @@ describe('collab session end-to-end', () => {
 		});
 		// the merged result lands on disk (guest edit written by the materializer)
 		await until(() => disk.get('main.tex')!.content.includes('G: ') && disk.get('main.tex')!.content.includes('H-line'));
+
+		mat.destroy();
+		host.session.destroy();
+		guest.session.destroy();
+	});
+
+	// a guest's file tree is rebuilt off the manifest, so a file the host adds mid-session has to
+	// reach the manifest for it to ever appear. WorkspaceView drives the redraw off provider.watch.
+	it('propagates files the host adds and removes after the session started', async () => {
+		const key = (await deriveSessionKeys(generateShareCode())).contentKey;
+		const hub = new FakeHub();
+		const { disk, fs } = fakeFs({ 'main.tex': 'Hello\n' });
+
+		const host = await makeParty(hub, 'host', 'Host', key);
+		const mat = new HostMaterializer(host.doc, 'root', fs, join);
+		await mat.seed();
+		const guest = await makeParty(hub, 'guest', 'Guest', key);
+		await until(() => manifestOf(guest.doc).has('main.tex'));
+		expect(manifestOf(guest.doc).has('chapters/intro.tex')).toBe(false);
+
+		// host creates a file, then re-syncs the tree (WorkspaceView's refreshTree does this)
+		disk.set('chapters/intro.tex', { content: 'Intro\n' });
+		await mat.syncFromTree();
+		await until(() => textOf(guest.doc, 'chapters/intro.tex').toString() === 'Intro\n');
+		expect(manifestOf(guest.doc).get('chapters/intro.tex')?.kind).toBe('text');
+
+		// and a deletion is tombstoned, not silently left behind
+		disk.delete('chapters/intro.tex');
+		await mat.syncFromTree();
+		await until(() => manifestOf(guest.doc).get('chapters/intro.tex')?.gone === true);
+
+		mat.destroy();
+		host.session.destroy();
+		guest.session.destroy();
+	});
+
+	// a replaced image keeps its path, so only the manifest rev can tell a guest its cached blob
+	// is stale. Without it the guest caches by path and never refetches for the whole session.
+	it('bumps a binary rev when the host replaces the file, so a guest can drop its cached copy', async () => {
+		const key = (await deriveSessionKeys(generateShareCode())).contentKey;
+		const hub = new FakeHub();
+		const { disk, fs } = fakeFs({ 'main.tex': 'Hi\n' });
+		disk.set('fig.png', { content: 'PNG-v1', mtimeMs: 1000 });
+
+		const host = await makeParty(hub, 'host', 'Host', key);
+		const mat = new HostMaterializer(host.doc, 'root', fs, join);
+		await mat.seed();
+		const guest = await makeParty(hub, 'guest', 'Guest', key);
+		await until(() => manifestOf(guest.doc).get('fig.png')?.kind === 'binary');
+		expect(manifestOf(guest.doc).get('fig.png')?.rev).toBe(1000);
+
+		// same path, new bytes: the rev has to move or the guest keeps showing the old image
+		disk.set('fig.png', { content: 'PNG-v2', mtimeMs: 2000 });
+		await mat.syncFromTree();
+		await until(() => manifestOf(guest.doc).get('fig.png')?.rev === 2000);
+		// text is unaffected: its edits ride the CRDT, so it carries no rev
+		expect(manifestOf(guest.doc).get('main.tex')?.rev).toBeUndefined();
 
 		mat.destroy();
 		host.session.destroy();

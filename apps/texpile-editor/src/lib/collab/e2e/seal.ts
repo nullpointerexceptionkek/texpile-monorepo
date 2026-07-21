@@ -3,8 +3,10 @@
 
 const NONCE_BYTES = 12;
 
-/** [12-byte nonce][ciphertext+tag]; a fresh random nonce per frame. */
-export async function seal(key: CryptoKey, plaintext: Uint8Array): Promise<Uint8Array> {
+/** [12-byte nonce][ciphertext+tag]; a fresh random nonce per frame. Returns an ArrayBuffer-backed
+ *  view specifically: that is what WebSocket.send accepts, and a SharedArrayBuffer-backed one is
+ *  not a valid BufferSource. We always allocate here, so this is precise rather than a cast. */
+export async function seal(key: CryptoKey, plaintext: Uint8Array): Promise<Uint8Array<ArrayBuffer>> {
 	const nonce = new Uint8Array(NONCE_BYTES);
 	crypto.getRandomValues(nonce);
 	const ct = await crypto.subtle.encrypt({ name: 'AES-GCM', iv: nonce }, key, plaintext as BufferSource);

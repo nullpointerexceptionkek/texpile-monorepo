@@ -70,6 +70,9 @@ export interface ManifestEntry {
 	eol?: '\r\n' | '\n';
 	/** tombstone: file was deleted on the host. */
 	gone?: boolean;
+	/** binaries only: changes when the bytes do (host mtime), so a guest can drop a stale blob.
+	 *  Text needs none, its edits arrive through the CRDT. */
+	rev?: number;
 }
 
 export class CollabSession {

@@ -24,6 +24,8 @@ export interface WorkspaceProvider {
 	readText(path: string): Promise<string>;
 	scanTree(root: string): Promise<TreeEntry[]>;
 	scanTexFiles(root: string): Promise<TexFile[]>;
+	/** files by extension (no dots), for the .bib scan behind citation completion. */
+	scanFiles(root: string, exts: string[]): Promise<TexFile[]>;
 	stat(path: string): Promise<{ exists: boolean; mtimeMs: number; size: number }>;
 	/** bytes URL for an image or the PDF: texfile:// on disk, blob: for a guest. */
 	fileUrl(path: string): string;

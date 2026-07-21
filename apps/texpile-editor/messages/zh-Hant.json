@@ -116,6 +116,7 @@
 	"wsview_start_new_doc_desc_pre": "此資料夾中還沒有",
 	"wsview_start_new_doc_desc_post": "檔案，請選擇一個範本開始。",
 	"wsview_binary_file_note": "{name}（二進位檔案，此處無法編輯）",
+	"wsview_shared_name_only": "主持人僅共享了 {name} 的檔案名稱。該檔案過大，或不是工作階段同步的檔案類型。",
 	"wsview_opening": "正在開啟…",
 	"wsview_select_file_prompt": "選擇一個檔案進行編輯。",
 	"wsview_live_preview_label": "即時預覽",

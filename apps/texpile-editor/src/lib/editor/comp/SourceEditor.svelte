@@ -43,13 +43,11 @@
 		token?: string;
 	}
 	// shared-session binding: the Y.Text is the doc (value is ignored), remote cursors render via
-	// awareness, undo becomes CRDT-aware (only your own edits). minimal drops the fs-backed
-	// extensions (intellisense, spellcheck) for guest windows that have no file access.
+	// awareness, undo becomes CRDT-aware (only your own edits).
 	interface CollabBinding {
 		ytext: Y.Text;
 		awareness: Awareness;
 		readOnly?: boolean;
-		minimal?: boolean;
 	}
 	let {
 		value = '',
@@ -149,6 +147,12 @@
 		'.cm-gutter-lint .cm-gutterElement': { padding: '0 1px' },
 		'.cm-lint-marker': { width: '0.8em', height: '0.8em' }
 	});
+	// y-codemirror's base theme gives a remote peer's full-line selection horizontal margins, which
+	// shifts the LINE'S TEXT (it's a line decoration), not just the highlight: someone else
+	// selecting must never move glyphs on this screen. Theme > baseTheme, so this wins.
+	const yRemoteLayoutFix = EditorView.theme({
+		'.cm-yLineSelection': { margin: '0' }
+	});
 	const langConf = new Compartment();
 	const roConf = new Compartment();
 	// true while pushing an external value into CM, so the update listener doesn't echo it back as a user edit
@@ -167,11 +171,11 @@
 				doc: collab ? collab.ytext.toString() : value,
 				extensions: [
 					// gutters render in extension order: lint goes before lineNumbers so it lands on their left
-					...(!collab?.minimal && (!filename || /\.tex$/i.test(filename)) ? [lintGutter({ hoverTime: 0 })] : []),
+					...(!filename || /\.tex$/i.test(filename) ? [lintGutter({ hoverTime: 0 })] : []),
 					lineNumbers(),
 					gutterTheme,
 					highlightActiveLine(),
-					...(collab ? [yCollab(collab.ytext, collab.awareness, { undoManager: undoManager! })] : [history()]),
+					...(collab ? [yCollab(collab.ytext, collab.awareness, { undoManager: undoManager! }), yRemoteLayoutFix] : [history()]),
 					roConf.of(collab?.readOnly ? [EditorState.readOnly.of(true), EditorView.editable.of(false)] : []),
 					drawSelection(),
 					bracketMatching(),
@@ -179,15 +183,13 @@
 					langConf.of([]),
 					cmSyntaxHighlight(),
 					// full intellisense (completion + shortcuts + hover + folding + go-to-def) + math preview for
-					// .tex only; .bib gets entry-type/field completion. minimal (guest windows) drops the
-					// fs-backed extensions entirely.
-					...(collab?.minimal
-						? []
-						: !filename || /\.tex$/i.test(filename)
-							? [latexIntellisense({ onJumpToFile, onOpenFileAt }), mathPreview(), starterGhost(), cmSpellcheck()]
-							: /\.bib$/i.test(filename)
-								? [latexAutocomplete({ bib: true })]
-								: []),
+					// .tex only; .bib gets entry-type/field completion. Guests included: the sources read
+					// stores fed through the workspace provider, so a session serves them from the shared doc.
+					...(!filename || /\.tex$/i.test(filename)
+						? [latexIntellisense({ onJumpToFile, onOpenFileAt }), mathPreview(), starterGhost(), cmSpellcheck()]
+						: /\.bib$/i.test(filename)
+							? [latexAutocomplete({ bib: true })]
+							: []),
 					synctexFlash(), // flash the line jumped to by SyncTeX inverse search / Find-in-Files
 					// compact find/replace widget, floated top-right (styles below)
 					texpileSearch(),

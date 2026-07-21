@@ -99,6 +99,8 @@
 	const formatLatexDocument = (p: string, text: string) => provider.format!(p, text);
 	const scanTree = async (root: string) => ({ root, children: await provider.scanTree(root) });
 	const scanTexFiles = async (root: string) => ({ root, files: await provider.scanTexFiles(root) });
+	// citations read through the provider too, so guest sessions resolve \cite keys from the shared doc
+	const loadRefs = (root: string) => loadReferences(root, { scan: (r, e) => provider.scanFiles(r, e), read: readTextFile });
 	// true for the disk-backed host; false for a read-only guest session. Gates the host-only
 	// lifecycle (folder claim, terminal, main-file/macro scan, on-disk change checks) so this same
 	// view can run over a shared session.
@@ -172,6 +174,11 @@
 		return 'text';
 	}
 	const kind = $derived(fileKind(loadedPath));
+	// a guest opening a text-looking file the host shares as name only (too large / extension the
+	// session doesn't sync): say so instead of rendering a silently empty editor
+	const nameOnly = $derived(
+		guest && (kind === 'tex' || kind === 'bib' || kind === 'text') && session.sharedKindOf(loadedPath) === 'binary'
+	);
 
 	// shared session: a file the host holds in a NON-Y-bound editor is host-exclusive (guests go
 	// read-only), else concurrent guest edits to that file's Y.Text would be clobbered. Source mode
@@ -194,7 +201,7 @@
 		try {
 			const mainPath = await applyStarter(root, s);
 			setMainFile(root, mainPath);
-			await loadReferences(root); // the starter may include references.bib; reload so its \cite keys resolve
+			await loadRefs(root); // the starter may include references.bib; reload so its \cite keys resolve
 			await refreshTree();
 			activeFilePath.set(mainPath);
 		} catch (e) {
@@ -210,7 +217,7 @@
 		applyingStarter = true;
 		try {
 			const mainPath = await applyImportedFiles(root, files);
-			await loadReferences(root); // imported .bib -> resolve its \cite keys
+			await loadRefs(root); // imported .bib -> resolve its \cite keys
 			await refreshTree();
 			if (mainPath) {
 				setMainFile(root, mainPath);
@@ -267,7 +274,7 @@
 		}
 		terminalAvailable = isDesktop() && hostMode; // client-only; set here so SSR/CSR agree
 		if (guest) pdfPaneOpen = true; // guests land with the host's PDF visible
-		loadReferences(root);
+		loadRefs(root);
 		refreshTree();
 		initSpellcheckConfig(); // seed editorConfigStore so the spell-check toggle works
 
@@ -301,7 +308,7 @@
 		// the citation nodes see fresh keys immediately.
 		const reloadReferences = () => {
 			const root = get(workspaceRoot);
-			if (root) void loadReferences(root);
+			if (root) void loadRefs(root);
 		};
 		const onFocus = () => {
 			refreshTree();
@@ -352,13 +359,20 @@
 		// shared session: the manifest mirrors the tree, same single call-site trick
 		void session.syncTree();
 		// git refresh is non-blocking and never throws; this single call-site
-		// covers every refreshTree() trigger for free
+		// covers every refreshTree() trigger for free. Guests have no disk and no repo, and this
+		// now runs on every manifest change, so don't spawn git per remote file op.
+		if (!provider.caps.git) return;
 		void refreshGitStatus(root).then(({ missingGit }) => {
 			if (missingGit && takeNoGitHint()) {
 				toaster.warning({ title: m.wsview_toast_no_git_title(), description: m.wsview_toast_no_git_desc() });
 			}
 		});
 	}
+
+	// the shared file set changes under a guest whenever the host adds, renames or deletes a file.
+	// The provider exposes a watch hook for exactly this; without it the tree only ever reflected
+	// what was there at join time.
+	onMount(() => provider.watch?.(() => void refreshTree()));
 
 	function openEntry(entry: TreeEntry) {
 		if (entry.type !== 'file') return;
@@ -385,7 +399,7 @@
 			updateSettings({ lastFolder: root });
 			await refreshTree();
 			await initProject(root);
-			loadReferences(root);
+			loadRefs(root);
 			activeFilePath.set(files[0]?.path ?? null);
 			// the open shells were spawned in the previous folder; respawn them in the new one
 			if (root !== prevRoot) resetTerminalsForWorkspace();
@@ -480,7 +494,7 @@
 				});
 			}
 			await refreshTree();
-			if (name.toLowerCase().endsWith('.bib')) await loadReferences(get(workspaceRoot) ?? parentDir); // new .bib -> refresh citation keys
+			if (name.toLowerCase().endsWith('.bib')) await loadRefs(get(workspaceRoot) ?? parentDir); // new .bib -> refresh citation keys
 			if (isTex) activeFilePath.set(path);
 		} catch (e) {
 			const msg = e instanceof Error ? e.message : String(e);
@@ -954,6 +968,23 @@
 	// last compile's problems for the file open in source mode; badboxes ride along
 	// as "info" so they underline without alarming colors
 	const sourceDiagnostics = $derived.by(() => {
+		// guest: the host's shared parse (files already root-relative), same shape as below
+		if (guest) {
+			const shared = session.compileIntel;
+			const file = loadedPath?.replace(/^session\//, '');
+			if (!shared || !file) return [];
+			return shared.log
+				.filter((e) => samePath(e.file, file))
+				.map((e) => ({
+					line: e.line,
+					lineEnd: e.lineEnd,
+					severity: e.level === 'error' ? ('error' as const) : e.level === 'badbox' ? ('info' as const) : ('warning' as const),
+					message: e.hint ? `${e.message}\n\n${e.hint}` : e.message,
+					column: e.column,
+					anchorText: e.anchorText,
+					token: e.command
+				}));
+		}
 		const log = $compileLog;
 		const root = $workspaceRoot;
 		const file = loadedPath;
@@ -1198,6 +1229,7 @@
 			}
 		}
 		compileLog.set({ ...parsed, logPath, updatedAt: mtimeMs });
+		shareCompileState(); // guests get the fresh diagnostics without waiting for the intel rescan
 		// a failed build produces no fresh PDF, so nothing else tells the user: surface the
 		// Problems list. clean/warning-only results never steal the dock.
 		if (parsed.errors.length > 0) {
@@ -1608,8 +1640,46 @@
 			: [];
 		// the .aux sits next to the log (output/aux dirs included); fall back to a main-sibling .aux
 		const aux = expectedLogPath()?.replace(/\.log$/i, '.aux') ?? (main ? main.replace(/\.tex$/i, '.aux') : null);
-		void refreshProjectIntel(files, bibs, aux, active ?? null);
+		// a guest has no aux on disk; the host's shared parse fills the numbers in (and re-runs
+		// this when a fresh compile lands). Reading session.active also seeds the host's share
+		// when a session starts against an already-compiled project.
+		const live = session.active;
+		const sharedAux =
+			guest && session.compileIntel ? { numbers: session.compileIntel.auxNumbers, pages: session.compileIntel.auxPages } : null;
+		void refreshProjectIntel(files, bibs, guest ? null : aux, active ?? null, readTextFile, sharedAux).then(() => {
+			if (live && !guest) shareCompileState();
+		});
 	});
+
+	// publish the parsed compile products (aux label numbers + diagnostics) to guests: parse once
+	// here, share small JSON via session meta, instead of syncing wholesale .aux/.log artifacts
+	// (which rewrite per compile and would bloat the shared doc's history)
+	function shareCompileState() {
+		const root = get(workspaceRoot);
+		if (guest || !root || !session.active) return;
+		const intel = get(projectIntelStore);
+		const log = get(compileLog);
+		const entries = (log?.entries ?? [])
+			.filter((e) => e.level !== 'info' && e.line !== undefined)
+			.flatMap((e) => {
+				const abs = resolveLogPath(root, e.file);
+				if (!abs) return [];
+				return [
+					{
+						file: relativeTo(root, abs).replace(/\\/g, '/'),
+						line: e.line!,
+						lineEnd: e.lineEnd,
+						level: e.level as 'error' | 'warning' | 'badbox',
+						message: e.message,
+						hint: e.hint,
+						column: e.column,
+						anchorText: e.anchorText,
+						command: e.command
+					}
+				];
+			});
+		session.shareCompileIntel({ auxNumbers: intel.auxNumbers, auxPages: intel.auxPages, log: entries });
+	}
 
 	// \includegraphics hover preview: candidate texfile:// URLs (current dir, root, and any
 	// \graphicspath dirs, adding raster extensions when the path has none); the tooltip's img
@@ -1640,6 +1710,8 @@
 			toaster.info({ title: m.wsview_toast_compile_requested_title(), duration: 3000 });
 			void runCompile();
 		};
+		// a guest changed files on the host's disk (upload / rename / delete): refresh our own tree
+		session.onFileOp = () => void refreshTree();
 		// resolve a guest's SyncTeX request against our .synctex data and reply
 		session.onSyncRequest = async (payload, from) => {
 			const root = get(workspaceRoot);
@@ -1664,6 +1736,7 @@
 		return () => {
 			session.onCompileRequest = null;
 			session.onSyncRequest = null;
+			session.onFileOp = null;
 			void session.end();
 		};
 	});
@@ -2598,6 +2671,7 @@
 				<EditorPane
 					{loadedPath}
 					{kind}
+					{nameOnly}
 					{viewMode}
 					{session}
 					{folderEmpty}

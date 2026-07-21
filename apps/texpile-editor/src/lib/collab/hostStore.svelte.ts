@@ -6,14 +6,18 @@ import { get } from 'svelte/store';
 import { generateShareCode } from './e2e/shareCode';
 import { deriveSessionKeys, sha256Hex } from './e2e/keys';
 import { CollabSession, manifestOf, locksOf, metaOf, textOf, type PeerInfo } from './session';
-import type { ControlPayload } from './protocol';
+import { isSafeRel, type ControlPayload } from './protocol';
+import type { SharedCompileIntel } from './editSession';
 import { HostMaterializer, isTextFile, isShared } from './materialize';
 import { RelayTransport, createRelaySession } from './transport';
 import {
 	readTextFile,
 	writeTextFile,
 	writeBinaryFile,
+	renameEntry,
+	deleteEntry,
 	scanTree,
+	statFile,
 	fileUrl,
 	relativeTo,
 	joinPath,
@@ -23,7 +27,7 @@ import { settings } from '$lib/settings';
 
 const toLf = (s: string) => s.replace(/\r\n?/g, '\n');
 
-function flattenTree(children: TreeEntry[], root: string): { rel: string; size: number }[] {
+async function flattenTree(children: TreeEntry[], root: string): Promise<{ rel: string; size: number; mtimeMs?: number }[]> {
 	const out: { rel: string; size: number }[] = [];
 	const walk = (entries: TreeEntry[]) => {
 		for (const e of entries) {
@@ -32,7 +36,11 @@ function flattenTree(children: TreeEntry[], root: string): { rel: string; size: 
 		}
 	};
 	walk(children);
-	return out;
+	// stat only the files served as blobs. Text bodies live in the CRDT and carry their own edits,
+	// so they need no rev, and statting every file would make each tree refresh O(n) IPC round-trips
+	return Promise.all(
+		out.map(async (f) => (isTextFile(f.rel) || !isShared(f.rel) ? f : { ...f, mtimeMs: (await statFile(joinPath(root, f.rel))).mtimeMs }))
+	);
 }
 
 class HostCollabController {
@@ -52,6 +60,19 @@ class HostCollabController {
 	onCompileRequest: (() => void) | null = null;
 	/** WorkspaceView wires this to resolve a guest's SyncTeX request and reply via replyControl. */
 	onSyncRequest: ((payload: ControlPayload, from: number) => void) | null = null;
+	/** WorkspaceView wires this to refresh its own tree after a guest upload/rename/delete. */
+	onFileOp: (() => void) | null = null;
+	/** the host trusts its own disk for file kinds. */
+	readonly sharedKindOf = () => null;
+	/** the host reads its real aux/log; only guests consume the shared copy. */
+	readonly compileIntel = null;
+
+	/** publish the parsed compile products (aux numbers + diagnostics) for guests, via meta so
+	 *  late joiners pick them up from doc state instead of needing a rebroadcast. */
+	shareCompileIntel(intel: SharedCompileIntel): void {
+		if (!this.active || !this.doc) return;
+		metaOf(this.doc).set('compileIntel', JSON.stringify(intel));
+	}
 
 	private session: CollabSession | null = null;
 	private materializer: HostMaterializer | null = null;
@@ -90,6 +111,7 @@ class HostCollabController {
 					onControl: (payload, from) => {
 						if (payload.kind === 'compile-request') this.onCompileRequest?.();
 						else if (payload.kind === 'synctex-inverse' || payload.kind === 'synctex-forward') void this.onSyncRequest?.(payload, from);
+						else if (payload.kind === 'file-op') void this.applyGuestFileOp(payload);
 					},
 					onBlobRequest: (name, from) => {
 						if (name === 'pdf') {
@@ -195,7 +217,8 @@ class HostCollabController {
 		try {
 			const res = await fetch(fileUrl(joinPath(this.root, rel)), { cache: 'no-store' });
 			if (!res.ok) return;
-			this.session.sendBlob(name, 0, new Uint8Array(await res.arrayBuffer()), to);
+			const rev = Number(manifestOf(this.doc!).get(rel)?.rev ?? 0);
+			this.session.sendBlob(name, rev, new Uint8Array(await res.arrayBuffer()), to);
 		} catch {
 			/* the guest just won't see this file */
 		}
@@ -209,8 +232,26 @@ class HostCollabController {
 		try {
 			await writeBinaryFile(joinPath(this.root, clean), new Blob([bytes as BlobPart]));
 			await this.syncTree();
+			this.onFileOp?.(); // the host's own tree UI, not just the manifest
 		} catch {
 			/* ignore a failed upload */
+		}
+	}
+
+	/** a guest's rename/delete, executed against the host's disk after path validation. */
+	private async applyGuestFileOp(p: ControlPayload & { kind: 'file-op' }): Promise<void> {
+		if (!this.active || !this.root) return;
+		if (!isSafeRel(p.from) || !isShared(p.from)) return;
+		try {
+			if (p.op === 'delete') await deleteEntry(joinPath(this.root, p.from));
+			else if (p.op === 'rename') {
+				if (!p.to || !isSafeRel(p.to) || !isShared(p.to)) return;
+				await renameEntry(joinPath(this.root, p.from), joinPath(this.root, p.to));
+			}
+			await this.syncTree();
+			this.onFileOp?.();
+		} catch {
+			/* op failed (file gone, name clash): the unchanged manifest is the guest's answer */
 		}
 	}
 

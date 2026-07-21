@@ -116,6 +116,7 @@
 	"wsview_start_new_doc_desc_pre": "此文件夹中还没有",
 	"wsview_start_new_doc_desc_post": "文件，请选择一个模板开始。",
 	"wsview_binary_file_note": "{name}（二进制文件，此处不可编辑）",
+	"wsview_shared_name_only": "主持人仅共享了 {name} 的文件名。该文件过大，或不是会话同步的文件类型。",
 	"wsview_opening": "正在打开…",
 	"wsview_select_file_prompt": "选择一个文件进行编辑。",
 	"wsview_live_preview_label": "实时预览",

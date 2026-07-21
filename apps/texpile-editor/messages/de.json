@@ -116,6 +116,7 @@
 	"wsview_start_new_doc_desc_pre": "Dieser Ordner enthält noch keine",
 	"wsview_start_new_doc_desc_post": "Dateien. Wählen Sie eine Vorlage, um zu beginnen.",
 	"wsview_binary_file_note": "{name} (Binärdatei, hier nicht bearbeitbar)",
+	"wsview_shared_name_only": "Der Host teilt {name} nur dem Namen nach. Die Datei ist zu groß oder kein Dateityp, den Sitzungen synchronisieren.",
 	"wsview_opening": "Wird geöffnet…",
 	"wsview_select_file_prompt": "Wählen Sie eine Datei zum Bearbeiten aus.",
 	"wsview_live_preview_label": "Live-Vorschau",

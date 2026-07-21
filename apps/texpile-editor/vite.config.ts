@@ -94,7 +94,11 @@ export default defineConfig(({ mode }) => ({
 	},
 
 	build: {
-		sourcemap: false
+		sourcemap: false,
+		// Electron ships a modern Chromium with native modulepreload, so drop Vite's polyfill: it is
+		// the only inline <script> Vite injects, and removing it lets the packaged app's CSP use a
+		// strict script-src 'self' with no inline allowance
+		modulePreload: { polyfill: false }
 	},
 
 	// minification strips our comments but must keep third-party legal comments (/*! */,

@@ -7,17 +7,9 @@
 		<meta name="viewport" content="width=device-width, initial-scale=1" />
 		<meta name="theme-color" content="#2563eb" />
 		<title>Texpile</title>
-		<script>
-			// Apply the saved appearance before paint so there's no flash (see lib/theme.ts).
-			// Choice is light | dark | system (default); "system" follows the OS preference.
-			try {
-				var c = localStorage.getItem('texpile:mode');
-				var sysDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
-				var dark = c === 'dark' || ((c === 'system' || !c) && sysDark);
-				document.documentElement.setAttribute('data-mode', dark ? 'dark' : 'light');
-				if (dark) document.documentElement.classList.add('dark');
-			} catch (e) {}
-		</script>
+		<!-- external (not inline) so the packaged app's CSP can keep a strict script-src 'self'; still
+		     render-blocking in <head>, so it runs before first paint (no theme flash) -->
+		<script src="/theme-init.js"></script>
 	</head>
 	<body>
 		<div id="app" style="display: contents"></div>

@@ -145,6 +145,28 @@ function luaDir(): string {
 	return isDev ? path.join(__dirname, '..', 'lua') : path.join(process.resourcesPath, 'lua');
 }
 
+// CSP for the packaged renderer (dev loads from the vite server, which this doesn't touch). The
+// strict script-src is the real backstop: even if untrusted collab content were ever injected into
+// the renderer, it can't execute, so it can never reach the texfile:// read primitive. img-src omits
+// remote hosts, which also kills any CSS url() beacon. connect-src stays broad for now (auto-update
+// over https + the user-configurable collab relay over ws/wss); pin it to specific hosts as a follow-up.
+const RENDERER_CSP = [
+	"default-src 'none'",
+	"script-src 'self' 'wasm-unsafe-eval'",
+	"style-src 'self' 'unsafe-inline'",
+	"img-src 'self' texfile: blob: data:",
+	"font-src 'self' data:",
+	"connect-src 'self' texfile: blob: data: https: wss: ws:",
+	"worker-src 'self' blob:",
+	"child-src 'self' blob:",
+	"media-src 'self' blob: data:",
+	"object-src 'none'",
+	"base-uri 'self'",
+	"frame-src 'none'",
+	"frame-ancestors 'none'",
+	"form-action 'self'"
+].join('; ');
+
 function registerProtocolHandlers(): void {
 	protocol.handle('app', async (request) => {
 		const url = new URL(request.url);
@@ -159,7 +181,10 @@ function registerProtocolHandlers(): void {
 		try {
 			const data = await fs.promises.readFile(file);
 			const mime = BUNDLE_MIME[path.extname(file).toLowerCase()] || 'application/octet-stream';
-			return new Response(new Uint8Array(data), { headers: { 'Content-Type': mime } });
+			const headers: Record<string, string> = { 'Content-Type': mime };
+			// CSP is a document-level directive; attach it to the served HTML (ignored on subresources)
+			if (mime === 'text/html') headers['Content-Security-Policy'] = RENDERER_CSP;
+			return new Response(new Uint8Array(data), { headers });
 		} catch {
 			return new Response('Not found', { status: 404 });
 		}
@@ -199,7 +224,9 @@ function createWindow(url: string, pending?: PendingOpen): BrowserWindow {
 			preload: path.join(__dirname, 'preload.js'),
 			contextIsolation: true,
 			nodeIntegration: false,
-			devTools: !app.isPackaged
+			// dev always; in a packaged build only when TEXPILE_DEVTOOLS is set (e.g. to watch for CSP
+			// violations in a dist:dir smoke test) - never on for a normal install
+			devTools: !app.isPackaged || !!process.env.TEXPILE_DEVTOOLS
 		}
 	});
 	// capture now: webContents is gone by the time 'closed' fires
@@ -207,6 +234,7 @@ function createWindow(url: string, pending?: PendingOpen): BrowserWindow {
 	windowRoots.set(wcId, null);
 	if (pending) pendingOpens.set(wcId, pending);
 	win.loadURL(url);
+	if (app.isPackaged && process.env.TEXPILE_DEVTOOLS) win.webContents.openDevTools({ mode: 'detach' });
 	win.webContents.on('did-finish-load', () => {
 		// restore the saved whole-window zoom before the first paint the user sees
 		const z = Number(readSettings().uiZoom);
@@ -232,6 +260,18 @@ function createWindow(url: string, pending?: PendingOpen): BrowserWindow {
 	win.webContents.setWindowOpenHandler(({ url: target }) => {
 		if (/^https?:/.test(target)) shell.openExternal(target);
 		return { action: 'deny' };
+	});
+	// the renderer is a single-page app; the top frame must never navigate away from its own origin.
+	// http/https go to the real browser, everything else (file:, data:, javascript:, ...) is dropped.
+	// Belt-and-braces with the in-editor link handler: a defence against any content-driven navigation.
+	win.webContents.on('will-navigate', (event, target) => {
+		try {
+			if (new URL(target).origin === new URL(win.webContents.getURL()).origin) return; // in-app
+		} catch {
+			/* unparseable target: fall through and block */
+		}
+		event.preventDefault();
+		if (/^https?:/i.test(target)) shell.openExternal(target);
 	});
 	win.on('closed', () => {
 		windowRoots.delete(wcId);
@@ -412,8 +452,12 @@ function systemUiLocale(): UiLocale {
 	for (const raw of tags) {
 		const tag = raw.toLowerCase();
 		if (tag.startsWith('de')) return (cachedLocale = 'de');
-		// script subtag wins; else region, where TW/HK/MO are Traditional and the rest Simplified
-		if (tag.startsWith('zh')) return (cachedLocale = /hant|-tw|-hk|-mo/.test(tag) ? 'zh-Hant' : 'zh-Hans');
+		// an explicit script subtag wins over region: zh-Hans-HK is Simplified despite the HK region.
+		// Only when no script is present do TW/HK/MO imply Traditional; everything else is Simplified.
+		if (tag.startsWith('zh')) {
+			const hant = /hant/.test(tag) || (!/hans/.test(tag) && /-(tw|hk|mo)\b/.test(tag));
+			return (cachedLocale = hant ? 'zh-Hant' : 'zh-Hans');
+		}
 		if (tag.startsWith('en')) return (cachedLocale = 'en');
 		// unsupported language: keep looking, the user's next preference may be one we ship
 	}
@@ -421,22 +465,31 @@ function systemUiLocale(): UiLocale {
 }
 
 const settingsFile = () => path.join(app.getPath('userData'), 'settings.json');
-function readSettings(): Record<string, unknown> {
+function storedSettings(): Record<string, unknown> {
 	try {
-		return { ...DEFAULT_SETTINGS, uiLocale: systemUiLocale(), ...JSON.parse(fs.readFileSync(settingsFile(), 'utf8')) };
+		return JSON.parse(fs.readFileSync(settingsFile(), 'utf8')) as Record<string, unknown>;
 	} catch {
-		// no settings file yet: the genuine first run, which is exactly when detection matters
-		return { ...DEFAULT_SETTINGS, uiLocale: systemUiLocale() };
+		return {}; // no file yet (genuine first run) or unreadable: fall back to defaults + detection
 	}
 }
+function readSettings(): Record<string, unknown> {
+	// detected system language fills in only until a stored/chosen uiLocale wins (spread order)
+	return { ...DEFAULT_SETTINGS, uiLocale: systemUiLocale(), ...storedSettings() };
+}
 function writeSettings(partial: Record<string, unknown> | undefined): Record<string, unknown> {
-	const next = { ...readSettings(), ...(partial || {}) };
+	const stored = storedSettings();
+	const next: Record<string, unknown> = { ...DEFAULT_SETTINGS, ...stored, ...(partial || {}) };
+	// never freeze the auto-detected language into the file: only a previously stored value or a
+	// deliberate change (uiLocale in `partial`, from Preferences) persists, so an incidental write
+	// like remembering open folders won't stop the app from following the OS language.
+	if (!('uiLocale' in stored) && !(partial && 'uiLocale' in partial)) delete next.uiLocale;
 	try {
 		fs.writeFileSync(settingsFile(), JSON.stringify(next, null, 2));
 	} catch (e) {
 		console.error('Failed to write settings:', e);
 	}
-	return next;
+	// hand back the effective settings (with detection applied) so callers see a complete object
+	return { ...DEFAULT_SETTINGS, uiLocale: systemUiLocale(), ...next };
 }
 ipcMain.handle('settings:get', () => readSettings());
 ipcMain.handle('settings:set', (_e, partial: Record<string, unknown>) => writeSettings(partial));

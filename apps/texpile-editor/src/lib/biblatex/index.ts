@@ -18,7 +18,7 @@ export { BibEntrySchema, biblatexReferenceSchema } from './schema';
 export { fitsVisualEditor } from './fits';
 
 export {
-	entryTypeConfigs,
+	getEntryTypeConfigs,
 	getFieldsForType,
 	getEntryTypeOptions,
 	getRequiredFields,

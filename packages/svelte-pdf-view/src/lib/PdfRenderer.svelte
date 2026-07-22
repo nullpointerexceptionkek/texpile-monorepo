@@ -11,6 +11,8 @@
 		src?: PdfSource;
 		backgroundColor?: string;
 		pageShadow?: string;
+		/** Passing any scrollbar-* prop opts into the styled scrollbar; leave them all unset for
+		 *  the native one (matches the host page's scrollers). */
 		scrollbarTrackColor?: string;
 		scrollbarThumbColor?: string;
 		scrollbarThumbHoverColor?: string;
@@ -27,10 +29,10 @@
 		src: srcProp,
 		backgroundColor = '#e8e8e8',
 		pageShadow = '0 2px 8px rgba(0, 0, 0, 0.12), 0 1px 3px rgba(0, 0, 0, 0.08)',
-		scrollbarTrackColor = '#f1f1f1',
-		scrollbarThumbColor = '#c1c1c1',
-		scrollbarThumbHoverColor = '#a1a1a1',
-		scrollbarWidth = '10px',
+		scrollbarTrackColor,
+		scrollbarThumbColor,
+		scrollbarThumbHoverColor,
+		scrollbarWidth,
 		darkMode = false,
 		onPageClick
 	}: Props = $props();
@@ -48,6 +50,9 @@
 
 	let viewer: import('./pdf-viewer/PDFViewerCore.js').PDFViewerCore | null = null;
 	let findController: import('./pdf-viewer/FindController.js').FindController | null = null;
+	// the document loaded into `viewer`; when the next load carries the same key it's a reload of
+	// the same file (a recompile) and we keep the scroll position instead of jumping to the top
+	let loadedKey: string | number | undefined;
 
 	const presentationMode = new PdfPresentationMode({
 		onStateChange: (newState) => {
@@ -59,63 +64,102 @@
 		}
 	});
 
-	async function loadPdf(source: PdfSource) {
-		if (!BROWSER || !scrollContainerEl) return;
+	// one viewer for the pane's lifetime: each load parses the new document off-screen, then
+	// setDocument swaps it into the same container in place, so on a recompile the old pages
+	// stay up (scroll intact) until the new ones land. Loads are serialized through a queue;
+	// a load scheduled while an older one is still parsing supersedes it.
+	let loadGen = 0;
+	let loadQueue: Promise<void> = Promise.resolve();
 
-		viewerState.loading = true;
-		viewerState.error = null;
+	function queueLoad(source: PdfSource) {
+		const gen = ++loadGen;
+		loadQueue = loadQueue.then(() => loadPdf(gen, source));
+	}
 
-		if (viewer) {
-			viewer.destroy();
-			viewer = null;
+	// static clones of the on-screen pages (canvas bitmaps copied by hand, cloneNode leaves them
+	// blank), absolutely positioned over the container: they hold the old pixels while the new
+	// document swaps in underneath, then fade out. Not document.startViewTransition: pdf.js
+	// schedules canvas work through requestAnimationFrame, which is frozen during a view
+	// transition, so its capture always lands before the new pages have pixels.
+	function snapshotOverlay(): HTMLDivElement | null {
+		if (!containerEl || !scrollContainerEl || !viewer || viewer.pagesCount === 0) return null;
+		const contRect = scrollContainerEl.getBoundingClientRect();
+		if (contRect.width === 0) return null;
+		const overlay = document.createElement('div');
+		overlay.style.cssText = 'position:absolute;inset:0;overflow:hidden;pointer-events:none;z-index:5;';
+		for (const pageDiv of scrollContainerEl.querySelectorAll<HTMLElement>('.page')) {
+			const rect = pageDiv.getBoundingClientRect();
+			if (rect.bottom < contRect.top || rect.top > contRect.bottom) continue;
+			const clone = pageDiv.cloneNode(true) as HTMLElement;
+			clone.style.position = 'absolute';
+			clone.style.left = `${rect.left - contRect.left}px`;
+			clone.style.top = `${rect.top - contRect.top}px`;
+			clone.style.margin = '0';
+			const src = pageDiv.querySelectorAll('canvas');
+			clone.querySelectorAll('canvas').forEach((c, i) => {
+				if (src[i]) c.getContext('2d')?.drawImage(src[i], 0, 0);
+			});
+			overlay.appendChild(clone);
 		}
+		if (!overlay.childElementCount) return null;
+		containerEl.appendChild(overlay);
+		return overlay;
+	}
 
-		scrollContainerEl.innerHTML = '';
-
-		let newViewer: import('./pdf-viewer/PDFViewerCore.js').PDFViewerCore | null = null;
+	async function loadPdf(gen: number, source: PdfSource) {
+		if (!BROWSER || !scrollContainerEl || gen !== loadGen) return;
+		viewerState.error = null;
+		if (!viewer) viewerState.loading = true;
+		let overlay: HTMLDivElement | null = null;
+		// the loading task / parsed document we still OWN: cleared once the live viewer adopts it. On
+		// any early exit or error, whatever this points at must be destroyed or it leaks in the worker.
+		let toDestroy: { destroy(): Promise<void> } | null = null;
 
 		try {
 			const pdfjs = await getPdfJs();
 			if (!pdfjs) return;
 
-			const { PDFViewerCore } = await import('./pdf-viewer/PDFViewerCore.js');
-			const { FindController } = await import('./pdf-viewer/FindController.js');
-			const { EventBus } = await import('./pdf-viewer/EventBus.js');
+			if (!viewer) {
+				const { PDFViewerCore } = await import('./pdf-viewer/PDFViewerCore.js');
+				const { FindController } = await import('./pdf-viewer/FindController.js');
+				const { EventBus } = await import('./pdf-viewer/EventBus.js');
 
-			const eventBus = new EventBus();
+				const eventBus = new EventBus();
 
-			newViewer = new PDFViewerCore({
-				container: scrollContainerEl,
-				eventBus,
-				initialScale: viewerState.scale,
-				initialRotation: viewerState.rotation,
-				onPageClick: (page, x, y, selectText) => onPageClick?.(page, x, y, selectText)
-			});
+				viewer = new PDFViewerCore({
+					container: scrollContainerEl,
+					eventBus,
+					initialScale: viewerState.scale,
+					initialRotation: viewerState.rotation,
+					onPageClick: (page, x, y, selectText) => onPageClick?.(page, x, y, selectText)
+				});
 
-			findController = new FindController(newViewer, eventBus);
+				findController = new FindController(viewer, eventBus);
 
-			eventBus.on('scalechanged', (data: Record<string, unknown>) => {
-				viewerState.scale = data.scale as number;
-			});
+				eventBus.on('scalechanged', (data: Record<string, unknown>) => {
+					viewerState.scale = data.scale as number;
+				});
 
-			eventBus.on('rotationchanged', (data: Record<string, unknown>) => {
-				viewerState.rotation = data.rotation as number;
-			});
+				eventBus.on('rotationchanged', (data: Record<string, unknown>) => {
+					viewerState.rotation = data.rotation as number;
+				});
 
-			eventBus.on('updateviewarea', (data: Record<string, unknown>) => {
-				const location = data.location as { pageNumber: number };
-				viewerState.currentPage = location.pageNumber;
-			});
+				eventBus.on('updateviewarea', (data: Record<string, unknown>) => {
+					const location = data.location as { pageNumber: number };
+					viewerState.currentPage = location.pageNumber;
+				});
 
-			eventBus.on('pagesloaded', (data: Record<string, unknown>) => {
-				viewerState.totalPages = data.pagesCount as number;
-			});
+				eventBus.on('pagesloaded', (data: Record<string, unknown>) => {
+					viewerState.totalPages = data.pagesCount as number;
+				});
 
-			eventBus.on('updatefindmatchescount', (data: Record<string, unknown>) => {
-				const matchesCount = data.matchesCount as { current: number; total: number };
-				viewerState.searchCurrent = matchesCount.current;
-				viewerState.searchTotal = matchesCount.total;
-			});
+				eventBus.on('updatefindmatchescount', (data: Record<string, unknown>) => {
+					const matchesCount = data.matchesCount as { current: number; total: number };
+					viewerState.searchCurrent = matchesCount.current;
+					viewerState.searchTotal = matchesCount.total;
+				});
+			}
+			const v = viewer;
 
 			let documentSource: string | { data: ArrayBuffer } | { data: Uint8Array };
 
@@ -137,22 +181,54 @@
 			}
 
 			const loadingTask = pdfjs.getDocument(documentSource);
+			toDestroy = loadingTask; // if the parse rejects, the task itself still needs freeing
 			const loadedPdfDocument = await loadingTask.promise;
+			toDestroy = loadedPdfDocument; // destroying the doc frees the task too
+			if (gen !== loadGen) {
+				toDestroy = null;
+				void loadedPdfDocument.destroy().catch(() => {});
+				return;
+			}
 
-			await newViewer.setDocument(loadedPdfDocument);
-			findController.setDocument(loadedPdfDocument);
+			// reload of the same document (a recompile): note where we are so the fresh pages land
+			// back there. A different documentKey is a genuine document switch, so start at the top.
+			const key = context.documentKey;
+			const anchor = key !== undefined && key === loadedKey ? v.getScrollAnchor() : null;
 
+			overlay = snapshotOverlay();
+
+			await v.setDocument(loadedPdfDocument);
+			// setDocument awaits every page; the component may have been destroyed in that window, which
+			// nulls the viewer. Its cleanup never sees this document, so free it here.
+			if (!viewer) {
+				toDestroy = null;
+				void loadedPdfDocument.destroy().catch(() => {});
+				overlay?.remove();
+				return;
+			}
+			toDestroy = null; // the live viewer now owns it; a later load's cleanup() will destroy it
+			findController?.setDocument(loadedPdfDocument);
 			presentationMode.setDocument(loadedPdfDocument);
+			v.restoreScrollAnchor(anchor ?? { page: 1, fraction: 0 });
 
-			viewer = newViewer;
+			if (overlay) {
+				// hold the old pixels until the fresh pages have painted, then cross-fade them away
+				await v.waitForVisiblePages();
+				const el = overlay;
+				requestAnimationFrame(() => {
+					el.style.transition = 'opacity 200ms ease';
+					el.style.opacity = '0';
+				});
+				setTimeout(() => el.remove(), 350);
+			}
+
+			loadedKey = key;
 			viewerState.loading = false;
 		} catch (e) {
-			if (newViewer) {
-				newViewer.destroy();
-				newViewer = null;
-			}
-			findController = null;
-
+			// parse failed: the currently loaded document (if any) was never touched and stays up
+			overlay?.remove();
+			// a task/document we parsed but never handed to the viewer would otherwise leak in the worker
+			if (toDestroy) void toDestroy.destroy().catch(() => {});
 			const errorMessage = e instanceof Error ? e.message : 'Failed to load PDF';
 			viewerState.error = errorMessage;
 			viewerState.loading = false;
@@ -163,6 +239,7 @@
 	const rendererActions: PdfViewerActions = {
 		zoomIn: () => viewer?.zoomIn(),
 		zoomOut: () => viewer?.zoomOut(),
+		fitWidth: () => viewer?.fitWidth(),
 		setScale: (scale: number) => {
 			if (viewer) viewer.scale = scale;
 		},
@@ -233,20 +310,27 @@
 		if (!container) return;
 		container.style.setProperty('--pdf-background-color', backgroundColor);
 		container.style.setProperty('--pdf-page-shadow', pageShadow);
-		container.style.setProperty('--pdf-scrollbar-track-color', scrollbarTrackColor);
-		container.style.setProperty('--pdf-scrollbar-thumb-color', scrollbarThumbColor);
-		container.style.setProperty('--pdf-scrollbar-thumb-hover-color', scrollbarThumbHoverColor);
-		container.style.setProperty('--pdf-scrollbar-width', scrollbarWidth);
+		const setOrRemove = (name: string, value: string | undefined) =>
+			value ? container.style.setProperty(name, value) : container.style.removeProperty(name);
+		setOrRemove('--pdf-scrollbar-track-color', scrollbarTrackColor);
+		setOrRemove('--pdf-scrollbar-thumb-color', scrollbarThumbColor);
+		setOrRemove('--pdf-scrollbar-thumb-hover-color', scrollbarThumbHoverColor);
+		setOrRemove('--pdf-scrollbar-width', scrollbarWidth);
+		container.classList.toggle(
+			'pdf-custom-scrollbar',
+			!!(scrollbarTrackColor || scrollbarThumbColor || scrollbarThumbHoverColor || scrollbarWidth)
+		);
 		container.classList.toggle('pdf-dark', darkMode);
 	});
 
 	$effect(() => {
 		if (BROWSER && src && scrollContainerEl && mounted) {
-			loadPdf(src);
+			queueLoad(src);
 		}
 	});
 
 	onDestroy(() => {
+		loadGen++; // invalidate any queued load so it can't touch the destroyed viewer
 		if (viewer) {
 			viewer.destroy();
 			viewer = null;

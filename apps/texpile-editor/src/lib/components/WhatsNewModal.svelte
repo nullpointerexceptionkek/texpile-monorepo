@@ -3,6 +3,7 @@
 	import { updateSettings } from '$lib/settings';
 	import demoVideo from '$lib/assets/live-preview-demo.mp4';
 	import type { ChangelogEntry } from '$lib/whatsNew';
+	import { m } from '$lib/paraglide/messages';
 
 	// oldest first; the last one is what the user is now on
 	let { open = $bindable(false), entries, onClose }: { open: boolean; entries: ChangelogEntry[]; onClose?: () => void } = $props();
@@ -32,8 +33,8 @@
 		<!-- max-h + scrolling middle: header and Got it stay reachable however long the notes run -->
 		<div class="card bg-surface-50-950 border-surface-300-700 flex max-h-full w-full max-w-2xl flex-col border p-5 shadow-2xl">
 			<div class="mb-3 flex items-center justify-between">
-				<h2 class="text-base font-semibold">What's new in Texpile v{newest.version}</h2>
-				<button class="btn-icon btn-icon-sm hover:preset-tonal" onclick={close} aria-label="Close">
+				<h2 class="text-base font-semibold">{m.whatsnew_title({ version: newest.version })}</h2>
+				<button class="btn-icon btn-icon-sm hover:preset-tonal" onclick={close} aria-label={m.whatsnew_close_aria()}>
 					<X class="size-4" />
 				</button>
 			</div>
@@ -57,7 +58,7 @@
 				</div>
 			</div>
 			<div class="flex justify-end">
-				<button class="btn btn-sm preset-filled-primary-500" onclick={close}>Got it</button>
+				<button class="btn btn-sm preset-filled-primary-500" onclick={close}>{m.whatsnew_got_it()}</button>
 			</div>
 		</div>
 	</div>

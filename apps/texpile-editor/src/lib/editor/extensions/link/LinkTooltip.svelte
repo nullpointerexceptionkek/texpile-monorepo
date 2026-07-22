@@ -7,6 +7,7 @@
 	import Pencil from '@lucide/svelte/icons/pencil';
 	import { fly } from 'svelte/transition';
 	import { quintOut } from 'svelte/easing';
+	import { m } from '$lib/paraglide/messages';
 
 	interface Props {
 		href: string;
@@ -167,31 +168,31 @@
 	onmousedown={handleMouseDown}
 	onkeydown={handleKeydown}
 	role="dialog"
-	aria-label="Edit link"
+	aria-label={m.linktooltip_aria_dialog_label()}
 	tabindex="-1"
 	transition:fly={{ y: -4, duration: 150, easing: quintOut }}
 >
 	{#if isEditing}
 		<div class="space-y-3 p-3">
 			<label class="block">
-				<span class="text-surface-900-100 text-sm font-medium">URL</span>
-				<input type="url" bind:value={editHref} placeholder="https://example.com" class="input mt-1 w-full text-sm" />
+				<span class="text-surface-900-100 text-sm font-medium">{m.linktooltip_label_url()}</span>
+				<input type="url" bind:value={editHref} placeholder={m.linktooltip_placeholder_url()} class="input mt-1 w-full text-sm" />
 			</label>
 
 			<label class="block">
-				<span class="text-surface-900-100 text-sm font-medium">Title</span>
-				<span class="text-surface-500-400 ml-1 text-xs">(optional)</span>
-				<input type="text" bind:value={editTitle} placeholder="Link title for accessibility" class="input mt-1 w-full text-sm" />
+				<span class="text-surface-900-100 text-sm font-medium">{m.linktooltip_label_title()}</span>
+				<span class="text-surface-500-400 ml-1 text-xs">{m.linktooltip_label_title_optional()}</span>
+				<input type="text" bind:value={editTitle} placeholder={m.linktooltip_placeholder_title()} class="input mt-1 w-full text-sm" />
 			</label>
 
 			<div class="flex justify-end gap-2 pt-1">
 				<button type="button" class="btn btn-sm preset-outlined hover:preset-tonal" onclick={handleCancel}>
 					<X class="h-4 w-4" />
-					<span>Cancel</span>
+					<span>{m.linktooltip_button_cancel()}</span>
 				</button>
 				<button type="button" class="btn btn-sm preset-filled-primary-500" onclick={handleSave} disabled={!editHref.trim()}>
 					<Check class="h-4 w-4" />
-					<span>Save</span>
+					<span>{m.linktooltip_button_save()}</span>
 				</button>
 			</div>
 		</div>
@@ -209,20 +210,25 @@
 					type="button"
 					class="btn btn-sm preset-tonal hover:preset-filled flex-1"
 					onclick={() => (isEditing = true)}
-					title="Edit link"
+					title={m.linktooltip_button_edit_title()}
 				>
 					<Pencil class="h-4 w-4" />
-					<span>Edit</span>
+					<span>{m.linktooltip_button_edit()}</span>
 				</button>
-				<button type="button" class="btn btn-sm preset-tonal hover:preset-filled flex-1" onclick={handleOpenLink} title="Open in new tab">
+				<button
+					type="button"
+					class="btn btn-sm preset-tonal hover:preset-filled flex-1"
+					onclick={handleOpenLink}
+					title={m.linktooltip_button_open_title()}
+				>
 					<ExternalLink class="h-4 w-4" />
-					<span>Open</span>
+					<span>{m.linktooltip_button_open()}</span>
 				</button>
 				<button
 					type="button"
 					class="btn btn-sm preset-tonal-error hover:preset-filled-error-500"
 					onclick={handleRemove}
-					title="Remove link"
+					title={m.linktooltip_button_remove_title()}
 				>
 					<Trash2 class="h-4 w-4" />
 				</button>

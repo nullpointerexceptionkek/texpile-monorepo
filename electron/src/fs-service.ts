@@ -1,5 +1,5 @@
 // the single implementation of workspace file ops; keep it dependency-free (node builtins only)
-import { readdir, readFile, writeFile, mkdir, rm, rename, stat } from 'node:fs/promises';
+import { readdir, readFile, writeFile, mkdir, rm, rename, stat, cp } from 'node:fs/promises';
 import { join, dirname, basename, extname, relative, sep, isAbsolute, normalize, resolve } from 'node:path';
 import { existsSync } from 'node:fs';
 import { execFile } from 'node:child_process';
@@ -184,6 +184,17 @@ export async function op(body: FsOpBody): Promise<{ ok: true }> {
 		if (!from || !to) throw new Error('Missing from/to');
 		validateName(basename(to));
 		await rename(from, to);
+	} else if (action === 'copy') {
+		// cross-window drag: files copied from another workspace (recursive for folders).
+		// force:false so a raced-in destination is an error instead of a silent overwrite.
+		const { from, to } = body;
+		if (!from || !to) throw new Error('Missing from/to');
+		validateName(basename(to));
+		const src = resolve(from);
+		const dest = resolve(to);
+		if (dest === src || (dest + sep).startsWith(src + sep)) throw new Error('Cannot copy a folder into itself');
+		await mkdir(dirname(dest), { recursive: true });
+		await cp(src, dest, { recursive: true, force: false, errorOnExist: true });
 	} else {
 		throw new Error('Unknown action');
 	}

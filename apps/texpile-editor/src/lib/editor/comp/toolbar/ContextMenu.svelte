@@ -16,9 +16,11 @@
 		splitCell
 	} from 'prosemirror-tables';
 	import { toaster } from '$lib/modals/toaster-svelte';
+	import { sliceToLatex, pasteLatexText } from '$lib/editor/extensions/latexClipboard';
 	import { Popover, Portal } from '@skeletonlabs/skeleton-svelte';
 	import { Copy, Clipboard, Plus, Trash2, Combine, SplitSquareHorizontal } from '@lucide/svelte';
 	import Kbd from '$lib/components/Kbd.svelte';
+	import { m } from '$lib/paraglide/messages';
 
 	let isVisible: boolean = $state(false);
 	let isOnTable: boolean = $state(false);
@@ -48,7 +50,7 @@
 	const menuItems = [
 		{
 			type: 'item',
-			label: 'Copy',
+			label: m.ctxmenu_copy(),
 			icon: Copy,
 			shortcut: 'Mod+C',
 			action: () => {
@@ -66,23 +68,32 @@
 				div.appendChild(serializer.serializeFragment(fragment));
 				const html = div.innerHTML;
 
+				// both flavors: HTML for rich internal paste, LaTeX as the plain-text form so
+				// pasting into source mode / another app yields markup, not an empty clipboard
+				let latex: string;
+				try {
+					latex = sliceToLatex(slice);
+				} catch {
+					latex = state.doc.textBetween(from, to, '\n\n');
+				}
 				navigator.clipboard
 					.write([
 						new ClipboardItem({
-							'text/html': new Blob([html], { type: 'text/html' })
+							'text/html': new Blob([html], { type: 'text/html' }),
+							'text/plain': new Blob([latex], { type: 'text/plain' })
 						})
 					])
 					.then(() => {
-						toaster.info({ title: 'Copied to clipboard!', duration: 3000 });
+						toaster.info({ title: m.ctxmenu_copied_toast(), duration: 3000 });
 					})
 					.catch((_err) => {
-						toaster.info({ title: 'Failed to copy to clipboard.', duration: 3000 });
+						toaster.info({ title: m.ctxmenu_copy_failed_toast(), duration: 3000 });
 					});
 			}
 		},
 		{
 			type: 'item',
-			label: 'Paste',
+			label: m.ctxmenu_paste(),
 			icon: Clipboard,
 			shortcut: 'Mod+V',
 			action: async () => {
@@ -96,17 +107,18 @@
 						} else if (item.types.includes('text/plain')) {
 							const blob = await item.getType('text/plain');
 							const text = await blob.text();
-							$editorViewStore.pasteText(text);
+							// LaTeX text pastes as rich nodes, same as the Ctrl+V path
+							if (!pasteLatexText($editorViewStore, text)) $editorViewStore.pasteText(text);
 						} else {
 							toaster.warning({
-								title: 'Please use Ctrl/Command+V to paste images and other content.',
+								title: m.ctxmenu_paste_images_hint_toast(),
 								duration: 3000
 							});
 						}
 					}
 				} catch (_err) {
 					toaster.warning({
-						title: 'Failed to read clipboard, please use Ctrl/Command+V instead',
+						title: m.ctxmenu_paste_read_failed_toast(),
 						duration: 3000
 					});
 				}
@@ -114,7 +126,7 @@
 		},
 		{
 			type: 'item',
-			label: 'Paste Without Formatting',
+			label: m.ctxmenu_paste_without_formatting(),
 			icon: Clipboard,
 			shortcut: 'Mod+Shift+V',
 			action: async () => {
@@ -134,7 +146,7 @@
 					}
 				} catch (_err) {
 					toaster.warning({
-						title: 'Failed to read clipboard, please use Ctrl/Command+Shift+V instead',
+						title: m.ctxmenu_paste_plain_read_failed_toast(),
 						duration: 3000
 					});
 				}
@@ -145,7 +157,7 @@
 	const tableMenuItems = [
 		{
 			type: 'item',
-			label: 'Add Column Before',
+			label: m.ctxmenu_add_column_before(),
 			icon: Plus,
 			showFor: ['cell', 'column'],
 			action: () => {
@@ -156,7 +168,7 @@
 		},
 		{
 			type: 'item',
-			label: 'Add Column After',
+			label: m.ctxmenu_add_column_after(),
 			icon: Plus,
 			showFor: ['cell', 'column'],
 			action: () => {
@@ -168,7 +180,7 @@
 		{ type: 'separator', showFor: ['cell', 'column'] },
 		{
 			type: 'item',
-			label: 'Add Row Before',
+			label: m.ctxmenu_add_row_before(),
 			icon: Plus,
 			showFor: ['cell', 'row'],
 			action: () => {
@@ -179,7 +191,7 @@
 		},
 		{
 			type: 'item',
-			label: 'Add Row After',
+			label: m.ctxmenu_add_row_after(),
 			icon: Plus,
 			showFor: ['cell', 'row'],
 			action: () => {
@@ -191,7 +203,7 @@
 		{ type: 'separator', showFor: ['cell', 'column', 'row'] },
 		{
 			type: 'item',
-			label: 'Merge Cells',
+			label: m.ctxmenu_merge_cells(),
 			icon: Combine,
 			showFor: ['cell'],
 			showWhen: () => canMerge,
@@ -203,7 +215,7 @@
 		},
 		{
 			type: 'item',
-			label: 'Split Cell',
+			label: m.ctxmenu_split_cell(),
 			icon: SplitSquareHorizontal,
 			showFor: ['cell'],
 			showWhen: () => canSplit,
@@ -216,7 +228,7 @@
 		{ type: 'separator', showFor: ['cell'], showWhen: () => canMerge || canSplit },
 		{
 			type: 'item',
-			label: 'Delete Column',
+			label: m.ctxmenu_delete_column(),
 			icon: Trash2,
 			showFor: ['cell', 'column'],
 			action: () => {
@@ -227,7 +239,7 @@
 		},
 		{
 			type: 'item',
-			label: 'Delete Row',
+			label: m.ctxmenu_delete_row(),
 			icon: Trash2,
 			showFor: ['cell', 'row'],
 			action: () => {
@@ -238,7 +250,7 @@
 		},
 		{
 			type: 'item',
-			label: 'Delete Table',
+			label: m.ctxmenu_delete_table(),
 			icon: Trash2,
 			showFor: ['cell', 'column', 'row'],
 			action: () => {

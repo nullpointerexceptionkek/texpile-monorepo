@@ -1,5 +1,6 @@
 import RawLatexView from './rawLatexView';
-import { fileUrl, joinPath, isRemoteSrc } from '$lib/workspace/fileSystem';
+import { joinPath, isRemoteSrc } from '$lib/workspace/fileSystem';
+import { editorFileUrl } from '$lib/editor/fileAccess';
 import type { Node } from 'prosemirror-model';
 import type { EditorView as ProseMirrorView } from 'prosemirror-view';
 
@@ -43,7 +44,7 @@ export class RawFigureView extends RawLatexView {
 
 	private resolveSrc(src: string): string {
 		if (isRemoteSrc(src)) return src;
-		return this.imageDir ? fileUrl(joinPath(this.imageDir, src)) : src;
+		return this.imageDir ? editorFileUrl(joinPath(this.imageDir, src)) : src;
 	}
 
 	private renderPreview(text: string): void {

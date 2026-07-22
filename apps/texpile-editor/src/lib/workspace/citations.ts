@@ -2,7 +2,7 @@
 import { writable } from 'svelte/store';
 import { parseBibTeX, type BibLaTeXReference } from '$lib/biblatex';
 import { extractDocRefs, type BibItemSlice } from '$lib/latex-parser/labels';
-import { scanFiles, readTextFile } from './fileSystem';
+import { scanFiles, readTextFile, type TexFile } from './fileSystem';
 
 export type { BibLaTeXReference };
 
@@ -75,11 +75,19 @@ export function parseBibItems(tex: string): BibLaTeXReference[] {
 	return bibItemsToReferences(extractDocRefs(tex).bibitems);
 }
 
+/** what loadReferences reads through: native fs by default, the workspace provider for a guest
+ *  session (whose "files" live in the shared doc, not on this machine's disk). */
+export interface ReferencesFs {
+	scan(root: string, exts: string[]): Promise<TexFile[]>;
+	read(path: string): Promise<string>;
+}
+const nativeFs: ReferencesFs = { scan: (r, e) => scanFiles(r, e).then((x) => x.files), read: readTextFile };
+
 /** parses all .bib files in the folder, merged; references.bib wins on key clashes. */
-export async function loadReferences(root: string): Promise<void> {
+export async function loadReferences(root: string, fs: ReferencesFs = nativeFs): Promise<void> {
 	references.set([]);
 	try {
-		const { files } = await scanFiles(root, ['bib']);
+		const files = await fs.scan(root, ['bib']);
 		if (!files.length) return;
 		// read references.bib first so its entries take precedence in the de-dupe
 		const ordered = [...files].sort(
@@ -88,7 +96,7 @@ export async function loadReferences(root: string): Promise<void> {
 		const texts: string[] = [];
 		for (const f of ordered) {
 			try {
-				texts.push(await readTextFile(f.path));
+				texts.push(await fs.read(f.path));
 			} catch {
 				/* skip unreadable file */
 			}

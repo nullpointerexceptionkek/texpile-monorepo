@@ -17,6 +17,10 @@
 	import { bibtex } from '$lib/editor/extensions/bibtex/bibtex';
 	import { sourceCmView } from '$lib/stores/editorStore';
 	import { setSourceDocCount, setSourceSelectionCount } from '$lib/stores/countStore.svelte';
+	import { m } from '$lib/paraglide/messages';
+	import { yCollab, yUndoManagerKeymap } from 'y-codemirror.next';
+	import * as Y from 'yjs';
+	import type { Awareness } from 'y-protocols/awareness';
 
 	// full-file CodeMirror editor. source-mode edits are written back verbatim, never through the
 	// parse/serialize round-trip. filename picks the syntax mode, defaulting to LaTeX.
@@ -38,6 +42,13 @@
 		/** the offending \command, sized for the underline when found on the line. */
 		token?: string;
 	}
+	// shared-session binding: the Y.Text is the doc (value is ignored), remote cursors render via
+	// awareness, undo becomes CRDT-aware (only your own edits).
+	interface CollabBinding {
+		ytext: Y.Text;
+		awareness: Awareness;
+		readOnly?: boolean;
+	}
 	let {
 		value = '',
 		onInput,
@@ -48,7 +59,8 @@
 		onHistoryBoundary,
 		diagnostics = [],
 		onJumpToFile,
-		onOpenFileAt
+		onOpenFileAt,
+		collab = null
 	}: {
 		value?: string;
 		onInput?: (v: string) => void;
@@ -61,6 +73,7 @@
 		/** go-to-definition hooks: \input targets and cross-file definition jumps */
 		onJumpToFile?: (name: string) => void;
 		onOpenFileAt?: (file: string, line: number) => void;
+		collab?: CollabBinding | null;
 	} = $props();
 
 	let ctxMenu = $state<{ x: number; y: number; line: number; hasSelection: boolean } | null>(null);
@@ -84,8 +97,8 @@
 		'hover:preset-tonal-primary flex w-full items-center gap-2.5 px-3 py-1 text-left disabled:pointer-events-none disabled:opacity-40';
 	async function cmCopy() {
 		if (!view) return;
-		const m = view.state.selection.main;
-		const text = view.state.sliceDoc(m.from, m.to);
+		const sel = view.state.selection.main;
+		const text = view.state.sliceDoc(sel.from, sel.to);
 		if (text) await navigator.clipboard.writeText(text).catch(() => {});
 	}
 	async function cmCut() {
@@ -134,29 +147,58 @@
 		'.cm-gutter-lint .cm-gutterElement': { padding: '0 1px' },
 		'.cm-lint-marker': { width: '0.8em', height: '0.8em' }
 	});
+	// y-codemirror.next's stock theme moves text: full-line selections ZERO the line's own padding
+	// and "compensate" with 4px/2px margins (net shift), and the caret draws as 2px of inline
+	// borders "cancelled" by -1px margins. Neutralize both so a peer's cursor or selection can
+	// never move a glyph on this screen: a highlighted line gets pinned to exactly a normal line's
+	// box (margin 0 + CM's default .cm-line padding), and the caret span becomes a zero-width
+	// in-flow anchor whose visible bar hangs off it out-of-flow (the dot and name label were
+	// already absolutely positioned upstream).
+	const yRemoteLayoutFix = EditorView.theme({
+		'.cm-yLineSelection': { margin: '0', padding: '0 2px 0 6px' },
+		'.cm-ySelectionCaret': { border: 'none', margin: '0' },
+		'.cm-ySelectionCaret::before': {
+			content: "''",
+			position: 'absolute',
+			top: '0',
+			bottom: '0',
+			left: '-1px',
+			width: '2px',
+			backgroundColor: 'inherit'
+		}
+	});
 	const langConf = new Compartment();
+	const roConf = new Compartment();
 	// true while pushing an external value into CM, so the update listener doesn't echo it back as a user edit
 	let syncing = false;
+	// held at component scope so onDestroy can tear it down (else its doc observer leaks across
+	// every file switch / mode toggle that remounts this editor)
+	let undoManager: Y.UndoManager | null = null;
 
 	onMount(() => {
+		// collab mode: the Y.Text is the document, CRDT undo replaces CM history (plain CM undo
+		// would revert other people's edits)
+		undoManager = collab ? new Y.UndoManager(collab.ytext) : null;
 		view = new EditorView({
 			parent: host,
 			state: EditorState.create({
-				doc: value,
+				doc: collab ? collab.ytext.toString() : value,
 				extensions: [
 					// gutters render in extension order: lint goes before lineNumbers so it lands on their left
 					...(!filename || /\.tex$/i.test(filename) ? [lintGutter({ hoverTime: 0 })] : []),
 					lineNumbers(),
 					gutterTheme,
 					highlightActiveLine(),
-					history(),
+					...(collab ? [yCollab(collab.ytext, collab.awareness, { undoManager: undoManager! }), yRemoteLayoutFix] : [history()]),
+					roConf.of(collab?.readOnly ? [EditorState.readOnly.of(true), EditorView.editable.of(false)] : []),
 					drawSelection(),
 					bracketMatching(),
 					indentOnInput(),
 					langConf.of([]),
 					cmSyntaxHighlight(),
 					// full intellisense (completion + shortcuts + hover + folding + go-to-def) + math preview for
-					// .tex only; .bib gets entry-type/field completion
+					// .tex only; .bib gets entry-type/field completion. Guests included: the sources read
+					// stores fed through the workspace provider, so a session serves them from the shared doc.
 					...(!filename || /\.tex$/i.test(filename)
 						? [latexIntellisense({ onJumpToFile, onOpenFileAt }), mathPreview(), starterGhost(), cmSpellcheck()]
 						: /\.bib$/i.test(filename)
@@ -165,15 +207,20 @@
 					synctexFlash(), // flash the line jumped to by SyncTeX inverse search / Find-in-Files
 					// compact find/replace widget, floated top-right (styles below)
 					texpileSearch(),
-					keymap.of([...defaultKeymap, ...historyKeymap, ...searchKeymap, indentWithTab]),
+					keymap.of([...defaultKeymap, ...(collab ? yUndoManagerKeymap : historyKeymap), ...searchKeymap, indentWithTab]),
 					// lower precedence than historyKeymap, so CM's own undo/redo runs first; these fire only
 					// when it's exhausted and the workspace snapshot history takes over. consume the key even
 					// at the stack edge: a failed redo falling through to another binding is worse than a no-op.
-					keymap.of([
-						{ key: 'Mod-z', run: () => (onHistoryBoundary ? (onHistoryBoundary('undo'), true) : false) },
-						{ key: 'Mod-y', run: () => (onHistoryBoundary ? (onHistoryBoundary('redo'), true) : false) },
-						{ key: 'Mod-Shift-z', run: () => (onHistoryBoundary ? (onHistoryBoundary('redo'), true) : false) }
-					]),
+					// collab mode: the CRDT undo manager owns the whole stack, never fall through.
+					keymap.of(
+						collab
+							? []
+							: [
+									{ key: 'Mod-z', run: () => (onHistoryBoundary ? (onHistoryBoundary('undo'), true) : false) },
+									{ key: 'Mod-y', run: () => (onHistoryBoundary ? (onHistoryBoundary('redo'), true) : false) },
+									{ key: 'Mod-Shift-z', run: () => (onHistoryBoundary ? (onHistoryBoundary('redo'), true) : false) }
+								]
+					),
 					EditorView.lineWrapping,
 					EditorView.contentAttributes.of({ spellcheck: 'false', 'data-gramm': 'false', 'data-enable-grammarly': 'false' }),
 					EditorView.updateListener.of((u) => {
@@ -191,6 +238,9 @@
 			})
 		});
 		view.focus();
+		// collab mount: the Y.Text may be ahead of the caller's value (guest edits landed while
+		// the file was closed) — hand the truth back so the save pipeline starts aligned
+		if (collab && onInput && collab.ytext.toString() !== value) onInput(collab.ytext.toString());
 		// seed the counts now; the updateListener only fires on later changes
 		setSourceDocCount(view.state.doc.toString());
 		setSourceSelectionCount(null);
@@ -227,15 +277,25 @@
 
 	// replace the document on external value changes without echoing. addToHistory(false) keeps the
 	// replacement out of CM's undo stack, otherwise the next Ctrl+Z would "undo the undo" and bounce back.
+	// collab mode: the Y.Text is the document, external value pushes would fight the CRDT.
 	$effect(() => {
 		const v = value;
-		if (view && v !== view.state.doc.toString()) {
+		if (!collab && view && v !== view.state.doc.toString()) {
 			syncing = true;
 			view.dispatch({
 				changes: { from: 0, to: view.state.doc.length, insert: v },
 				annotations: Transaction.addToHistory.of(false)
 			});
 			syncing = false;
+		}
+	});
+
+	// live read-only flips (the host opened/closed this file in its visual editor)
+	$effect(() => {
+		const ro = collab?.readOnly ?? false;
+		void ro;
+		if (view && collab) {
+			view.dispatch({ effects: roConf.reconfigure(ro ? [EditorState.readOnly.of(true), EditorView.editable.of(false)] : []) });
 		}
 	});
 
@@ -318,6 +378,12 @@
 
 	onDestroy(() => {
 		sourceCmView.set(null);
+		// collab teardown: drop our cursor from awareness so peers don't see a ghost, and reap the
+		// undo manager's doc observer before the view goes
+		if (collab) collab.awareness.setLocalStateField('cursor', null);
+		undoManager?.clear();
+		undoManager?.destroy();
+		undoManager = null;
 		view?.destroy();
 	});
 </script>
@@ -329,7 +395,7 @@
 {#if ctxMenu}
 	<button
 		class="fixed inset-0 z-40 cursor-default"
-		aria-label="Close menu"
+		aria-label={m.tbar_close_menu_aria()}
 		onclick={closeMenu}
 		oncontextmenu={(e) => (e.preventDefault(), closeMenu())}
 	></button>
@@ -338,25 +404,31 @@
 		style="left: {ctxMenu.x}px; top: {ctxMenu.y}px"
 	>
 		<button class={itemClass} disabled={!ctxMenu.hasSelection} onclick={() => (cmCut(), closeMenu())}>
-			<Scissors class="size-4 opacity-70" /> Cut <span class="text-surface-500 ml-auto text-xs">⌘X</span>
+			<Scissors class="size-4 opacity-70" />
+			{m.tbar_ctx_cut()} <span class="text-surface-500 ml-auto text-xs">⌘X</span>
 		</button>
 		<button class={itemClass} disabled={!ctxMenu.hasSelection} onclick={() => (cmCopy(), closeMenu())}>
-			<Copy class="size-4 opacity-70" /> Copy <span class="text-surface-500 ml-auto text-xs">⌘C</span>
+			<Copy class="size-4 opacity-70" />
+			{m.tbar_ctx_copy()} <span class="text-surface-500 ml-auto text-xs">⌘C</span>
 		</button>
 		<button class={itemClass} onclick={() => (cmPaste(), closeMenu())}>
-			<ClipboardPaste class="size-4 opacity-70" /> Paste <span class="text-surface-500 ml-auto text-xs">⌘V</span>
+			<ClipboardPaste class="size-4 opacity-70" />
+			{m.tbar_ctx_paste()} <span class="text-surface-500 ml-auto text-xs">⌘V</span>
 		</button>
 		<button class={itemClass} onclick={() => (cmSelectAll(), closeMenu())}>
-			<span class="size-4 shrink-0"></span> Select All <span class="text-surface-500 ml-auto text-xs">⌘A</span>
+			<span class="size-4 shrink-0"></span>
+			{m.tbar_ctx_select_all()} <span class="text-surface-500 ml-auto text-xs">⌘A</span>
 		</button>
 		<div class="border-surface-200-800 my-1 border-t"></div>
 		<button class={itemClass} onclick={() => (cmFind(), closeMenu())}>
-			<Search class="size-4 opacity-70" /> Find… <span class="text-surface-500 ml-auto text-xs">⌘F</span>
+			<Search class="size-4 opacity-70" />
+			{m.tbar_ctx_find()} <span class="text-surface-500 ml-auto text-xs">⌘F</span>
 		</button>
 		{#if onSyncToPdf}
 			<div class="border-surface-200-800 my-1 border-t"></div>
 			<button class={itemClass} onclick={() => (onSyncToPdf?.(ctxMenu.line), closeMenu())}>
-				<LocateFixed class="size-4 opacity-70" /> Show in PDF
+				<LocateFixed class="size-4 opacity-70" />
+				{m.tbar_ctx_show_in_pdf()}
 			</button>
 		{/if}
 	</div>

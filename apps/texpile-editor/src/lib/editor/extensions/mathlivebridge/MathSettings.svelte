@@ -7,6 +7,7 @@
 	import { generateLabel, isTexpileLabel, sanitizeLabel } from '$lib/editor/utils/label';
 	import { isReadOnly } from '$lib/stores/permissionStore';
 	import { toggleEnvironmentStar } from './mlview.svelte';
+	import { m } from '$lib/paraglide/messages';
 
 	interface Props {
 		node: PMNode;
@@ -179,7 +180,12 @@
 		positioning={{ placement: 'bottom-end', offset: { mainAxis: 4 } }}
 	>
 		<Popover.Trigger class="math-settings-btn">
-			<button type="button" title="Equation settings" aria-label="Equation settings" disabled={$isReadOnly}>
+			<button
+				type="button"
+				title={m.mathsettings_settings_button_label()}
+				aria-label={m.mathsettings_settings_button_label()}
+				disabled={$isReadOnly}
+			>
 				<Settings class="h-4 w-4" />
 			</button>
 		</Popover.Trigger>
@@ -191,14 +197,14 @@
 						<div class="settings-row">
 							<Switch checked={numberedInput} onCheckedChange={handleNumberedToggle} class="flex w-full items-center justify-between gap-3">
 								<Switch.Label class="flex items-center gap-2">
-									<span>Numbered</span>
+									<span>{m.mathsettings_numbered_label()}</span>
 									<Tooltip positioning={{ placement: 'top' }} openDelay={200}>
 										<Tooltip.Trigger class="inline-flex items-center">
 											<Info class="text-surface-500 h-3.5 w-3.5" />
 										</Tooltip.Trigger>
 										<Portal>
 											<Tooltip.Positioner class="z-floating-ui">
-												<Tooltip.Content class="card preset-filled p-2 text-sm">Show equation number (1), (2), etc.</Tooltip.Content>
+												<Tooltip.Content class="card preset-filled p-2 text-sm">{m.mathsettings_numbered_tooltip()}</Tooltip.Content>
 											</Tooltip.Positioner>
 										</Portal>
 									</Tooltip>
@@ -214,7 +220,7 @@
 							{#if hasSpecialEnvironment}
 								<div class="settings-row">
 									<div class="flex items-center gap-2">
-										<span class="text-surface-600-400 text-sm">Environment:</span>
+										<span class="text-surface-600-400 text-sm">{m.mathsettings_environment_label()}</span>
 										<span class="preset-tonal-primary rounded px-2 py-0.5 text-sm font-medium capitalize">{environmentInput}</span>
 										<Tooltip positioning={{ placement: 'top' }} openDelay={200}>
 											<Tooltip.Trigger class="inline-flex items-center">
@@ -224,9 +230,9 @@
 												<Tooltip.Positioner class="z-floating-ui">
 													<Tooltip.Content class="card preset-filled max-w-[220px] p-2 text-sm">
 														{#if isPerLineLabelMode}
-															Auto-detected from your equation content. Each line will be numbered separately.
+															{m.mathsettings_environment_tooltip_perline()}
 														{:else}
-															Auto-detected from your equation content. The entire block has one equation number.
+															{m.mathsettings_environment_tooltip_single()}
 														{/if}
 													</Tooltip.Content>
 												</Tooltip.Positioner>
@@ -238,34 +244,38 @@
 
 							{#if isPerLineLabelMode}
 								<div class="border-surface-300-700 mt-3 border-t pt-3">
-									<span class="text-surface-700-300 mb-2 block text-sm font-medium">Line Labels</span>
-									<p class="text-surface-500 mb-2 text-xs">Add labels to reference individual lines with \ref{'{'}label{'}'}</p>
+									<span class="text-surface-700-300 mb-2 block text-sm font-medium">{m.mathsettings_line_labels_heading()}</span>
+									<p class="text-surface-500 mb-2 text-xs">
+										{m.mathsettings_line_labels_hint({ refSyntax: '\\ref{label}' })}
+									</p>
 									{#each { length: detectedLineCount() } as _, i}
 										<div class="mb-2 flex items-center gap-2">
-											<span class="text-surface-500 w-12 text-xs">Line {i + 1}:</span>
+											<span class="text-surface-500 w-12 text-xs">{m.mathsettings_line_number_label({ number: i + 1 })}</span>
 											<input
 												type="text"
 												class="input flex-1 text-sm"
 												value={lineLabelsInput[i] || ''}
 												oninput={(e) => handleLineLabelChange(i, (e.target as HTMLInputElement).value)}
-												placeholder="eq:line-{i + 1}"
+												placeholder={m.mathsettings_line_label_placeholder({ index: i + 1 })}
 											/>
 											{#if lineLabelsInput[i]}
 												<button
 													type="button"
 													class="preset-tonal-surface hover:preset-tonal-error btn-icon btn-icon-sm"
 													onclick={() => clearLineLabel(i)}
-													title="Clear label"
+													title={m.mathsettings_clear_label_title()}
 												>
 													<Trash2 class="h-3 w-3" />
 												</button>
 											{:else}
-												<button type="button" class="btn btn-sm preset-tonal" onclick={() => generateLineLabel(i)}> Auto </button>
+												<button type="button" class="btn btn-sm preset-tonal" onclick={() => generateLineLabel(i)}>
+													{m.mathsettings_auto_button()}
+												</button>
 											{/if}
 										</div>
 									{/each}
 									{#if detectedLineCount() === 1}
-										<p class="text-surface-500 mt-2 text-xs italic">Tip: Use \\ in your equation to create multiple lines.</p>
+										<p class="text-surface-500 mt-2 text-xs italic">{m.mathsettings_multiline_tip()}</p>
 									{/if}
 								</div>
 							{/if}
@@ -277,15 +287,15 @@
 									onclick={() => (showAdvanced = !showAdvanced)}
 								>
 									<ChevronDown class="h-4 w-4 transition-transform {showAdvanced ? 'rotate-180' : ''}" />
-									<span>Advanced options</span>
+									<span>{m.mathsettings_advanced_options()}</span>
 								</button>
 
 								{#if showAdvanced}
 									<div class="border-surface-300-700 mb-3 space-y-4 pl-6">
 										<label class="label">
 											<span>
-												LaTeX Label
-												<span class="text-surface-600-400 text-sm">(for \ref commands)</span>
+												{m.mathsettings_label_field_label()}
+												<span class="text-surface-600-400 text-sm">{m.mathsettings_label_field_hint()}</span>
 											</span>
 											<input
 												type="text"
@@ -294,12 +304,12 @@
 												value={labelInput}
 												oninput={handleLabelInput}
 												onblur={handleLabelBlur}
-												placeholder="texpile-eq-..."
+												placeholder={m.mathsettings_label_placeholder()}
 											/>
 											{#if isDuplicate}
-												<p class="text-error-600 mt-1 text-xs">Label already exists</p>
+												<p class="text-error-600 mt-1 text-xs">{m.mathsettings_label_duplicate_error()}</p>
 											{/if}
-											<p class="text-surface-500 mt-1 text-xs">Used for references. Auto-generated if empty.</p>
+											<p class="text-surface-500 mt-1 text-xs">{m.mathsettings_label_field_note()}</p>
 										</label>
 									</div>
 								{/if}

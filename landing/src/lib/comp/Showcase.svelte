@@ -1,16 +1,17 @@
 <script lang="ts">
 	// screenshot carousel; all shots share the same size so the frame never shifts, hover pauses
 	import { onMount } from 'svelte';
-	import visual from '$lib/assets/showcase/visual-dark.png';
-	import source from '$lib/assets/showcase/source-dark.png';
-	import diff from '$lib/assets/showcase/diff-dark.png';
-	import errorlog from '$lib/assets/showcase/errorlog-dark.png';
+	import visual from '$lib/assets/showcase/editor-visual.webp';
+	import source from '$lib/assets/showcase/editor-source.webp';
+	import preview from '$lib/assets/showcase/editor-preview.webp';
+	import references from '$lib/assets/showcase/editor-references.webp';
+	import { m } from '$lib/paraglide/messages';
 
 	const shots = [
-		{ src: visual, label: 'Visual editor, PDF preview, and a real terminal' },
-		{ src: source, label: 'The same file in the source editor' },
-		{ src: diff, label: 'Side-by-side diff and built-in source control' },
-		{ src: errorlog, label: 'Compile errors as a Problems list, with file and line' }
+		{ src: visual, label: m.showcase_shot_visual() },
+		{ src: source, label: m.showcase_shot_source() },
+		{ src: preview, label: m.showcase_shot_preview() },
+		{ src: references, label: m.showcase_shot_references() }
 	];
 
 	let active = $state(0);
@@ -24,7 +25,7 @@
 	});
 </script>
 
-<div class="mx-auto max-w-6xl px-4 sm:px-6 lg:px-8">
+<div class="mx-auto max-w-5xl px-4 sm:px-6 lg:px-8">
 	<!-- svelte-ignore a11y_no_static_element_interactions -->
 	<div
 		class="border-surface-200 grid overflow-hidden rounded-xl border bg-white shadow-2xl"
@@ -49,7 +50,7 @@
 			{#each shots as shot, i (shot.label)}
 				<button
 					class="h-2.5 w-2.5 rounded-full transition-colors {i === active ? 'bg-surface-500' : 'bg-surface-300 hover:bg-surface-400'}"
-					aria-label="Show: {shot.label}"
+					aria-label={m.showcase_show_aria({ label: shot.label })}
 					aria-current={i === active}
 					onclick={() => (active = i)}
 				></button>

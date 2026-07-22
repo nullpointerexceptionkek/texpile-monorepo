@@ -4,6 +4,7 @@
 // when re-loaded with different options. only bundle content we can freely redistribute
 // (no IEEEtran.cls and friends).
 import { joinPath, writeTextFile, writeBinaryFile, statFile, scanTree } from './fileSystem';
+import { m } from '$lib/paraglide/messages';
 
 // keys look like "./starters/mla/main.tex"; vite inlines the contents eagerly as strings
 const RAW = import.meta.glob('./starters/*/*.{tex,bib}', {
@@ -51,32 +52,50 @@ function binaryFilesFor(id: string): Record<string, string> {
 	return out;
 }
 
+// name/description are getters so the label is resolved at read time, not at module-eval time
+// (a locale set after this module loads would otherwise be frozen to the boot locale).
 export const STARTERS: Starter[] = [
 	{
 		id: 'article',
-		name: 'Basic article',
-		description: 'A clean article with a title and sections. Good for notes, homework, or a short paper.',
+		get name() {
+			return m.starterdef_article_name();
+		},
+		get description() {
+			return m.starterdef_article_description();
+		},
 		mainFile: 'main.tex',
 		files: filesFor('article')
 	},
 	{
 		id: 'mla',
-		name: 'MLA essay',
-		description: 'MLA essay format: Times New Roman, double spacing, a running header, and a Works Cited list.',
+		get name() {
+			return m.starterdef_mla_name();
+		},
+		get description() {
+			return m.starterdef_mla_description();
+		},
 		mainFile: 'main.tex',
 		files: filesFor('mla')
 	},
 	{
 		id: 'apa',
-		name: 'APA paper',
-		description: 'APA 7th student paper (apa7 class): title page fields, an abstract, and an APA reference list.',
+		get name() {
+			return m.starterdef_apa_name();
+		},
+		get description() {
+			return m.starterdef_apa_description();
+		},
 		mainFile: 'main.tex',
 		files: filesFor('apa')
 	},
 	{
 		id: 'tutorial',
-		name: 'Texpile Tutorial',
-		description: 'A multi-file project that walks through formatting, math, tables, images, citations, and compiling.',
+		get name() {
+			return m.starterdef_tutorial_name();
+		},
+		get description() {
+			return m.starterdef_tutorial_description();
+		},
 		mainFile: 'main.tex',
 		files: filesFor('tutorial'),
 		binaryFiles: binaryFilesFor('tutorial')

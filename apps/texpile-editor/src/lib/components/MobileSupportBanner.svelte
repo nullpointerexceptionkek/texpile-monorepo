@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
+	import { m } from '$lib/paraglide/messages';
 
 	let dismissed = $state(false);
 	let mounted = $state(false);
@@ -34,8 +35,8 @@
 						clip-rule="evenodd"
 					/>
 				</svg>
-				<p class="text-sm leading-5">Mobile support is currently limited. Use a larger screen for a better experience.</p>
-				<button class="ml-auto text-amber-600 hover:text-amber-800" aria-label="Dismiss mobile notice" onclick={close}>
+				<p class="text-sm leading-5">{m.mobilebanner_limited_support()}</p>
+				<button class="ml-auto text-amber-600 hover:text-amber-800" aria-label={m.mobilebanner_dismiss_aria()} onclick={close}>
 					<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" class="h-5 w-5">
 						<path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
 					</svg>

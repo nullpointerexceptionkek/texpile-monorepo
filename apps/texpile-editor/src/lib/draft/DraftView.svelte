@@ -19,6 +19,7 @@
 	import { getPdfJs } from 'svelte-pdf-view';
 	import { native, fileUrl } from '$lib/workspace/fileSystem';
 	import type { DraftPage } from '$lib/workspace/fileSystem';
+	import { m } from '$lib/paraglide/messages';
 
 	interface Props {
 		root: string;
@@ -37,6 +38,9 @@
 	let status = $state('');
 	let error = $state<string | null>(null);
 	let compiling = $state(false);
+	// one live preview at a time: another window owns the warm engine (main's draftOwner);
+	// this preview is paused until the user explicitly takes the engine over
+	let busyElsewhere = $state(false);
 	let canvasEls: HTMLCanvasElement[] = $state([]);
 
 	/* eslint-disable @typescript-eslint/no-explicit-any */
@@ -553,11 +557,11 @@
 			case 'spans-pages':
 			case 'spans-boundary':
 			case 'break-inside':
-				return 'paragraph crosses a column or page';
+				return m.draft_reason_column_or_page();
 			case 'overflow':
-				return 'edit fills the column';
+				return m.draft_reason_overflow();
 			case 'underflow':
-				return 'edit shortens the column';
+				return m.draft_reason_underflow();
 			case 'no-line-boxes':
 			case 'no-anchor-glyphs':
 			case 'no-page-records':
@@ -565,21 +569,21 @@
 			case 'no-page-glyphs':
 			case 'no-run-of-N':
 			case 'content-mismatch':
-				return 'could not locate paragraph';
+				return m.draft_reason_locate_failed();
 			case 'synctex-span>N':
 			case 'line-count':
 			case 'spread':
 			case 'glue-gap':
-				return 'layout no longer matches';
+				return m.draft_reason_layout_mismatch();
 			case 'cal-uncertified':
 			case 'cal-typeset-failed':
 			case 'cal-empty':
 			case 'typeset':
-				return 'content the fast engine cannot reproduce';
+				return m.draft_reason_cannot_reproduce();
 			case 'no-lines':
-				return 'nothing to typeset';
+				return m.draft_reason_nothing_to_typeset();
 			default:
-				return 'needs a full recompile';
+				return m.draft_reason_needs_recompile();
 		}
 	}
 
@@ -773,7 +777,7 @@
 		// C1 calibration: the daemon must reproduce the UNEDITED paragraph exactly --
 		// verifies fonts/size/indent/macros empirically (same engine, so if the unedited
 		// text reproduces, the edited text is exact too)
-		const cal = await native()!.draftTypeset({ root, mainFile, text: orig, hsize: W });
+		const cal = await daemonTypeset({ root, mainFile, text: orig, hsize: W });
 		if (!cal.ok) return bail('cal-typeset-failed');
 		const calLines = cal.records.filter((x: any) => x.t === 'line');
 		if (!calLines.length || (cal.stats && (cal.stats as any).certified === false))
@@ -920,7 +924,7 @@
 		const median = (a: number[]) => (a.length ? a.slice().sort((x, y) => x - y)[Math.floor(a.length / 2)] : 0);
 		const variants: { glyphs: any[]; lines: any[]; indent: boolean }[] = [];
 		for (const ind of listItem ? [false] : [false, true]) {
-			const cal = await native()!.draftTypeset({ root, mainFile, text: (ind ? INDENT_PREFIX : '') + orig, hsize: W });
+			const cal = await daemonTypeset({ root, mainFile, text: (ind ? INDENT_PREFIX : '') + orig, hsize: W });
 			if (!cal.ok) continue;
 			const lines = cal.records.filter((x: any) => x.t === 'line');
 			if (!lines.length || (cal.stats && (cal.stats as any).certified === false)) continue;
@@ -1040,7 +1044,7 @@
 		if (!allG.length) return bail('no-page-glyphs');
 		const W = paper.colW > 0 ? paper.colW : Math.max(...boxes.map((b) => b.W)) * BP2PT;
 		const G = 8;
-		const cal = await n.draftTypeset({ root, mainFile, text: orig, hsize: W });
+		const cal = await daemonTypeset({ root, mainFile, text: orig, hsize: W });
 		if (!cal.ok) return bail('cal-typeset-failed');
 		const calLines = cal.records.filter((x: any) => x.t === 'line');
 		if (!calLines.length || (cal.stats && (cal.stats as any).certified === false)) return bail('cal-uncertified');
@@ -1235,7 +1239,7 @@
 		// indent flag rides on the cal so edited re-typesets reproduce the same breaks.
 		const variants: { lines: any[]; glyphs: any[]; indent: boolean }[] = [];
 		for (const ind of listItem ? [false] : [false, true]) {
-			const cal = await n.draftTypeset({ root, mainFile, text: (ind ? INDENT_PREFIX : '') + orig, hsize: W });
+			const cal = await daemonTypeset({ root, mainFile, text: (ind ? INDENT_PREFIX : '') + orig, hsize: W });
 			if (!cal.ok) continue;
 			const lines = cal.records.filter((x: any) => x.t === 'line');
 			if (!lines.length || (cal.stats && (cal.stats as any).certified === false)) continue;
@@ -1493,7 +1497,7 @@
 			await req.onRecompile?.();
 			// the daemon SURVIVES this: an abandon means "this edit renders via a full pass",
 			// never an engine reload (that only happens on a preamble change)
-			status = `Recompiling (${whyPhrase(stage)}), engine stays warm…`;
+			status = m.draft_status_recompiling({ reason: whyPhrase(stage) });
 			compile('abandon:' + stage);
 		};
 		try {
@@ -1520,7 +1524,7 @@
 			// edit carries the same engine-resolved \hspace*{\parindent}. An edit that changes
 			// the paragraph's command set (e.g. typing \noindent) is cmdChanged and always
 			// reconciles -- the engine certifies whatever the commands mean.
-			const r = await n.draftTypeset({ root, mainFile, text: (cal.indent && !req.listItem ? INDENT_PREFIX : '') + req.text, hsize: cal.W });
+			const r = await daemonTypeset({ root, mainFile, text: (cal.indent && !req.listItem ? INDENT_PREFIX : '') + req.text, hsize: cal.W });
 			if (!r.ok || (r.stats && (r.stats as any).certified === false)) {
 				await recompile('typeset', { ok: r.ok });
 				return;
@@ -1584,7 +1588,7 @@
 				patchedPages.add(cal.pageNo);
 				showEditBand({ page: cal.pageNo, top: cal.b1 - h1, bottom: cal.bk + dk, colL: cal.colL, colR: cal.colR });
 				followEdit(cal.pageNo, cal.b1, cal.bk, cal.colL, cal.colR);
-				status = `Refining p${cal.pageNo}…`;
+				status = m.draft_status_refining({ page: cal.pageNo });
 				ev('provisional-split', { page: cal.pageNo, spillPage, kA, of: lineRecs.length });
 				if (!req.transient) scheduleReconcile(req.onRecompile, 'split');
 				return;
@@ -1701,7 +1705,7 @@
 			if (provisionalStage) {
 				provisionalPages = new Set(provisionalPages).add(cal.pageNo); // tint until the recompile lands
 				ev('provisional', { stage: provisionalStage, page: cal.pageNo, delta: +delta.toFixed(1), transient: !!req.transient });
-				status = `Refining p${cal.pageNo}…`;
+				status = m.draft_status_refining({ page: cal.pageNo });
 				// debounced reconcile: the provisional render carries the typing; ONE full pass
 				// runs after the user pauses instead of one per keystroke. Transient (repaired
 				// mid-typing) edits never schedule one -- the balanced keystroke that follows will.
@@ -1713,7 +1717,7 @@
 					provisionalPages = s;
 				}
 				ev('patched', { page: cal.pageNo, delta: +delta.toFixed(1), ms: +ms.toFixed(0) });
-				status = `Warm engine · patched p${cal.pageNo} in ${ms.toFixed(0)} ms`;
+				status = m.draft_status_patched({ page: cal.pageNo, ms: ms.toFixed(0) });
 			}
 		} catch (e) {
 			ev('error', String(e));
@@ -1840,7 +1844,7 @@
 		provisionalPages = new Set(provisionalPages).add(cal.pageNo).add(pB);
 		showEditBand({ page: cal.pageNo, top: topA, bottom: cal.bk + dk, colL: cal.colL, colR: cal.colR });
 		followEdit(cal.pageNo, cal.b1, cal.bk + dk, cal.colL, cal.colR);
-		status = `Refining p${cal.pageNo}…`;
+		status = m.draft_status_refining({ page: cal.pageNo });
 		ev('provisional-split', { page: cal.pageNo, spillPage: pB, kA, of: lineRecs.length, moved: movedFrom.length, stage: 'overflow' });
 		return true;
 	}
@@ -1856,11 +1860,11 @@
 		if (!n) return;
 		const t = performance.now();
 		// hsize 0 = the daemon falls back to its OWN engine-announced \columnwidth
-		n.draftTypeset({ root, mainFile, text: 'warm', hsize: paper.colW })
+		daemonTypeset({ root, mainFile, text: 'warm', hsize: paper.colW })
 			.then((r) => {
 				ev('daemon-warm', { ms: +(performance.now() - t).toFixed(0), ok: r.ok });
 				// only announce readiness if nothing else took over the status meanwhile
-				if (r.ok && !compiling && !patching) status = 'Warm engine ready';
+				if (r.ok && !compiling && !patching) status = m.draft_status_warm_ready();
 			})
 			.catch(() => {
 				warmed = false;
@@ -1940,10 +1944,45 @@
 		}
 	}
 
+	// all daemon typesets funnel through here so an 'engine-busy' from ANY path (another
+	// window holds the warm engine) pauses this preview instead of surfacing a raw error
+	async function daemonTypeset(body: { root: string; mainFile: string; text: string; hsize?: number }) {
+		const r = await native()!.draftTypeset(body);
+		// cast, not narrow: svelte-check doesn't reliably narrow this cross-module union
+		if (!r.ok && (r as { error?: string }).error === 'engine-busy') busyElsewhere = true;
+		return r;
+	}
+
+	// explicit user action from the paused banner: steal the engine and start fresh here
+	async function takeoverEngine() {
+		const n = native();
+		if (!n?.draftTakeover) return;
+		try {
+			await n.draftTakeover({ root });
+		} catch {
+			/* the engine may already be free */
+		}
+		busyElsewhere = false;
+		void compile('takeover');
+	}
+
+	// the losing side of a takeover: main pushes this so we pause immediately instead of
+	// showing a stale "ready" state until the next keystroke discovers engine-busy
+	$effect(() => {
+		const n = native();
+		if (!n?.onDraftPreempted) return;
+		return n.onDraftPreempted(() => {
+			busyElsewhere = true;
+			compiling = false;
+			status = '';
+		});
+	});
+
 	let compileToken = 0;
 	async function compile(reason = 'trigger') {
 		const n = native();
 		if (!n || !root || !mainFile) return;
+		if (busyElsewhere) return; // paused: don't fight the owning window on every trigger
 		// cancel-on-supersede: don't queue behind an in-flight compile -- fire a fresh one. The
 		// service kills the older run's lualatex, so a hung/slow compile never blocks the latest
 		// edit (else the 120s pass timeout would freeze the preview). This run drops its own
@@ -1954,7 +1993,7 @@
 		// a recompile after an abandon already shows "Left warm engine (...), recompiling…"
 		// keep the "Recompiling (…)…" / "Refining…" status the caller set for an abandon or a
 		// provisional reconcile; only a fresh compile announces "Compiling project…"
-		if (!reason.startsWith('abandon:') && !reason.startsWith('provisional:')) status = 'Compiling project…';
+		if (!reason.startsWith('abandon:') && !reason.startsWith('provisional:')) status = m.draft_status_compiling();
 		error = null;
 		try {
 			const r = await n.draftCompile({ root, mainFile });
@@ -2001,7 +2040,10 @@
 				// drop stale hashes for removed pages
 				for (const k of [...prevRecords.keys()]) if (k > pages.length) prevRecords.delete(k);
 				const secs = (r.ms / 1000).toFixed(1);
-				status = `Compiled in ${secs} s · ${pages.length} page${pages.length === 1 ? '' : 's'}${(r.passes ?? 1) > 1 ? ` · ${r.passes} passes` : ''}`;
+				const pageCount =
+					pages.length === 1 ? m.draft_compiled_pages_one({ count: pages.length }) : m.draft_compiled_pages_other({ count: pages.length });
+				const passesSuffix = (r.passes ?? 1) > 1 ? ` · ${m.draft_compiled_passes({ passes: r.passes })}` : '';
+				status = `${m.draft_status_compiled({ secs })} · ${pageCount}${passesSuffix}`;
 				ev('compiled', { pages: pages.length, passes: r.passes ?? 1, changed, ms: r.ms });
 				warmDaemon(); // preload the daemon (heavy preambles cost ~1.5s once) so the first edit patches instantly
 				if (pendingFocus) {
@@ -2029,8 +2071,14 @@
 				// svelte-check doesn't reliably narrow this cross-module discriminated union.
 				// A service-side 'superseded' isn't an error -- the newer compile will render.
 				const fail = r as { error: string; log?: string };
-				error = fail.error + (fail.log ? '\n' + fail.log : '');
-				status = '';
+				if (fail.error === 'engine-busy') {
+					// another window owns the live-preview engine: pause with the banner
+					busyElsewhere = true;
+					status = '';
+				} else {
+					error = fail.error + (fail.log ? '\n' + fail.log : '');
+					status = '';
+				}
 			}
 		} catch (e) {
 			if (myToken !== compileToken) return;
@@ -2295,9 +2343,9 @@
 					.replace(/\.tex$/i, '') + '.pdf';
 			const res = await nat.draftSavePdf({ root, defaultName: name });
 			ev('save-pdf', { saved: res.saved, path: res.path });
-			if (res.saved && res.path) status = `PDF saved to ${res.path}`;
+			if (res.saved && res.path) status = m.draft_status_pdf_saved({ path: res.path });
 		} catch (e) {
-			status = `Could not save PDF: ${e instanceof Error ? e.message : String(e)}`;
+			status = m.draft_status_pdf_save_failed({ message: e instanceof Error ? e.message : String(e) });
 		} finally {
 			savingPdf = false;
 		}
@@ -2322,16 +2370,17 @@
 <div class="bg-surface-200-800 flex h-full w-full flex-col">
 	<!-- one toolbar row: status on the left, zoom + page-nav on the right ("Draft preview"
 	     already labels the pane header above) -->
-	<div class="border-surface-300-700 text-surface-600-300 flex shrink-0 items-center gap-1 border-b px-2 py-1 text-xs">
-		{#if error}<span class="text-error-500 shrink-0">preview error</span>{:else}<span class="text-surface-700-200 truncate">{status}</span
+	<div class="border-surface-300-700 text-surface-600-300 flex min-h-10 shrink-0 items-center gap-1 border-b px-2 text-xs">
+		{#if error}<span class="text-error-500 shrink-0">{m.draft_preview_error_label()}</span>{:else}<span
+				class="text-surface-700-200 truncate">{status}</span
 			>{/if}
 		<div class="flex-1"></div>
 		<button
 			class="hover:preset-tonal rounded p-1 disabled:opacity-40"
 			onclick={savePdf}
 			disabled={!pages.length || savingPdf}
-			title="Save PDF"
-			aria-label="Save PDF"
+			title={m.draft_toolbar_save_pdf()}
+			aria-label={m.draft_toolbar_save_pdf()}
 		>
 			<Download class="size-4" />
 		</button>
@@ -2340,8 +2389,8 @@
 			class="hover:preset-tonal rounded p-1 disabled:opacity-40"
 			onclick={zoomOut}
 			disabled={!pages.length}
-			title="Zoom out"
-			aria-label="Zoom out"
+			title={m.draft_toolbar_zoom_out()}
+			aria-label={m.draft_toolbar_zoom_out()}
 		>
 			<ZoomOut class="size-4" />
 		</button>
@@ -2349,7 +2398,7 @@
 			class="hover:preset-tonal min-w-11 rounded px-1 py-1 text-center tabular-nums"
 			onclick={actualSize}
 			disabled={!pages.length}
-			title="Actual size (100%)"
+			title={m.draft_toolbar_actual_size()}
 		>
 			{Math.round(zoom * 100)}%
 		</button>
@@ -2357,8 +2406,8 @@
 			class="hover:preset-tonal rounded p-1 disabled:opacity-40"
 			onclick={zoomIn}
 			disabled={!pages.length}
-			title="Zoom in"
-			aria-label="Zoom in"
+			title={m.draft_toolbar_zoom_in()}
+			aria-label={m.draft_toolbar_zoom_in()}
 		>
 			<ZoomIn class="size-4" />
 		</button>
@@ -2367,8 +2416,8 @@
 			class:preset-tonal={fitMode}
 			onclick={fitWidthBtn}
 			disabled={!pages.length}
-			title="Fit width"
-			aria-label="Fit width"
+			title={m.draft_toolbar_fit_width()}
+			aria-label={m.draft_toolbar_fit_width()}
 		>
 			<MoveHorizontal class="size-4" />
 		</button>
@@ -2378,8 +2427,8 @@
 			class:text-primary-500={followEdits}
 			onclick={() => (followEdits = !followEdits)}
 			disabled={!pages.length}
-			title={followEdits ? 'Following your edits (click to stop)' : 'Follow your edits in the preview'}
-			aria-label="Follow edits"
+			title={followEdits ? m.draft_toolbar_follow_edits_on() : m.draft_toolbar_follow_edits_off()}
+			aria-label={m.draft_toolbar_follow_edits_aria()}
 			aria-pressed={followEdits}
 		>
 			<Crosshair class="size-4" />
@@ -2390,8 +2439,8 @@
 				class="hover:preset-tonal rounded p-1 disabled:opacity-40"
 				onclick={() => goToPage(curPage - 1)}
 				disabled={curPage <= 1}
-				title="Previous page"
-				aria-label="Previous page"
+				title={m.draft_toolbar_prev_page()}
+				aria-label={m.draft_toolbar_prev_page()}
 			>
 				<ChevronUp class="size-4" />
 			</button>
@@ -2400,13 +2449,19 @@
 				class="hover:preset-tonal rounded p-1 disabled:opacity-40"
 				onclick={() => goToPage(curPage + 1)}
 				disabled={curPage >= pages.length}
-				title="Next page"
-				aria-label="Next page"
+				title={m.draft_toolbar_next_page()}
+				aria-label={m.draft_toolbar_next_page()}
 			>
 				<ChevronDown class="size-4" />
 			</button>
 		{/if}
 	</div>
+	{#if busyElsewhere}
+		<div class="border-surface-300-700 bg-surface-50-950 m-3 flex items-center justify-between gap-3 rounded border p-3 text-sm">
+			<span class="text-surface-600-300">{m.draft_busy_other_window()}</span>
+			<button class="btn btn-sm preset-filled-primary-500 shrink-0" onclick={takeoverEngine}>{m.draft_busy_takeover()}</button>
+		</div>
+	{/if}
 	{#if error}
 		<pre class="text-error-500 m-3 overflow-auto rounded bg-surface-50-950 p-3 text-xs whitespace-pre-wrap">{error}</pre>
 	{/if}
@@ -2446,7 +2501,7 @@
 					</div>
 				{/if}
 			</div>
-			<div class="text-surface-500 -mt-3 text-[10px]">page {p.n}</div>
+			<div class="text-surface-500 -mt-3 text-[10px]">{m.draft_page_label({ n: p.n })}</div>
 		{/each}
 	</div>
 </div>

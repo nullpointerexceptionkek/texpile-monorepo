@@ -9,6 +9,7 @@
 	import { computeToggleWrap, computeWrapBlock } from '$lib/editor/extensions/intellisense/shortcuts';
 	import SourceTableDropdown from './SourceTableDropdown.svelte';
 	import SourceMathDropdown from './SourceMathDropdown.svelte';
+	import { m } from '$lib/paraglide/messages';
 
 	function run(build: (state: EditorState) => TransactionSpec) {
 		return (e: MouseEvent) => {
@@ -30,7 +31,12 @@
 <div class="flex items-center gap-1 sm:gap-1.5" data-keep-caret role="presentation" onmousedown={(e) => e.preventDefault()}>
 	<ul class="border-surface-300-700 flex items-center gap-1 border-r pr-1.5 sm:gap-1.5 sm:pr-2">
 		<li class="toolbarButton hover:preset-tonal">
-			<button onclick={run((s) => computeToggleWrap(s, 'textbf'))} class="flex items-center p-1" aria-label="Bold" title="Bold (Ctrl+B)">
+			<button
+				onclick={run((s) => computeToggleWrap(s, 'textbf'))}
+				class="flex items-center p-1"
+				aria-label={m.srctoolbar_bold_aria()}
+				title={m.srctoolbar_bold_title()}
+			>
 				<Bold class="h-4.5 w-4.5" />
 			</button>
 		</li>
@@ -38,8 +44,8 @@
 			<button
 				onclick={run((s) => computeToggleWrap(s, 'textit'))}
 				class="flex items-center p-1"
-				aria-label="Italic"
-				title="Italic (Ctrl+I)"
+				aria-label={m.srctoolbar_italic_aria()}
+				title={m.srctoolbar_italic_title()}
 			>
 				<Italic class="h-4.5 w-4.5" />
 			</button>
@@ -48,8 +54,8 @@
 			<button
 				onclick={run((s) => computeToggleWrap(s, 'underline'))}
 				class="flex items-center p-1"
-				aria-label="Underline"
-				title="Underline (Ctrl+U)"
+				aria-label={m.srctoolbar_underline_aria()}
+				title={m.srctoolbar_underline_title()}
 			>
 				<Underline class="h-4.5 w-4.5 translate-y-[1px]" />
 			</button>
@@ -58,8 +64,8 @@
 			<button
 				onclick={run((s) => computeToggleWrap(s, 'texttt'))}
 				class="flex items-center p-1"
-				aria-label="Code"
-				title="Monospace (Ctrl+`)"
+				aria-label={m.srctoolbar_monospace_aria()}
+				title={m.srctoolbar_monospace_title()}
 			>
 				<Code class="h-4.5 w-4.5" />
 			</button>
@@ -68,8 +74,8 @@
 			<button
 				onclick={run((s) => computeToggleWrap(s, 'textsuperscript'))}
 				class="flex items-center p-1"
-				aria-label="Superscript"
-				title="Superscript (Ctrl+.)"
+				aria-label={m.srctoolbar_superscript_aria()}
+				title={m.srctoolbar_superscript_title()}
 			>
 				<Superscript class="h-4.5 w-4.5" />
 			</button>
@@ -78,8 +84,8 @@
 			<button
 				onclick={run((s) => computeToggleWrap(s, 'textsubscript'))}
 				class="flex items-center p-1"
-				aria-label="Subscript"
-				title="Subscript (Ctrl+,)"
+				aria-label={m.srctoolbar_subscript_aria()}
+				title={m.srctoolbar_subscript_title()}
 			>
 				<Subscript class="h-4.5 w-4.5" />
 			</button>
@@ -106,8 +112,8 @@
 			<button
 				onclick={run((s) => computeWrapBlock(s, '\\begin{quote}\n', '\n\\end{quote}'))}
 				class="flex items-center p-1"
-				aria-label="Quote block"
-				title="Quote (Ctrl+Shift+B)"
+				aria-label={m.srctoolbar_quote_block_aria()}
+				title={m.srctoolbar_quote_title()}
 			>
 				<Quote class="h-4.5 w-4.5" />
 			</button>
@@ -116,8 +122,8 @@
 			<button
 				onclick={run((s) => computeWrapBlock(s, '\\begin{verbatim}\n', '\n\\end{verbatim}'))}
 				class="flex items-center p-1"
-				aria-label="Code block"
-				title="Verbatim block (Ctrl+Shift+`)"
+				aria-label={m.srctoolbar_verbatim_block_aria()}
+				title={m.srctoolbar_verbatim_title()}
 			>
 				<Code class="h-4.5 w-4.5" />
 			</button>
@@ -126,8 +132,8 @@
 			<button
 				onclick={run((s) => computeWrapBlock(s, '\\(', '\\)'))}
 				class="flex items-center p-1"
-				aria-label="Inline math"
-				title="Inline math (Ctrl+M)"
+				aria-label={m.srctoolbar_inline_math_aria()}
+				title={m.srctoolbar_inline_math_title()}
 			>
 				<Sigma class="h-4.5 w-4.5" />
 			</button>

@@ -3,6 +3,7 @@
 	import { Popover, Portal, Switch, Tooltip } from '@skeletonlabs/skeleton-svelte';
 	import { Table } from '@lucide/svelte';
 	import { createTableNode } from '$lib/editor/utils/tableUtils';
+	import { m } from '$lib/paraglide/messages';
 
 	const maxRows = 10;
 	const maxCols = 10;
@@ -53,7 +54,7 @@
 
 <Popover {open} onOpenChange={(e) => (open = e.open)} positioning={{ placement: 'bottom-start', offset: { mainAxis: 0 } }}>
 	<Popover.Trigger class="toolbarButton rounded p-1 hover:bg-surface-200-800">
-		<button aria-label="Insert table" title="Insert table" class="flex items-center justify-center">
+		<button aria-label={m.tbar_insert_table_aria()} title={m.tbar_insert_table_aria()} class="flex items-center justify-center">
 			<Table class="h-5 w-5 text-surface-800-200" />
 		</button>
 	</Popover.Trigger>
@@ -72,7 +73,7 @@
 							onmouseenter={() => handleMouseOver(cell.row, cell.col)}
 							onfocus={() => handleMouseOver(cell.row, cell.col)}
 							onclick={insertTable}
-							aria-label={`Insert ${cell.row}x${cell.col} table`}
+							aria-label={m.tbar_insert_table_size_aria({ rows: cell.row, cols: cell.col })}
 						></button>
 					{/each}
 				</div>
@@ -84,7 +85,7 @@
 						onCheckedChange={(e) => (numberedState = e.checked)}
 						class="flex cursor-pointer items-center justify-between text-sm"
 					>
-						<Switch.Label>Numbered table</Switch.Label>
+						<Switch.Label>{m.tbar_numbered_table()}</Switch.Label>
 						<Switch.Control class="preset-filled-surface-200-700 data-[state=checked]:preset-filled-primary-500">
 							<Switch.Thumb />
 						</Switch.Control>
@@ -99,7 +100,7 @@
 								disabled
 								class="flex cursor-not-allowed items-center justify-between text-sm opacity-50"
 							>
-								<Switch.Label>Numbered table</Switch.Label>
+								<Switch.Label>{m.tbar_numbered_table()}</Switch.Label>
 								<Switch.Control class="preset-filled-surface-200-700">
 									<Switch.Thumb />
 								</Switch.Control>
@@ -108,7 +109,7 @@
 						</Tooltip.Trigger>
 						<Portal>
 							<Tooltip.Positioner class="z-floating-ui">
-								<Tooltip.Content class="card preset-filled p-2 text-sm">This feature is not enabled for this template</Tooltip.Content>
+								<Tooltip.Content class="card preset-filled p-2 text-sm">{m.tbar_feature_not_enabled()}</Tooltip.Content>
 							</Tooltip.Positioner>
 						</Portal>
 					</Tooltip>

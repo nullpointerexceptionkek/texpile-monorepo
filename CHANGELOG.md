@@ -5,6 +5,12 @@ Release notes for Texpile Desktop. Add notes under `## [Unreleased]` as you work
 
 ## [Unreleased]
 
+- feat: experimental shared sessions for real time collaboration. Share a folder with a code from the home screen, no account needed, end to end encrypted so the relay server only forwards data it cannot read. Guests co-edit in both the visual and source editors, see where others are editing, and watch the host's compiled PDF and compile problems live
+- feat: work in several windows, with File > New Window and Open Folder in New Window; relaunching reopens every window on its last open file
+- feat: the app and the website are available in Simplified Chinese, Traditional Chinese, and German, picked in Preferences
+- feat: open files appear as tabs above the editor, and your open tabs come back when you reopen the folder
+- feat: the file explorer gains multi-select and drag and drop: select several files with Ctrl and Shift, drop files and folders in from your system's file manager, and paste images or copied files with Ctrl+V
+
 ## [0.14.3] - 2026-07-18
 
 - fix: the What's new, update, and Preferences windows scroll long content instead of pushing their buttons off screen, and Esc closes them

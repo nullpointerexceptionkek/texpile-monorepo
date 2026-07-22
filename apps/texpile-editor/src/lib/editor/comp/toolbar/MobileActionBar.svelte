@@ -4,6 +4,7 @@
 	import { BookOpen, Settings, FileText } from '@lucide/svelte';
 	import DisabledFeature from '../DisabledFeature.svelte';
 	import { isReadOnly } from '$lib/stores/permissionStore';
+	import { m } from '$lib/paraglide/messages';
 
 	let citationsEnabled = $derived($templateFeaturesStore?.citations ?? true);
 
@@ -22,10 +23,10 @@
 			<button
 				class="btn btn-sm preset-tonal-surface flex h-12 flex-col items-center gap-1 text-xs"
 				onclick={preventDefault(() => emit('open-citations'))}
-				aria-label="Citations"
+				aria-label={m.tbar_citations()}
 			>
 				<BookOpen class="size-5" />
-				<span>Citations</span>
+				<span>{m.tbar_citations()}</span>
 			</button>
 		</DisabledFeature>
 
@@ -33,22 +34,22 @@
 			<button
 				class="btn btn-sm preset-tonal-surface flex h-12 flex-col items-center gap-1 text-xs"
 				onclick={preventDefault(() => emit('open-settings'))}
-				aria-label="Settings"
+				aria-label={m.tbar_settings()}
 				data-tour="mobile-settings-button"
 			>
 				<Settings class="size-5" />
-				<span>Settings</span>
+				<span>{m.tbar_settings()}</span>
 			</button>
 		{/if}
 
 		<button
 			class="btn btn-sm preset-tonal-surface flex h-12 flex-col items-center gap-1 text-xs"
 			onclick={preventDefault(() => emit('open-export'))}
-			aria-label="Export"
+			aria-label={m.tbar_export()}
 			data-tour="mobile-export-button"
 		>
 			<FileText class="size-5" />
-			<span>Export</span>
+			<span>{m.tbar_export()}</span>
 		</button>
 	</div>
 </div>

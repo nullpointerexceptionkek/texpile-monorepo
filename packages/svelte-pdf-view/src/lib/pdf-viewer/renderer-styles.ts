@@ -15,14 +15,11 @@
 
 /** shadow-DOM-isolated renderer styles; derivative work based on PDF.js text_layer_builder.css. */
 export const rendererStyles = `
-/* CSS Custom Properties with defaults */
+/* CSS Custom Properties with defaults (scrollbar vars default at their use sites, so the
+   pdf-custom-scrollbar rules see unset props and fall back per-declaration) */
 .pdf-renderer-container {
 	--pdf-background-color: #e8e8e8;
 	--pdf-page-shadow: 0 2px 8px rgba(0, 0, 0, 0.12), 0 1px 3px rgba(0, 0, 0, 0.08);
-	--pdf-scrollbar-track-color: #f1f1f1;
-	--pdf-scrollbar-thumb-color: #c1c1c1;
-	--pdf-scrollbar-thumb-hover-color: #a1a1a1;
-	--pdf-scrollbar-width: 10px;
 
 	display: flex;
 	flex-direction: column;
@@ -30,6 +27,8 @@ export const rendererStyles = `
 	height: 100%;
 	background-color: var(--pdf-background-color);
 	overflow: hidden;
+	/* containing block for the reload snapshot overlay (the frozen page clones) */
+	position: relative;
 }
 
 /* Scroll container */
@@ -40,30 +39,27 @@ export const rendererStyles = `
 	background-color: var(--pdf-background-color);
 }
 
-/* Custom scrollbar styling */
-.pdf-scroll-container::-webkit-scrollbar {
-	width: var(--pdf-scrollbar-width);
-	height: var(--pdf-scrollbar-width);
+/* Scrollbar: native unless the host passes any scrollbar-* prop (.pdf-custom-scrollbar), so an
+   unstyled viewer matches the host page's scrollers. No standard scrollbar-color/width here:
+   Chromium ignores the ::-webkit-scrollbar pseudos once those are set. */
+.pdf-custom-scrollbar .pdf-scroll-container::-webkit-scrollbar {
+	width: var(--pdf-scrollbar-width, 10px);
+	height: var(--pdf-scrollbar-width, 10px);
 }
 
-.pdf-scroll-container::-webkit-scrollbar-track {
-	background: var(--pdf-scrollbar-track-color);
-	border-radius: calc(var(--pdf-scrollbar-width) / 2);
+.pdf-custom-scrollbar .pdf-scroll-container::-webkit-scrollbar-track {
+	background: var(--pdf-scrollbar-track-color, transparent);
 }
 
-.pdf-scroll-container::-webkit-scrollbar-thumb {
-	background: var(--pdf-scrollbar-thumb-color);
-	border-radius: calc(var(--pdf-scrollbar-width) / 2);
+.pdf-custom-scrollbar .pdf-scroll-container::-webkit-scrollbar-thumb {
+	background-color: var(--pdf-scrollbar-thumb-color, #888);
+	border-radius: calc(var(--pdf-scrollbar-width, 10px) / 2);
+	border: 2px solid transparent;
+	background-clip: padding-box;
 }
 
-.pdf-scroll-container::-webkit-scrollbar-thumb:hover {
-	background: var(--pdf-scrollbar-thumb-hover-color);
-}
-
-/* Firefox scrollbar */
-.pdf-scroll-container {
-	scrollbar-width: thin;
-	scrollbar-color: var(--pdf-scrollbar-thumb-color) var(--pdf-scrollbar-track-color);
+.pdf-custom-scrollbar .pdf-scroll-container::-webkit-scrollbar-thumb:hover {
+	background-color: var(--pdf-scrollbar-thumb-hover-color, #666);
 }
 
 /* Viewer - dynamically created */
@@ -91,15 +87,6 @@ export const rendererStyles = `
 	direction: ltr;
 }
 
-.page .loadingIcon {
-	position: absolute;
-	top: 50%;
-	left: 50%;
-	transform: translate(-50%, -50%);
-	color: #666;
-	font-size: 14px;
-}
-
 .page .canvasWrapper {
 	position: absolute;
 	inset: 0;
@@ -121,9 +108,6 @@ export const rendererStyles = `
 }
 .pdf-renderer-container.pdf-dark .pdf-canvas {
 	filter: invert(94%) hue-rotate(180deg);
-}
-.pdf-renderer-container.pdf-dark .page .loadingIcon {
-	color: #9a9aa2;
 }
 
 /* Text layer — styles from PDF.js 5.x pdf_viewer.css. IMPORTANT: since pdf.js 5 the core TextLayer

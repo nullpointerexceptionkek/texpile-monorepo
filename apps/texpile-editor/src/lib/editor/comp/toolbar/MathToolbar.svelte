@@ -11,9 +11,10 @@
 	import { editorViewStore } from '$lib/stores/editorStore';
 	import { TextSelection } from 'prosemirror-state';
 	import { convertLatexToMarkup } from 'mathlive';
+	import { m } from '$lib/paraglide/messages';
 	// static.css provides styles for convertLatexToMarkup output (fonts.css already loaded by mlview)
 	import 'mathlive/static.css';
-	import { SYMBOL_GROUPS, MATRIX_BRACKETS, generateMatrixLatex, type MatrixBracket } from './mathSymbols';
+	import { SYMBOL_GROUPS, MATRIX_BRACKETS, generateMatrixLatex, symbolTooltip, type MatrixBracket } from './mathSymbols';
 
 	function renderLatex(latex: string): string {
 		try {
@@ -184,14 +185,14 @@
 					<button
 						class="toolbarButton flex items-center gap-1 rounded p-1 hover:preset-tonal"
 						class:preset-tonal-primary={openGroup === group.id}
-						aria-label={group.label}
-						title={group.label}
+						aria-label={group.label()}
+						title={group.label()}
 						tabindex="-1"
 						onmousedown={preventFocusLoss}
 						onclick={() => toggleGroup(group.id)}
 					>
 						<Icon class="h-4 w-4" />
-						<span class="text-xs">{group.label}</span>
+						<span class="text-xs">{group.label()}</span>
 						<ChevronDown class="h-3 w-3 opacity-50" />
 					</button>
 				</Popover.Trigger>
@@ -200,11 +201,11 @@
 					<Popover.Positioner class="z-floating-ui">
 						<Popover.Content class="card bg-surface-50-950 border-surface-300-700 min-w-[200px] border shadow-lg">
 							<div class="py-1" tabindex="-1" role="presentation" onmousedown={preventFocusLoss}>
-								<div class="text-surface-600-400 px-2 py-1 text-xs font-semibold uppercase">{group.label}</div>
+								<div class="text-surface-600-400 px-2 py-1 text-xs font-semibold uppercase">{group.label()}</div>
 
 								{#if group.id === 'matrices'}
 									<div class="border-surface-300-700 border-b p-3">
-										<div class="mb-2 text-xs font-medium">Matrix Style</div>
+										<div class="mb-2 text-xs font-medium">{m.mathtoolbar_matrix_style_label()}</div>
 										<div class="mb-3 flex flex-wrap gap-2">
 											{#each MATRIX_BRACKETS as b (b.mode)}
 												<button
@@ -217,13 +218,13 @@
 													onclick={() => (matrixBracketMode = b.mode)}
 													onmousedown={preventFocusLoss}
 													tabindex="-1"
-													title={b.title}
+													title={b.title()}
 												>
 													{b.label}
 												</button>
 											{/each}
 										</div>
-										<div class="mb-2 text-xs font-medium">Size</div>
+										<div class="mb-2 text-xs font-medium">{m.mathtoolbar_matrix_size_label()}</div>
 										<div class="space-y-2">
 											<div class="grid gap-1" style="grid-template-columns: repeat(6, 1fr);">
 												{#each Array.from({ length: 6 }) as _, row}
@@ -235,7 +236,7 @@
 															class:border-blue-400={row + 1 <= matrixGridHoverRows && col + 1 <= matrixGridHoverCols}
 															class:bg-surface-100-900={!(row + 1 <= matrixGridHoverRows && col + 1 <= matrixGridHoverCols)}
 															class:border-surface-300-700={!(row + 1 <= matrixGridHoverRows && col + 1 <= matrixGridHoverCols)}
-															aria-label={`Insert ${row + 1}×${col + 1} matrix`}
+															aria-label={m.mathtoolbar_insert_matrix_aria({ rows: row + 1, cols: col + 1 })}
 															onmouseover={() => {
 																matrixGridHoverRows = row + 1;
 																matrixGridHoverCols = col + 1;
@@ -266,9 +267,9 @@
 												tabindex="-1"
 												onmousedown={preventFocusLoss}
 												onclick={() => insertSymbol(symbol.latex)}
-												title={symbol.tooltip || symbol.latex}
+												title={symbolTooltip(symbol) || symbol.latex}
 											>
-												<span class="env-label">{symbol.tooltip}</span>
+												<span class="env-label">{symbolTooltip(symbol)}</span>
 												<span class="env-preview">
 													<!-- eslint-disable-next-line svelte/no-at-html-tags -- renderLatex() is mathlive's own trusted math-typesetting HTML for a symbol from the hardcoded SYMBOL_GROUPS table above, never user/network input. -->
 													{@html renderLatex(symbol.displayLatex ?? symbol.latex)}
@@ -285,7 +286,7 @@
 												tabindex="-1"
 												onmousedown={preventFocusLoss}
 												onclick={() => insertSymbol(symbol.latex)}
-												title={symbol.tooltip || symbol.latex}
+												title={symbolTooltip(symbol) || symbol.latex}
 											>
 												<span class="symbol-content">
 													<!-- eslint-disable-next-line svelte/no-at-html-tags -- renderLatex() is mathlive's own trusted math-typesetting HTML for a symbol from the hardcoded SYMBOL_GROUPS table above, never user/network input. -->
@@ -311,8 +312,8 @@
 			tabindex="-1"
 			onmousedown={preventFocusLoss}
 			onclick={toggleVirtualKeyboard}
-			aria-label="Toggle virtual keyboard"
-			title="Virtual Keyboard"
+			aria-label={m.mathtoolbar_toggle_keyboard_aria()}
+			title={m.mathtoolbar_virtual_keyboard_title()}
 		>
 			<Keyboard class="h-5 w-5" />
 		</button>
@@ -326,8 +327,8 @@
 				tabindex="-1"
 				onmousedown={preventFocusLoss}
 				onclick={selectBlockMath}
-				aria-label="Select block"
-				title="Select equation block"
+				aria-label={m.mathtoolbar_select_block_aria()}
+				title={m.mathtoolbar_select_equation_block_title()}
 			>
 				<BoxSelect class="h-5 w-5" />
 			</button>

@@ -1,10 +1,13 @@
 import { mount } from 'svelte';
 import './app.css';
 import '$lib/theme'; // side-effect: applies the saved appearance and watches OS changes
+import { loadSettings } from '$lib/settings';
+import { focusDoctor } from '$lib/debug/focusDoctor';
 import App from './App.svelte';
 
 // console.log is silenced unless window.texpile.debug (settable from DevTools)
 window.texpile = window.texpile || { debug: import.meta.env.DEV };
+window.texpileFocusDoctor = focusDoctor;
 const originalLog = console.log;
 console.log = (...args: unknown[]) => {
 	if (window.texpile?.debug) {
@@ -18,6 +21,9 @@ console.log = (...args: unknown[]) => {
 window.addEventListener('error', (e) => console.error('[client error]', e.error ?? e.message));
 window.addEventListener('unhandledrejection', (e) => console.error('[client error]', e.reason));
 
-const app = mount(App, { target: document.getElementById('app')! });
-
-export default app;
+// wait for the persisted uiLocale before the first render, so a non-English user never sees a
+// flash of English UI (settings.ts applies the locale as soon as this resolves). top-level await
+// isn't available at this app's build target, hence the .then() instead of an await here.
+loadSettings().then(() => {
+	mount(App, { target: document.getElementById('app')! });
+});

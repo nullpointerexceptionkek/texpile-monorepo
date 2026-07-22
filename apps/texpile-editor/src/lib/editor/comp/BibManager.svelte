@@ -18,6 +18,7 @@
 	import type { ZodIssue } from 'zod';
 	import { referenceStore } from '$lib/stores/editorStore';
 	import CodeMirrorLatex from '$lib/components/CodeMirrorLatex.svelte';
+	import { m } from '$lib/paraglide/messages';
 
 	let { value = '', onInput }: { value?: string; onInput?: (v: string) => void } = $props();
 
@@ -107,7 +108,7 @@
 		for (const i of issues) {
 			const msg =
 				i.code === 'invalid_type'
-					? 'Required field'
+					? m.bib_error_required_field()
 					: String(i.message)
 							.replace(/received.+/i, '')
 							.trim();
@@ -161,7 +162,7 @@
 		}
 		const data = parsed.data as BibLaTeXReference;
 		if (!isKeyUnique(data.key)) {
-			formErrors.key = ['Key must be unique.'];
+			formErrors.key = [m.bib_error_key_unique()];
 			return;
 		}
 		if (isEditing && originalKey) refs = refs.map((r) => (r.key === originalKey ? data : r));
@@ -179,7 +180,7 @@
 			return;
 		}
 		if (parsed.entry.key !== originalKey && !isKeyUnique(parsed.entry.key)) {
-			rawEntryError = 'Key must be unique.';
+			rawEntryError = m.bib_error_key_unique();
 			return;
 		}
 		if (isEditing && originalKey) refs = refs.map((r) => (r.key === originalKey ? parsed.entry : r));
@@ -227,7 +228,7 @@
 		if (!bibTeXContent.trim()) return;
 		const result = parseBibTeXWithWarnings(bibTeXContent);
 		if (result.parseError) {
-			bibTeXWarnings = [{ key: 'Parse error', issues: [result.parseError] }];
+			bibTeXWarnings = [{ key: m.bib_parse_error_label(), issues: [result.parseError] }];
 			return;
 		}
 		if (result.warnings.length) bibTeXWarnings = result.warnings;
@@ -245,11 +246,12 @@
 	<div class="mx-auto flex h-full max-w-5xl flex-col gap-3 p-4">
 		<div class="border-error-500 bg-error-500/10 rounded border p-3 text-sm">
 			<div class="mb-1 flex items-center gap-2 font-semibold">
-				<Code class="size-4" /> Can't show the visual editor: the .bib has a syntax error.
+				<Code class="size-4" />
+				{m.bib_parse_syntax_error_title()}
 			</div>
 			<div class="text-error-600-400 text-xs">{parseError}</div>
 			<div class="text-surface-600-400 mt-2 text-xs">
-				Fix the syntax below and save; the visual editor will reappear when the file parses cleanly.
+				{m.bib_parse_syntax_error_hint()}
 			</div>
 		</div>
 		<div class="min-h-0 flex-1 overflow-hidden rounded border border-surface-200-800">
@@ -259,20 +261,20 @@
 			<p class="text-error-500 text-sm">{fileRawError}</p>
 		{/if}
 		<div class="flex justify-end gap-2">
-			<button class="btn hover:preset-tonal" type="button" onclick={() => (fileRawText = value)}>Reset</button>
-			<button class="btn preset-filled-primary-500" type="button" onclick={saveFileRaw}>Save</button>
+			<button class="btn hover:preset-tonal" type="button" onclick={() => (fileRawText = value)}>{m.bib_reset_button()}</button>
+			<button class="btn preset-filled-primary-500" type="button" onclick={saveFileRaw}>{m.bib_save_button()}</button>
 		</div>
 	</div>
 {:else}
 	<div class="mx-auto flex h-full max-w-5xl gap-4 p-4">
 		<div class="w-1/2 overflow-y-auto pr-2">
 			<button class="btn preset-outlined-primary-500 hover:preset-tonal mb-3 w-full" type="button" onclick={resetForm}
-				>+ New reference</button
+				>{m.bib_new_reference_button()}</button
 			>
 			<ul>
 				{#if refs.length === 0}
 					<li class="text-surface-500 flex h-40 items-center justify-center rounded border border-dashed text-sm">
-						No references. Add one, or paste BibTeX →
+						{m.bib_no_references_empty()}
 					</li>
 				{:else}
 					{#each refs as ref (ref.key)}
@@ -285,19 +287,20 @@
 							onclick={() => editReference(ref)}
 						>
 							<div class="pointer-events-none min-w-0 flex-1">
-								<div class="truncate text-sm font-semibold">{ref.author || 'Unknown author'}</div>
-								<div class="text-surface-600-400 truncate text-xs">{ref.title || 'Untitled'}</div>
+								<div class="truncate text-sm font-semibold">{ref.author || m.bib_unknown_author_placeholder()}</div>
+								<div class="text-surface-600-400 truncate text-xs">{ref.title || m.bib_untitled_placeholder()}</div>
 								<div class="text-surface-500 mt-1 flex items-center gap-2 text-xs">
-									<span>{ref.year || 'No year'}</span>
+									<span>{ref.year || m.bib_no_year_placeholder()}</span>
 									<span>•</span>
 									<code class="text-xs">{ref.key}</code>
 									{#if !fitsVisualEditor(ref)}
 										<!-- raw badge: this row edits as raw CM -->
 										<span
 											class="border-surface-300-700 text-surface-500 inline-flex items-center gap-0.5 rounded border px-1 py-px text-[10px]"
-											title="This entry has fields the visual form doesn't know how to render, or has a comment inside it. Editing opens raw BibTeX."
+											title={m.bib_raw_badge_list_tooltip()}
 										>
-											<Code class="size-2.5" /> raw
+											<Code class="size-2.5" />
+											{m.bib_raw_badge_text()}
 										</span>
 									{/if}
 								</div>
@@ -309,7 +312,7 @@
 									e.stopPropagation();
 									deleteReference(ref.key);
 								}}
-								title="Delete"
+								title={m.bib_delete_tooltip()}
 							>
 								<Trash2 class="size-4" />
 							</button>
@@ -322,16 +325,18 @@
 		<div class="border-surface-200-800 w-1/2 overflow-y-auto border-l pl-4">
 			<div class="mb-2 flex items-center gap-2 text-base font-semibold">
 				{#if isEditing}
-					<Pencil class="size-4" /> Editing {currentReference.key}
+					<Pencil class="size-4" />
+					{m.bib_editing_heading({ key: currentReference.key ?? '' })}
 					{#if editMode === 'raw'}
 						<span
 							class="border-surface-300-700 text-surface-500 ml-1 inline-flex items-center gap-0.5 rounded border px-1 py-px text-[10px]"
-							title="This entry is being edited as raw BibTeX because the visual form can't render it losslessly."
+							title={m.bib_raw_badge_edit_tooltip()}
 						>
-							<Code class="size-2.5" /> raw
+							<Code class="size-2.5" />
+							{m.bib_raw_badge_text()}
 						</span>
 					{/if}
-				{:else}New reference{/if}
+				{:else}{m.bib_new_reference_heading()}{/if}
 			</div>
 
 			{#if editMode === 'raw'}
@@ -342,8 +347,8 @@
 					<p class="text-error-500 mt-2 text-sm">{rawEntryError}</p>
 				{/if}
 				<div class="mt-3 flex justify-end gap-2">
-					<button class="btn hover:preset-tonal" type="button" onclick={resetForm}>Cancel</button>
-					<button class="btn preset-filled-primary-500" type="button" onclick={saveRawEntry}>Update reference</button>
+					<button class="btn hover:preset-tonal" type="button" onclick={resetForm}>{m.bib_cancel_button()}</button>
+					<button class="btn preset-filled-primary-500" type="button" onclick={saveRawEntry}>{m.bib_update_reference_button()}</button>
 				</div>
 			{:else}
 				<form
@@ -353,9 +358,9 @@
 					}}
 				>
 					<label class="label mb-3 block">
-						<span class="text-sm font-medium">Type</span>
+						<span class="text-sm font-medium">{m.bib_type_label()}</span>
 						<select class="input mt-1 w-full" bind:value={currentReference.entrytype}>
-							<option value="">Select type…</option>
+							<option value="">{m.bib_select_type_option()}</option>
 							{#each entryTypeOptions as opt}<option value={opt.value}>{opt.label}</option>{/each}
 						</select>
 						{#if formErrors.entrytype}<p class="text-error-500 text-sm">{formErrors.entrytype[0]}</p>{/if}
@@ -387,11 +392,12 @@
 							class="text-surface-600-400 my-2 flex items-center gap-2 text-sm"
 							onclick={() => (showAdvanced = !showAdvanced)}
 						>
-							<ChevronDown class="size-4 transition-transform {showAdvanced ? 'rotate-180' : ''}" /> Advanced (citation key)
+							<ChevronDown class="size-4 transition-transform {showAdvanced ? 'rotate-180' : ''}" />
+							{m.bib_advanced_citation_key_button()}
 						</button>
 						{#if showAdvanced && keyField}
 							<label class="label mb-3 block pl-6">
-								<span class="text-sm font-medium">Key</span>
+								<span class="text-sm font-medium">{m.bib_key_label()}</span>
 								<input
 									class="input mt-1 w-full text-sm"
 									type="text"
@@ -406,27 +412,31 @@
 					{#if formErrors.form}<p class="text-error-500 text-sm">{formErrors.form[0]}</p>{/if}
 
 					<div class="mt-3 flex justify-end gap-2">
-						{#if isEditing}<button class="btn hover:preset-tonal" type="button" onclick={resetForm}>Cancel</button>{/if}
-						<button class="btn preset-filled-primary-500" type="submit">{isEditing ? 'Update' : 'Add'} reference</button>
+						{#if isEditing}<button class="btn hover:preset-tonal" type="button" onclick={resetForm}>{m.bib_cancel_button()}</button>{/if}
+						<button class="btn preset-filled-primary-500" type="submit"
+							>{isEditing ? m.bib_update_reference_button() : m.bib_add_reference_button()}</button
+						>
 					</div>
 				</form>
 			{/if}
 
 			{#if !isEditing}
 				<div class="border-surface-200-800 mt-4 border-t pt-4">
-					<div class="text-sm font-semibold">Paste BibTeX</div>
+					<div class="text-sm font-semibold">{m.bib_paste_bibtex_heading()}</div>
 					<textarea
 						class="input mt-1 w-full font-mono text-xs"
 						rows="5"
 						bind:value={bibTeXContent}
-						placeholder="Paste BibTeX entries (@article, @book, …)"></textarea>
+						placeholder={m.bib_paste_bibtex_placeholder()}></textarea>
 					{#if bibTeXWarnings.length}
 						<div class="border-warning-500 bg-warning-500/10 mt-2 rounded border p-2 text-xs">
 							{#each bibTeXWarnings as w}<div><strong>{w.key}:</strong> {w.issues.join(', ')}</div>{/each}
 						</div>
 					{/if}
 					<div class="mt-2 flex justify-end">
-						<button class="btn btn-sm preset-outlined-primary-500 hover:preset-tonal" type="button" onclick={importBibTeX}>Import</button>
+						<button class="btn btn-sm preset-outlined-primary-500 hover:preset-tonal" type="button" onclick={importBibTeX}
+							>{m.bib_import_button()}</button
+						>
 					</div>
 				</div>
 			{/if}

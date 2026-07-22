@@ -37,6 +37,13 @@ const DEFAULT_SCALE_DELTA = 0.1;
 // pages to render around the visible ones
 const PAGES_TO_PRERENDER = 2;
 
+// page layout, mirroring renderer-styles.ts (.pdf-renderer-container padding + flex gap). The scroll
+// model below reconstructs page offsets arithmetically (no per-page DOM reads on scroll), so these
+// must track that CSS: the first page starts CONTAINER_PAD from the top, pages are PAGE_GAP apart,
+// and each rendered height is floored (PDFPageView sets style.height = Math.floor(height)).
+const CONTAINER_PAD = 20;
+const PAGE_GAP = 16;
+
 export class PDFViewerCore {
 	readonly container: HTMLElement;
 	readonly viewer: HTMLDivElement;
@@ -140,17 +147,21 @@ export class PDFViewerCore {
 		);
 	}
 
+	// callable repeatedly on the same instance: replaces the current document in place, so on a
+	// recompile the old pages stay on screen through all the async work and the DOM swap below is
+	// a single synchronous pass (no half-built frames, no loading state)
 	async setDocument(pdfDocument: PDFDocumentProxy): Promise<void> {
+		const numPages = pdfDocument.numPages;
+		const pdfPages = await Promise.all(Array.from({ length: numPages }, (_, i) => pdfDocument.getPage(i + 1)));
+
 		this.cleanup();
 
 		this.pdfDocument = pdfDocument;
-		const numPages = pdfDocument.numPages;
 
 		this.linkService.setDocument(pdfDocument);
 		this.linkService.setViewer(this);
 
-		for (let i = 1; i <= numPages; i++) {
-			const page = await pdfDocument.getPage(i);
+		for (const page of pdfPages) {
 			const viewport = page.getViewport({
 				scale: this.currentScale,
 				rotation: this.currentRotation
@@ -158,7 +169,7 @@ export class PDFViewerCore {
 
 			const pageView = new PDFPageView({
 				container: this.viewer,
-				id: i,
+				id: page.pageNumber,
 				defaultViewport: viewport,
 				eventBus: this.eventBus,
 				scale: this.currentScale,
@@ -184,12 +195,11 @@ export class PDFViewerCore {
 		let lastVisible = -1;
 		const visibleIds = new Set<number>();
 
-		let currentTop = 0;
+		let top = CONTAINER_PAD;
 		for (let i = 0; i < this.pages.length; i++) {
-			const page = this.pages[i];
-			const pageBottom = currentTop + page.height + 10; // 10px margin
+			const bottom = top + Math.floor(this.pages[i].height);
 
-			if (pageBottom >= containerTop && currentTop <= containerBottom) {
+			if (bottom >= containerTop && top <= containerBottom) {
 				if (firstVisible === -1) {
 					firstVisible = i;
 				}
@@ -197,7 +207,7 @@ export class PDFViewerCore {
 				visibleIds.add(i + 1); // Page numbers are 1-indexed
 			}
 
-			currentTop = pageBottom;
+			top = bottom + PAGE_GAP;
 		}
 
 		return {
@@ -295,6 +305,16 @@ export class PDFViewerCore {
 		this.scale = this.currentScale - DEFAULT_SCALE_DELTA;
 	}
 
+	/** scale so the top-visible page fills the container width (minus the page padding). */
+	fitWidth(): void {
+		if (!this.pages.length) return;
+		const anchor = this.getScrollAnchor();
+		const page = this.pages[(anchor ? anchor.page : 1) - 1] ?? this.pages[0];
+		const avail = this.container.clientWidth - 2 * CONTAINER_PAD;
+		if (!page.width || avail <= 0) return;
+		this.scale = this.currentScale * (avail / page.width);
+	}
+
 	rotateClockwise(): void {
 		this.rotation = this.currentRotation + 90;
 	}
@@ -310,6 +330,56 @@ export class PDFViewerCore {
 		pageView.div.scrollIntoView({ behavior: 'smooth', block: 'start' });
 
 		this.eventBus.dispatch('pagechanged', { pageNumber });
+	}
+
+	// layout-independent scroll position: the top-visible page + how far into it (fraction of the
+	// page's height) the viewport top sits. Survives a reload where the page count / heights shift.
+	getScrollAnchor(): { page: number; fraction: number } | null {
+		if (!this.pages.length) return null;
+		const scrollTop = this.container.scrollTop;
+		let top = CONTAINER_PAD;
+		for (let i = 0; i < this.pages.length; i++) {
+			const h = Math.floor(this.pages[i].height);
+			if (scrollTop < top + h + PAGE_GAP || i === this.pages.length - 1) {
+				return { page: i + 1, fraction: (scrollTop - top) / Math.max(1, h) };
+			}
+			top += h + PAGE_GAP; // inter-page gap, matching getVisiblePages
+		}
+		return null;
+	}
+
+	restoreScrollAnchor(anchor: { page: number; fraction: number }): void {
+		if (!this.pages.length) return;
+		const idx = Math.min(Math.max(0, anchor.page - 1), this.pages.length - 1);
+		let top = CONTAINER_PAD;
+		for (let i = 0; i < idx; i++) top += Math.floor(this.pages[i].height) + PAGE_GAP;
+		this.container.scrollTop = Math.max(0, top + anchor.fraction * Math.floor(this.pages[idx].height));
+		this.updateVisiblePages();
+	}
+
+	// resolves once every currently-visible page has rasterized (ceiling so a slow render can't
+	// stall the caller): lets a view transition hold the old pixels until the new ones exist,
+	// so a cross-fade reveals content instead of blank page boxes
+	waitForVisiblePages(ceilingMs = 500): Promise<void> {
+		const pending = () => {
+			const { ids } = this.getVisiblePages();
+			return [...ids].some((id) => this.pages[id - 1]?.renderingState !== RenderingStates.FINISHED);
+		};
+		if (!this.pages.length || !pending()) return Promise.resolve();
+		return new Promise((resolve) => {
+			let done = false;
+			const finish = () => {
+				if (done) return;
+				done = true;
+				this.eventBus.off('pagerendered', check);
+				resolve();
+			};
+			const check = () => {
+				if (!pending()) finish();
+			};
+			this.eventBus.on('pagerendered', check);
+			setTimeout(finish, ceilingMs);
+		});
 	}
 
 	get pagesCount(): number {
@@ -334,6 +404,9 @@ export class PDFViewerCore {
 
 		this.viewer.innerHTML = '';
 
+		// free the worker-side resources of the outgoing document; the viewer instance now
+		// outlives many documents (one per recompile), so skipping this would leak per compile
+		void this.pdfDocument?.destroy().catch(() => {});
 		this.pdfDocument = null;
 	}
 

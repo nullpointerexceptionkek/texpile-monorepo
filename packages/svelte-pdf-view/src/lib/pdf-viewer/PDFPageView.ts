@@ -63,7 +63,6 @@ export class PDFPageView {
 	private canvasWrapper: HTMLDivElement | null = null;
 	private textLayerDiv: HTMLDivElement | null = null;
 	private selectionAbort: AbortController | null = null;
-	private loadingDiv: HTMLDivElement | null = null;
 
 	private linkService: SimpleLinkService | null = null;
 	private annotationLayerBuilder: AnnotationLayerBuilder | null = null;
@@ -95,11 +94,6 @@ export class PDFPageView {
 
 		this.setDimensions();
 		this.container.appendChild(this.div);
-
-		this.loadingDiv = document.createElement('div');
-		this.loadingDiv.className = 'loadingIcon';
-		this.loadingDiv.textContent = 'Loading...';
-		this.div.appendChild(this.loadingDiv);
 	}
 
 	private async setDimensions(): Promise<void> {
@@ -180,19 +174,7 @@ export class PDFPageView {
 	}
 
 	reset(): void {
-		this.cancelRendering();
-		this.renderingState = RenderingStates.INITIAL;
-
-		if (this.canvas) {
-			this.canvas.width = 0;
-			this.canvas.height = 0;
-			this.canvas.remove();
-			this.canvas = null;
-		}
-		if (this.canvasWrapper) {
-			this.canvasWrapper.remove();
-			this.canvasWrapper = null;
-		}
+		this.resetCanvas();
 
 		this.selectionAbort?.abort();
 		this.selectionAbort = null;
@@ -210,10 +192,6 @@ export class PDFPageView {
 			this.annotationLayerBuilder = null;
 		}
 		this.annotationLayerRendered = false;
-
-		if (this.loadingDiv) {
-			this.loadingDiv.style.display = '';
-		}
 	}
 
 	async draw(): Promise<void> {
@@ -224,10 +202,6 @@ export class PDFPageView {
 		this.renderingState = RenderingStates.RUNNING;
 
 		try {
-			if (this.loadingDiv) {
-				this.loadingDiv.style.display = 'none';
-			}
-
 			this.canvasWrapper = document.createElement('div');
 			this.canvasWrapper.className = 'canvasWrapper';
 			this.div.appendChild(this.canvasWrapper);

@@ -1,11 +1,12 @@
 {
 	"name": "texpile-editor",
-	"version": "0.14.3",
+	"version": "0.15.0",
 	"private": true,
 	"scripts": {
 		"dev": "vite dev",
 		"build": "vite build",
 		"preview": "vite preview",
+		"sync": "paraglide-js compile --project ./project.inlang --outdir ./src/lib/paraglide --emit-ts-declarations",
 		"test": "npm run test:integration && npm run test:unit",
 		"check": "svelte-check --tsconfig ./tsconfig.json",
 		"check:watch": "svelte-check --tsconfig ./tsconfig.json --watch",
@@ -51,6 +52,7 @@
 		"@codemirror/search": "^6.5.11",
 		"@codemirror/state": "^6.4.1",
 		"@codemirror/view": "^6.21.3",
+		"@inlang/paraglide-js": "2.22.0",
 		"@lucide/svelte": "^0.522.0",
 		"@tailwindcss/vite": "^4.1.10",
 		"@unified-latex/unified-latex-ctan": "1.8.4",
@@ -65,6 +67,7 @@
 		"@xterm/xterm": "^5.5.0",
 		"diff": "^8.0.2",
 		"harper.js": "^1.0.0",
+		"lib0": "^0.2.117",
 		"mathlive": "^0.108.2",
 		"opentype.js": "^2.0.0",
 		"prosemirror-changeset": "^2.2.1",
@@ -87,6 +90,9 @@
 		"svelte-pdf-view": "workspace:*",
 		"swiper": "^11.1.4",
 		"unified": "^11.0.5",
+		"y-codemirror.next": "^0.3.5",
+		"y-protocols": "^1.0.7",
+		"yjs": "^13.6.31",
 		"zod": "^3.25.67"
 	},
 	"type": "module"

@@ -1,14 +1,28 @@
 <script lang="ts">
-	import { Github } from '@lucide/svelte';
+	import { Github, Globe, Check } from '@lucide/svelte';
 	import LogoDark from '$lib/assets/Logo-dark.svg';
 	import { onMount } from 'svelte';
+	import { page } from '$app/state';
+	import { resolve } from '$app/paths';
+	import { Menu, Portal } from '@skeletonlabs/skeleton-svelte';
+	import { locales, localizeHref, getLocale, type Locale } from '$lib/paraglide/runtime';
+	import { m } from '$lib/paraglide/messages';
+	import { LOCALE_META } from '$lib/localeMeta';
 
 	// absolute hrefs so they resolve from any route, not just the home page
 	const navLinks = [
-		{ href: '/#features', label: 'Features' },
-		{ href: '/download', label: 'Download' },
-		{ href: '/#faq', label: 'FAQ' }
+		{ href: '/#features', label: m.nav_features() },
+		{ href: '/download', label: m.nav_download() },
+		{ href: '/#faq', label: m.nav_faq() }
 	];
+
+	const currentLocale = getLocale();
+
+	// full document navigation (not client-side routing), same as every other locale switch on this site.
+	// details.value is always one of `locales` (that's all the menu ever renders), hence the cast.
+	function onLocaleSelect(details: { value: string }) {
+		window.location.href = resolve(localizeHref(page.url.pathname, { locale: details.value as Locale }) as '/' | '/download');
+	}
 
 	let atTop = $state(true);
 	onMount(() => {
@@ -27,7 +41,7 @@
 	<div class="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
 		<nav class="relative flex h-16 items-center justify-between">
 			<a href="/" class="flex items-center">
-				<img src={LogoDark} alt="Texpile" class="h-8" />
+				<img src={LogoDark} alt={m.nav_logo_alt()} class="h-8" />
 			</a>
 
 			<div class="absolute left-1/2 hidden -translate-x-1/2 items-center gap-8 md:flex">
@@ -39,12 +53,43 @@
 			</div>
 
 			<div class="flex items-center gap-4">
+				<Menu onSelect={onLocaleSelect} positioning={{ placement: 'bottom-end' }}>
+					<Menu.Trigger
+						class="text-surface-600 hover:text-surface-950 flex items-center gap-1.5 text-sm font-medium transition-colors"
+						aria-label={m.nav_languages_aria()}
+					>
+						<Globe class="h-4 w-4" />
+						{LOCALE_META[currentLocale]?.short ?? currentLocale}
+					</Menu.Trigger>
+					<Portal>
+						<Menu.Positioner>
+							<Menu.Content class="border-surface-200 z-50 min-w-48 rounded-lg border bg-white p-1 shadow-lg outline-none">
+								{#each locales as locale (locale)}
+									<Menu.Item
+										value={locale}
+										class="rounded-base hover:bg-surface-100 data-[highlighted]:bg-surface-100 flex cursor-pointer items-center justify-between gap-3 px-3 py-2 text-sm font-medium"
+									>
+										<Menu.ItemText>
+											{LOCALE_META[locale]?.label ?? locale}
+											{#if LOCALE_META[locale]?.machineTranslated}
+												<span class="text-surface-400 font-normal">{m.nav_machine_translated_tag({}, { locale })}</span>
+											{/if}
+										</Menu.ItemText>
+										{#if locale === currentLocale}
+											<Check class="text-primary-600 h-4 w-4 shrink-0" />
+										{/if}
+									</Menu.Item>
+								{/each}
+							</Menu.Content>
+						</Menu.Positioner>
+					</Portal>
+				</Menu>
 				<a
 					href="https://discord.com/invite/7wanVzCBWf"
 					target="_blank"
 					rel="noopener noreferrer"
 					class="text-surface-600 hover:text-surface-950 flex items-center transition-colors"
-					aria-label="Texpile on Discord"
+					aria-label={m.nav_discord_aria()}
 				>
 					<svg class="h-5 w-5" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
 						<path
@@ -57,7 +102,7 @@
 					target="_blank"
 					rel="noopener noreferrer"
 					class="text-surface-600 hover:text-surface-950 flex items-center transition-colors"
-					aria-label="Texpile on GitHub"
+					aria-label={m.nav_github_aria()}
 				>
 					<Github class="h-5 w-5" />
 				</a>

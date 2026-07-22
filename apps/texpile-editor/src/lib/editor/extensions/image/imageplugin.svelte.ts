@@ -12,7 +12,8 @@ import ImageOverlay from './ImageOverlay.svelte';
 type ToastSettings = { message: string; timeout?: number };
 
 import { getStorageUrl, uploadImage } from '$lib/editor/request';
-import { writeBinaryFile, fileUrl, joinPath, isRemoteSrc } from '$lib/workspace/fileSystem';
+import { joinPath, isRemoteSrc } from '$lib/workspace/fileSystem';
+import { editorFileUrl, editorWriteBinary } from '$lib/editor/fileAccess';
 import imageNotFoundPng from '$lib/assets/compile/image_not_found_placeholder.png';
 
 export const defaultDeleteSrc = () => Promise.resolve();
@@ -257,7 +258,7 @@ async function uploadLocalImage(file: File, imageDir: string): Promise<string> {
 	const shortId = crypto.randomUUID().split('-')[0];
 	const name = `pasted-image-${shortId}.${ext}`;
 	const abs = joinPath(joinPath(imageDir, 'images'), name);
-	await writeBinaryFile(abs, file);
+	await editorWriteBinary(abs, file);
 	// tell the workspace the folder changed so the file-tree sidebar re-scans
 	dispatchEvent(new CustomEvent('texpile:fs-changed'));
 	// the node stores the on-disk-relative path the .tex needs; downloadImage resolves it for display
@@ -273,7 +274,7 @@ export const createLocalImageSettings = (imageDir: string): ImagePluginSettings 
 		// resolve the relative path to a served URL; pass through already-resolved srcs
 		downloadImage: async (src: string) => {
 			if (!src || isRemoteSrc(src) || /^(data:|blob:|file:)/.test(src)) return src;
-			return fileUrl(joinPath(imageDir, src));
+			return editorFileUrl(joinPath(imageDir, src));
 		},
 		deleteSrc: async () => {}
 	};

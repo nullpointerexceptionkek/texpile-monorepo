@@ -55,6 +55,12 @@ export type ParagraphResult =
 interface TexpileNative {
 	openFolder: () => Promise<string | null>;
 	onOpenPath?: (cb: (filePath: string) => void) => () => void;
+	onOpenFolder?: (cb: (root: string) => void) => () => void;
+	claimWorkspace?: (root: string) => Promise<{ ok: boolean; reason?: string }>;
+	releaseWorkspace?: () => Promise<{ ok: boolean }>;
+	newWindow?: () => Promise<void>;
+	openFolderNewWindow?: () => Promise<string | null>;
+	claimStartupTasks?: () => Promise<boolean>;
 	setZoomFactor?: (factor: number) => Promise<number>;
 	fsScan: (root: string, exts?: string) => Promise<{ root: string; files: TexFile[] }>;
 	fsRead: (path: string) => Promise<{ content: string }>;
@@ -74,6 +80,8 @@ interface TexpileNative {
 	draftCompile: (body: { root: string; mainFile: string }) => Promise<DraftResult>;
 	draftTypeset: (body: { root: string; mainFile: string; text: string; hsize?: number }) => Promise<ParagraphResult>;
 	draftStop: () => Promise<{ ok: boolean }>;
+	draftTakeover?: (body: { root: string }) => Promise<{ ok: boolean }>;
+	onDraftPreempted?: (cb: (info: { root: string }) => void) => () => void;
 	draftSavePdf: (body: { root: string; defaultName: string; to?: string }) => Promise<{ saved: boolean; path?: string }>;
 	gitStatus: (root: string) => Promise<GitStatusResult>;
 	gitShow: (path: string) => Promise<GitShowResult>;
@@ -107,6 +115,35 @@ export async function pickFolder(): Promise<string | null> {
 	return n ? n.openFolder() : null;
 }
 
+/** registers this window as the folder's owner. { ok:false } means another window already
+ *  has it open (that window was focused); the caller should abort its own open. */
+export async function claimWorkspace(root: string): Promise<{ ok: boolean; reason?: string }> {
+	const n = native();
+	if (!n?.claimWorkspace) return { ok: true }; // browser dev: single window, nothing to claim
+	try {
+		return await n.claimWorkspace(root);
+	} catch {
+		return { ok: true };
+	}
+}
+
+/** marks this window as back on the start screen (frees the folder for other windows). */
+export function releaseWorkspace(): void {
+	void native()
+		?.releaseWorkspace?.()
+		.catch(() => {});
+}
+
+/** opens an empty new window. */
+export function openNewWindow(): void {
+	void native()?.newWindow?.();
+}
+
+/** folder picker + new window in one step; dedupes against windows that already have it. */
+export function openFolderInNewWindow(): void {
+	void native()?.openFolderNewWindow?.();
+}
+
 // an IPC rejection reads "Error invoking remote method 'fs:x': Error: <msg>"; surface
 // just <msg>, these strings end up verbatim in user-facing toasts
 async function ipc<T>(call: Promise<T>): Promise<T> {
@@ -137,6 +174,8 @@ async function op(payload: Record<string, unknown>): Promise<void> {
 export const createEntry = (path: string, type: 'file' | 'dir', content = '') => op({ action: 'create', path, type, content });
 export const deleteEntry = (path: string) => op({ action: 'delete', path });
 export const renameEntry = (from: string, to: string) => op({ action: 'rename', from, to });
+/** recursive copy; fails instead of overwriting an existing destination. */
+export const copyEntry = (from: string, to: string) => op({ action: 'copy', from, to });
 
 export async function readTextFile(path: string): Promise<string> {
 	return (await ipc(requireNative().fsRead(path))).content;
@@ -210,6 +249,9 @@ export function dirname(path: string): string {
 	parts.pop();
 	return parts.join('/');
 }
+
+/** Path equality that ignores separator style and case (Windows paths reach us both ways). */
+export const samePath = (a: string, b: string) => a.replace(/\\/g, '/').toLowerCase() === b.replace(/\\/g, '/').toLowerCase();
 
 // joins dir + rel using the dir's own separator so results match the native paths the scan/tree
 // return; a mixed "C:\ws/sub" path would miss the exact-match file-tree highlight

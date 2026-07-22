@@ -11,6 +11,7 @@
 	import { diffChars } from 'diff';
 	import { fly } from 'svelte/transition';
 	import { quintOut } from 'svelte/easing';
+	import { m } from '$lib/paraglide/messages';
 
 	// matches prosemirror-proofread's Problem
 	interface Problem {
@@ -98,9 +99,13 @@
 	}
 
 	function formatReplacement(text: string): string {
-		if (text === ' ') return '(space)';
-		if (text === '') return '(remove)';
-		if (text.trim() === '') return `(${text.length} spaces)`;
+		if (text === ' ') return m.harper_replacement_space();
+		if (text === '') return m.harper_replacement_remove();
+		if (text.trim() === '') {
+			return text.length === 1
+				? m.harper_replacement_whitespace_one({ count: text.length })
+				: m.harper_replacement_whitespace_other({ count: text.length });
+		}
 		return text;
 	}
 
@@ -196,7 +201,7 @@
 	onclick={handleClick}
 	onkeydown={handleKeydown}
 	role="dialog"
-	aria-label="Spelling suggestion"
+	aria-label={m.harper_suggestion_dialog_aria_label()}
 	tabindex="-1"
 	transition:fly={{ y: 8, duration: 200, easing: quintOut }}
 	style="transform-origin: top center;"
@@ -220,7 +225,7 @@
 				{sanitizedType()}
 			</span>
 		</div>
-		<button class="btn-icon btn-icon-sm hover:preset-tonal" onclick={onClose} aria-label="Close">
+		<button class="btn-icon btn-icon-sm hover:preset-tonal" onclick={onClose} aria-label={m.harper_close_button_aria_label()}>
 			<IconX size={16} />
 		</button>
 	</div>
@@ -236,7 +241,7 @@
 				<button
 					class="bg-surface-100-900 hover:preset-tonal border-surface-300-700 w-full cursor-pointer rounded border p-3 text-left transition-colors"
 					onclick={() => handleReplace(error.replacements[0])}
-					title="Click to apply this suggestion"
+					title={m.harper_apply_suggestion_title()}
 				>
 					<div class="font-mono text-sm leading-relaxed">
 						{#each diffParts as part}
@@ -254,7 +259,9 @@
 
 			{#if error.replacements.length > 1}
 				<div class="space-y-2">
-					<p class="text-xs font-semibold uppercase tracking-wider opacity-60">Additional Suggestions</p>
+					<p class="text-xs font-semibold uppercase tracking-wider opacity-60">
+						{m.harper_additional_suggestions_heading()}
+					</p>
 					<div class="space-y-1">
 						{#each error.replacements.slice(1) as replacement}
 							<button
@@ -275,12 +282,14 @@
 			<button
 				class="btn preset-tonal-primary hover:preset-filled-primary-500 w-full justify-center gap-1.5"
 				onclick={handleAddToDictionary}
-				title="Add '{error.text}' to dictionary"
+				title={m.harper_add_to_dictionary_title({ word: error.text })}
 			>
 				<IconBookPlus size={16} />
-				<span>Add to Dictionary</span>
+				<span>{m.harper_add_to_dictionary_button()}</span>
 			</button>
 		{/if}
-		<button class="btn preset-tonal hover:preset-filled w-full" onclick={handleIgnore}> Ignore </button>
+		<button class="btn preset-tonal hover:preset-filled w-full" onclick={handleIgnore}>
+			{m.harper_ignore_button()}
+		</button>
 	</div>
 </div>

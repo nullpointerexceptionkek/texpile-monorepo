@@ -5,6 +5,7 @@
 	import { FitAddon } from '@xterm/addon-fit';
 	import '@xterm/xterm/css/xterm.css';
 	import { settings } from '$lib/settings';
+	import { m } from '$lib/paraglide/messages';
 
 	// a real shell (node-pty in the Electron main) rendered with xterm.js via the window.texpileTerminal bridge
 	let { cwd = '' }: { cwd?: string } = $props();
@@ -122,8 +123,7 @@
 			}
 			if (!ok) {
 				status = 'unavailable';
-				errorMsg =
-					'The terminal needs node-pty built for Electron. Install C/C++ build tools, then run `pnpm electron:rebuild` and restart.';
+				errorMsg = m.terminal_error_needs_rebuild();
 				return;
 			}
 			term = new Terminal({
@@ -142,7 +142,7 @@
 			if (disposed) return;
 			if (!res.ok) {
 				status = 'unavailable';
-				errorMsg = res.error ?? 'Failed to start the shell.';
+				errorMsg = res.error ?? m.terminal_error_failed_start();
 				return;
 			}
 			shellName = res.shell ?? '';
@@ -202,7 +202,7 @@
 <div class="relative h-full w-full overflow-hidden bg-[#1e1e1e]">
 	{#if status === 'unavailable'}
 		<div class="text-surface-300 flex h-full items-center justify-center p-4 text-center text-sm">
-			{errorMsg || 'The terminal is only available in the desktop app.'}
+			{errorMsg || m.terminal_error_desktop_only()}
 		</div>
 	{:else}
 		<div bind:this={host} class="h-full w-full px-2 py-1"></div>

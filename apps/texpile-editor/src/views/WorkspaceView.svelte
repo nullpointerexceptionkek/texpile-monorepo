@@ -1,44 +1,46 @@
 <script lang="ts">
-	import { onMount, onDestroy, tick } from 'svelte';
+	import { onMount, onDestroy, tick, untrack } from 'svelte';
 	import { get } from 'svelte/store';
-	import { Switch } from '@skeletonlabs/skeleton-svelte';
 	import { browser } from '$lib/runtime';
 	import { navigate } from '$lib/router.svelte';
-	// prettier-ignore
-	import { Save, FileText, Loader2, CircleAlert, TriangleAlert, FilePlus, FolderPlus, RefreshCw, PanelLeft, PanelRight, Eye, Code, GitCompare, GitBranch, Play, Square, SquareTerminal, X, ChevronDown, Check, Plus, Trash2, LocateFixed, Search, Settings2, FoldHorizontal, UnfoldHorizontal } from '@lucide/svelte';
-	import EditorView from '$lib/editor/EditorView.svelte';
-	import Terminal from '$lib/editor/comp/Terminal.svelte';
-	import ProblemsPanel from '$lib/editor/comp/ProblemsPanel.svelte';
+	import TerminalDock from '$lib/editor/comp/TerminalDock.svelte';
+	import EditorTopbar from '$lib/editor/comp/EditorTopbar.svelte';
+	import WorkspaceSidebar from '$lib/editor/comp/WorkspaceSidebar.svelte';
+	import PreviewPane from '$lib/editor/comp/PreviewPane.svelte';
+	import EditorPane from '$lib/editor/comp/EditorPane.svelte';
+	import CompileCommandModal from '$lib/editor/comp/CompileCommandModal.svelte';
+	import MainFileModal from '$lib/editor/comp/MainFileModal.svelte';
+	import FormatModal from '$lib/editor/comp/FormatModal.svelte';
+	import ConflictModal from '$lib/editor/comp/ConflictModal.svelte';
+	import SaveBeforeSwitchModal from '$lib/editor/comp/SaveBeforeSwitchModal.svelte';
+	import RefUpdateModal, { type RefUpdate } from '$lib/editor/comp/RefUpdateModal.svelte';
 	import { compileLog, resolveLogPath } from '$lib/stores/compileLogStore';
 	import { parseCompileDiagnosticsInWorker } from '$lib/latex-log/parseInWorker';
-	import PDFViewer from '$lib/editor/comp/PDFViewer.svelte';
 	import DraftView from '$lib/draft/DraftView.svelte';
 	import GlobalSearch from '$lib/editor/comp/GlobalSearch.svelte';
-	import StarterPicker from '$lib/editor/comp/StarterPicker.svelte';
 	import TutorialConfirmModal from '$lib/editor/comp/TutorialConfirmModal.svelte';
-	import WordCount from '$lib/editor/comp/WordCount.svelte';
 	import { applyStarter, applyImportedFiles, openTutorialProject, type Starter, type ImportedFile } from '$lib/workspace/starters';
 	import { pdfStore } from '$lib/stores/pdfStore';
 	import { editorViewStore, sourceCmView, viewMode as viewModeStore } from '$lib/stores/editorStore';
+	import { tabs } from '$lib/workspace/tabs.svelte';
 	import { synctexForward, synctexInverse } from '$lib/workspace/synctex';
-	import SourceEditor from '$lib/editor/comp/SourceEditor.svelte';
-	import DiffPanel from '$lib/editor/comp/DiffPanel.svelte';
-	import SourceControlPanel from '$lib/editor/comp/SourceControlPanel.svelte';
-	import SearchBar from '$lib/editor/comp/SearchBar.svelte';
-	import TableOfContents from '$lib/editor/comp/TableOfContents.svelte';
 	import { sourceTocStore } from '$lib/editor/extensions/tableofcontents/tocStore';
+	import { buildBlockMap, blockAtPm, blockAtSource, sourceStartAt, pmPosToSourceOffset, sourceOffsetToPmPos } from '$lib/editor/sourceMap';
 	import { parseOutlineRaw, assembleProjectOutline } from '$lib/editor/extensions/tableofcontents/latexHeadings';
 	import { refreshProjectIntel } from '$lib/workspace/projectIntel';
 	import { projectIntelStore } from '$lib/stores/projectIntel';
 	import { setGraphicResolver } from '$lib/editor/extensions/intellisense/hover';
-	import BibManager from '$lib/editor/comp/BibManager.svelte';
-	import PreambleFrontmatter from '$lib/editor/comp/PreambleFrontmatter.svelte';
+	import { setEditorFileAccess } from '$lib/editor/fileAccess';
 	import { replacePreambleFrontmatter } from '$lib/editor/extensions/raw-latex/frontmatterView';
 	import { initSpellcheckConfig } from '$lib/editor/extensions/spellcheck/spellcheckConfig';
-	import Toolbar from '$lib/editor/comp/toolbar/Toolbar.svelte';
-	import SourceToolbar from '$lib/editor/comp/toolbar/SourceToolbar.svelte';
 	import WorkspaceMenuBar from '$lib/editor/comp/WorkspaceMenuBar.svelte';
-	import FileTree from '$lib/editor/comp/FileTree.svelte';
+	import { collabHost } from '$lib/collab/hostStore.svelte';
+	import { collabGuest } from '$lib/collab/guestStore.svelte';
+	import type { EditSession } from '$lib/collab/editSession';
+	import SessionShareModal from '$lib/collab/SessionShareModal.svelte';
+	import VisualCollab from '$lib/collab/VisualCollab.svelte';
+	import GuestBar from '$lib/collab/GuestBar.svelte';
+	import * as cc from '$lib/workspace/compileCommand';
 	import { references, loadReferences, bibItemsToReferences, type BibLaTeXReference } from '$lib/workspace/citations';
 	import { labelStore, referenceStore, filePathStore } from '$lib/stores/editorStore';
 	import { extractDocRefs } from '$lib/latex-parser/labels';
@@ -59,43 +61,93 @@
 		setCompileOutputs
 	} from '$lib/workspace/workspaceStore';
 	import { addRecentFolder } from '$lib/workspace/workspaceStore';
-	import { refreshGitStatus, isGitRepo, gitStatusMap, gitChanges, gitBranch, takeNoGitHint } from '$lib/workspace/gitStore';
+	import { refreshGitStatus, isGitRepo, gitChanges, takeNoGitHint } from '$lib/workspace/gitStore';
 	import { gitShowHead, gitInit, gitStage, gitUnstage, gitDiscard, gitCommit, type GitStatusEntry } from '$lib/workspace/git';
 	import { settings, loadSettings, updateSettings, DEFAULT_COMPILE_COMMAND } from '$lib/settings';
+	import { confirmAsk } from '$lib/modals/confirm.svelte';
 	import { detectMainFile, findDocRoots, gatherProjectMacros } from '$lib/workspace/project';
 	import {
-		readTextFile,
-		writeTextFile,
 		basename,
 		dirname,
-		fileUrl,
 		joinPath,
-		scanTexFiles,
-		scanTree,
-		createEntry,
-		deleteEntry,
-		renameEntry,
 		pickFolder,
+		claimWorkspace,
+		releaseWorkspace,
 		relativeTo,
 		isDesktop,
-		statFile,
+		samePath,
 		detectEol,
 		toLf,
 		fromLf,
-		formatLatexDocument,
 		native,
 		freeName,
 		type Eol,
 		type TreeEntry,
 		type TexFile
 	} from '$lib/workspace/fileSystem';
+	import { diskProvider } from '$lib/workspace/diskProvider';
+	import type { WorkspaceProvider } from '$lib/workspace/workspaceProvider';
+	// the file-access seam: the host gets the disk-backed provider by default; a guest session
+	// mounts this same view with a CRDT-backed one. caps gate the host-only features.
+	let { provider = diskProvider, session = collabHost }: { provider?: WorkspaceProvider; session?: EditSession } = $props();
+	// all file access flows through the provider; these thin delegates keep the existing call sites
+	// (and scan's wrapped {root,...} shape) intact
+	const readTextFile = (p: string) => provider.readText(p);
+	const writeTextFile = (p: string, content: string) => provider.writeText(p, content);
+	const writeBinaryFile = (p: string, data: Blob) => provider.writeBinary(p, data);
+	const statFile = (p: string) => provider.stat(p);
+	const fileUrl = (p: string) => provider.fileUrl(p);
+	const createEntry = (p: string, type: 'file' | 'dir', content = '') => provider.create(p, type, content);
+	const deleteEntry = (p: string) => provider.remove(p);
+	const renameEntry = (from: string, to: string) => provider.rename(from, to);
+	const copyEntry = (from: string, to: string) => provider.copy(from, to);
+	const formatLatexDocument = (p: string, text: string) => provider.format!(p, text);
+	const scanTree = async (root: string) => ({ root, children: await provider.scanTree(root) });
+	const scanTexFiles = async (root: string) => ({ root, files: await provider.scanTexFiles(root) });
+	// citations read through the provider too, so guest sessions resolve \cite keys from the shared doc
+	const loadRefs = (root: string) => loadReferences(root, { scan: (r, e) => provider.scanFiles(r, e), read: readTextFile });
+	// true for the disk-backed host; false for a read-only guest session. Gates the host-only
+	// lifecycle (folder claim, terminal, main-file/macro scan, on-disk change checks) so this same
+	// view can run over a shared session.
+	const hostMode = $derived(provider.caps.manageTree);
+	// a guest session: host chrome (compile/terminal/git/file-ops/share) hidden
+	const guest = $derived(session.isGuest);
+	// guests never enter diff (no disk/git to diff against); visual is fine, it runs on the
+	// shared Y.Text like everything else
+	$effect(() => {
+		if (guest && viewMode === 'diff') viewMode = 'source';
+	});
+	// guests: resolve the main file + cross-file macro context from the shared doc (the host-only
+	// initProject never runs for them), re-gathered when the shared file set changes, so visual
+	// parses see the project's custom macro signatures and can't mis-serialize a guest edit
+	$effect(() => {
+		if (!guest || !session.active) return;
+		void session.manifestRev;
+		const root = get(workspaceRoot);
+		if (!root) return;
+		void (async () => {
+			try {
+				const files = await provider.scanTexFiles(root);
+				const main = await detectMainFile(files, provider.readText);
+				const macros = main ? await gatherProjectMacros(main, root, provider.readText) : '';
+				if (macros === projectMacros) return;
+				projectMacros = macros;
+				// signatures changed: a doc parsed without them is stale, re-derive the open one
+				lastParsedSource = '';
+				if (loadedPath && kind === 'tex' && viewMode === 'visual') rebuildVisualFromSource();
+			} catch {
+				projectMacros = '';
+			}
+		})();
+	});
 	import { modLabel } from '$lib/platform';
-	import { serializeLatexFile, createStarterLatex, type ParsedLatexFile } from '$lib/workspace/latexRoundtrip';
+	import { serializeLatexFile, createStarterLatex, bodyOffsetOf, type ParsedLatexFile } from '$lib/workspace/latexRoundtrip';
 	import { parseLatexFileAsync, PARSE_TIMEOUT } from '$lib/workspace/latexParserClient';
 	import type { Node as PMNode } from 'prosemirror-model';
 	import { TextSelection } from 'prosemirror-state';
 	import { flashNodeAt } from '$lib/editor/extensions/flash-plugin';
 	import { toaster } from '$lib/modals/toaster-svelte';
+	import { m } from '$lib/paraglide/messages';
 
 	let loadedPath = $state<string | null>(null);
 	let loadError = $state<string | null>(null);
@@ -151,6 +203,29 @@
 		return 'text';
 	}
 	const kind = $derived(fileKind(loadedPath));
+	// a guest opening a text-looking file the host shares as name only (too large / extension the
+	// session doesn't sync): say so instead of rendering a silently empty editor
+	const nameOnly = $derived(
+		guest && (kind === 'tex' || kind === 'bib' || kind === 'text') && session.sharedKindOf(loadedPath) === 'binary'
+	);
+
+	// shared session: a file the host holds in a NON-Y-bound editor is host-exclusive (guests go
+	// read-only), else concurrent guest edits to that file's Y.Text would be clobbered. Source mode
+	// (tex/bib/text) is Y-bound and co-edits freely; visual tex consumes remote edits through the
+	// re-parse patcher (runRemotePatch below), so only bib held in BibManager still locks.
+	function hostHoldsExclusively(k: string, mode: string, path: string | null): boolean {
+		if (!path) return false;
+		return k === 'bib' && mode !== 'source';
+	}
+	$effect(() => {
+		if (!session.active) return;
+		session.setVisualLock(hostHoldsExclusively(kind, viewMode, loadedPath) ? loadedPath : null);
+	});
+	// live/draft mode isn't supported in a shared session: guests can't run the incremental engine,
+	// they see the host's compiled PDF. Force it off while hosting (the toggle is disabled there too).
+	$effect(() => {
+		if (session.active && !guest && $settings.draftMode) updateSettings({ draftMode: false });
+	});
 
 	let applyingStarter = $state(false);
 	async function pickStarter(s: Starter) {
@@ -160,11 +235,11 @@
 		try {
 			const mainPath = await applyStarter(root, s);
 			setMainFile(root, mainPath);
-			await loadReferences(root); // the starter may include references.bib; reload so its \cite keys resolve
+			await loadRefs(root); // the starter may include references.bib; reload so its \cite keys resolve
 			await refreshTree();
 			activeFilePath.set(mainPath);
 		} catch (e) {
-			toaster.error({ title: 'Could not create from template', description: e instanceof Error ? e.message : String(e) });
+			toaster.error({ title: m.wsview_toast_starter_create_failed_title(), description: e instanceof Error ? e.message : String(e) });
 		} finally {
 			applyingStarter = false;
 		}
@@ -176,14 +251,14 @@
 		applyingStarter = true;
 		try {
 			const mainPath = await applyImportedFiles(root, files);
-			await loadReferences(root); // imported .bib -> resolve its \cite keys
+			await loadRefs(root); // imported .bib -> resolve its \cite keys
 			await refreshTree();
 			if (mainPath) {
 				setMainFile(root, mainPath);
 				activeFilePath.set(mainPath);
 			}
 		} catch (e) {
-			toaster.error({ title: 'Could not import the files', description: e instanceof Error ? e.message : String(e) });
+			toaster.error({ title: m.wsview_toast_import_failed_title(), description: e instanceof Error ? e.message : String(e) });
 		} finally {
 			applyingStarter = false;
 		}
@@ -218,11 +293,24 @@
 			navigate('/');
 			return;
 		}
-		terminalAvailable = isDesktop(); // client-only; set here so SSR/CSR agree
-		resolveMainConfirm(root); // storage first, before anything can want a compile
-		loadReferences(root);
+		// register as this folder's window (covers reloads); a lost claim means another window
+		// already owns the folder - that window was focused, this one goes back to Start.
+		// a guest session owns no folder, so it neither claims nor sets up a terminal/main file.
+		if (hostMode) {
+			void claimWorkspace(root).then((c) => {
+				if (!c.ok && get(workspaceRoot) === root) {
+					workspaceRoot.set(null);
+					navigate('/');
+				}
+			});
+			resolveMainConfirm(root); // storage first, before anything can want a compile
+			void initProject(root);
+		}
+		tabs.bind(root, hostMode); // restore this folder's open tabs (guests start fresh)
+		terminalAvailable = isDesktop() && hostMode; // client-only; set here so SSR/CSR agree
+		if (guest) pdfPaneOpen = true; // guests land with the host's PDF visible
+		loadRefs(root);
 		refreshTree();
-		void initProject(root);
 		initSpellcheckConfig(); // seed editorConfigStore so the spell-check toggle works
 
 		loadSettings().then((s) => {
@@ -239,9 +327,8 @@
 			compileCommand = resolveCompileCommand(get(workspaceRoot), s.compileCommand ?? '');
 			if (s.terminalHeight >= 120 && s.terminalHeight <= 700) terminalHeight = s.terminalHeight;
 			if (terminalAvailable && s.terminalVisible) {
-				terminalMounted = true;
+				terminalMounted = true; // BottomDock creates its first shell on mount
 				terminalVisible = true;
-				ensureTerminal();
 			}
 		});
 		if (localStorage.getItem('texpile:viewMode') === 'source') {
@@ -256,11 +343,11 @@
 		// the citation nodes see fresh keys immediately.
 		const reloadReferences = () => {
 			const root = get(workspaceRoot);
-			if (root) void loadReferences(root);
+			if (root) void loadRefs(root);
 		};
 		const onFocus = () => {
 			refreshTree();
-			void checkExternalChange();
+			if (hostMode) void checkExternalChange(); // guests have no on-disk copy to diff against
 			reloadReferences();
 		};
 		const onFsChanged = () => {
@@ -283,8 +370,35 @@
 			window.removeEventListener('resize', onResize);
 			if (pdfWatchTimer) clearTimeout(pdfWatchTimer);
 			if (logWatchTimer) clearTimeout(logWatchTimer);
+			if (autosaveTimer) clearTimeout(autosaveTimer);
+			if (draftEditTimer) clearTimeout(draftEditTimer);
 		};
 	});
+
+	// every file that opens gains a tab (file tree, SyncTeX jumps, include links, restores)
+	$effect(() => {
+		const p = $activeFilePath;
+		if (p) tabs.noteOpened(p);
+	});
+
+	function activateTab(path: string) {
+		activeFilePath.set(path);
+	}
+	// closing the active tab activates its neighbor; the load effect runs the usual save guards.
+	// When that guard will prompt, the tab must survive until the dialog resolves (the store
+	// reverts to it meanwhile), so the removal is deferred to the held-switch resolution.
+	let pendingTabClose: string | null = null;
+	function closeTab(path: string) {
+		const active = get(activeFilePath);
+		if (active && samePath(active, path)) {
+			if (!autosaveActive() && pendingSave && samePath(pendingSave.path, path)) pendingTabClose = path;
+			activeFilePath.set(tabs.neighborOf(path));
+			if (pendingTabClose) return;
+		}
+		tabs.close(path);
+	}
+
+	const flatFiles = (es: TreeEntry[]): string[] => es.flatMap((e) => (e.type === 'dir' ? flatFiles(e.children ?? []) : [e.path]));
 
 	async function refreshTree() {
 		const root = get(workspaceRoot);
@@ -295,6 +409,7 @@
 		try {
 			const { children } = await scanTree(root);
 			fileTree.set(children);
+			tabs.prune(flatFiles(children)); // tabs for files that vanished (remote deletes, external rm)
 		} catch (e) {
 			console.error('Failed to read folder tree:', e);
 		}
@@ -304,14 +419,23 @@
 		} catch {
 			/* ignore */
 		}
+		// shared session: the manifest mirrors the tree, same single call-site trick
+		void session.syncTree();
 		// git refresh is non-blocking and never throws; this single call-site
-		// covers every refreshTree() trigger for free
+		// covers every refreshTree() trigger for free. Guests have no disk and no repo, and this
+		// now runs on every manifest change, so don't spawn git per remote file op.
+		if (!provider.caps.git) return;
 		void refreshGitStatus(root).then(({ missingGit }) => {
 			if (missingGit && takeNoGitHint()) {
-				toaster.warning({ title: 'Git not found', description: 'Install Git and reopen the folder to see status badges and diffs.' });
+				toaster.warning({ title: m.wsview_toast_no_git_title(), description: m.wsview_toast_no_git_desc() });
 			}
 		});
 	}
+
+	// the shared file set changes under a guest whenever the host adds, renames or deletes a file.
+	// The provider exposes a watch hook for exactly this; without it the tree only ever reflected
+	// what was there at join time.
+	onMount(() => provider.watch?.(() => void refreshTree()));
 
 	function openEntry(entry: TreeEntry) {
 		if (entry.type !== 'file') return;
@@ -325,15 +449,21 @@
 		if (!root) return;
 		const prevRoot = get(workspaceRoot);
 		try {
+			// already open in another window: that window was focused, this one stays put
+			if (!(await claimWorkspace(root)).ok) return;
+			// a shared session is tied to THIS folder's doc; swapping the root would leave it sharing
+			// the old folder invisibly, so end it before the swap
+			if (session.active && root !== prevRoot) await session.end();
 			const { files } = await scanTexFiles(root);
 			resolveMainConfirm(root); // before the stores flip, so the modal effect can't see a stale state
 			workspaceRoot.set(root);
+			tabs.bind(root, hostMode); // rebind before refreshTree's prune, so tabs persist under the NEW root
 			texFiles.set(files);
 			addRecentFolder(root);
 			updateSettings({ lastFolder: root });
 			await refreshTree();
 			await initProject(root);
-			loadReferences(root);
+			loadRefs(root);
 			activeFilePath.set(files[0]?.path ?? null);
 			// the open shells were spawned in the previous folder; respawn them in the new one
 			if (root !== prevRoot) resetTerminalsForWorkspace();
@@ -348,6 +478,7 @@
 	async function closeWorkspace() {
 		await flushSaveAndWait();
 		resolveMainConfirm(null);
+		releaseWorkspace(); // frees the folder so another window may open it
 		workspaceRoot.set(null);
 		texFiles.set([]);
 		fileTree.set([]);
@@ -366,12 +497,10 @@
 			mainConfirmed = true; // the starter picked the main; no first-compile question
 			activeFilePath.set(mainFile); // openFolderFromMenu opens files[0] (alphabetical), not the main file
 		} catch (e) {
-			toaster.error({ title: 'Could not open tutorial', description: e instanceof Error ? e.message : String(e) });
+			toaster.error({ title: m.wsview_toast_tutorial_failed_title(), description: e instanceof Error ? e.message : String(e) });
 		}
 	}
 	let tutorialModalOpen = $state(false);
-
-	const samePath = (a: string, b: string) => a.replace(/\\/g, '/').toLowerCase() === b.replace(/\\/g, '/').toLowerCase();
 
 	// resolve the main file (persisted choice if it still exists, else auto-detect) and gather
 	// its cross-file macros. runs once on folder open, before any file is loaded.
@@ -424,18 +553,18 @@
 			// insert the \input into the current doc BEFORE switching away (the switch flushes its save)
 			if (isInclude && !insertIncludeAtCursor(path)) {
 				toaster.error({
-					title: 'Created, but no \\input added',
-					description: 'Switch to the visual editor to insert an include at the cursor.'
+					title: m.wsview_toast_include_not_inserted_title(),
+					description: m.wsview_toast_include_not_inserted_desc()
 				});
 			}
 			await refreshTree();
-			if (name.toLowerCase().endsWith('.bib')) await loadReferences(get(workspaceRoot) ?? parentDir); // new .bib -> refresh citation keys
+			if (name.toLowerCase().endsWith('.bib')) await loadRefs(get(workspaceRoot) ?? parentDir); // new .bib -> refresh citation keys
 			if (isTex) activeFilePath.set(path);
 		} catch (e) {
 			const msg = e instanceof Error ? e.message : String(e);
 			toaster.error({
-				title: 'Could not create',
-				description: msg.includes('EEXIST') ? `"${name}" already exists in this folder.` : msg
+				title: m.wsview_toast_create_failed_title(),
+				description: msg.includes('EEXIST') ? m.wsview_toast_already_exists({ name }) : msg
 			});
 		}
 	}
@@ -444,11 +573,13 @@
 		try {
 			const to = joinPath(dirname(entry.path), newName);
 			await renameEntry(entry.path, to);
+			retargetPendingSave(entry.path, to); // don't let a queued write recreate the old path
+			tabs.rename(entry.path, to);
 			if (get(activeFilePath) === entry.path) activeFilePath.set(to);
 			await refreshTree();
 			void afterRename(entry.path, to);
 		} catch (e) {
-			toaster.error({ title: 'Could not rename', description: e instanceof Error ? e.message : String(e) });
+			toaster.error({ title: m.wsview_toast_rename_failed_title(), description: e instanceof Error ? e.message : String(e) });
 		}
 	}
 
@@ -462,10 +593,11 @@
 				discardPendingSave(); // don't let a queued autosave write the file back after we delete it
 				activeFilePath.set(null); // clears the editor buffers via the load effect
 			}
+			tabs.closeUnder(entry.path);
 			await deleteEntry(entry.path);
 			await refreshTree();
 		} catch (e) {
-			toaster.error({ title: 'Could not delete', description: e instanceof Error ? e.message : String(e) });
+			toaster.error({ title: m.wsview_toast_delete_failed_title(), description: e instanceof Error ? e.message : String(e) });
 		}
 	}
 
@@ -476,6 +608,8 @@
 			const to = targetDir.replace(/[\\/]+$/, '') + sep + entry.name;
 			if (to === entry.path) return; // already in this folder
 			await renameEntry(entry.path, to);
+			retargetPendingSave(entry.path, to); // don't let a queued write recreate the old path
+			tabs.rename(entry.path, to);
 			// keep the open file pointed at its new location if it (or its folder) moved
 			const active = get(activeFilePath);
 			if (active === entry.path) activeFilePath.set(to);
@@ -483,7 +617,73 @@
 			await refreshTree();
 			void afterRename(entry.path, to);
 		} catch (e) {
-			toaster.error({ title: 'Could not move', description: e instanceof Error ? e.message : String(e) });
+			toaster.error({ title: m.wsview_toast_move_failed_title(), description: e instanceof Error ? e.message : String(e) });
+		}
+	}
+
+	// multi-select fan-out: sequential so each move/delete sees the tree state the last one left
+	async function deleteManyInTree(entries: TreeEntry[]) {
+		for (const entry of entries) await deleteInTree(entry);
+	}
+	async function moveManyInTree(entries: TreeEntry[], targetDir: string) {
+		for (const entry of entries) await moveInTree(entry, targetDir);
+	}
+
+	/** targetDir + name, numbered (name-1.ext, name-2.ext, ...) until it doesn't collide. */
+	async function uniqueDest(targetDir: string, name: string): Promise<string> {
+		const sep = targetDir.includes('\\') ? '\\' : '/';
+		const base = targetDir.replace(/[\\/]+$/, '') + sep;
+		let dest = base + name;
+		let n = 0;
+		while ((await statFile(dest)).exists) {
+			n++;
+			const dot = name.lastIndexOf('.');
+			dest = base + (dot > 0 ? `${name.slice(0, dot)}-${n}${name.slice(dot)}` : `${name}-${n}`);
+		}
+		return dest;
+	}
+
+	// files dropped from the OS file manager (or pasted from the clipboard) copy into the tree.
+	// Bytes come from the drag/clipboard payload, so no OS paths are involved.
+	async function importIntoTree(items: { relPath: string; file: File }[], targetDir: string) {
+		let imported = 0;
+		try {
+			for (const item of items) {
+				const sep = targetDir.includes('\\') ? '\\' : '/';
+				const rel = item.relPath.split('/').join(sep);
+				// a clashing top-level name gets a numbered variant instead of overwriting;
+				// nested paths (folder drops) merge like an OS copy would
+				const dest = rel.includes(sep) ? targetDir.replace(/[\\/]+$/, '') + sep + rel : await uniqueDest(targetDir, rel);
+				await writeBinaryFile(dest, item.file);
+				imported++;
+			}
+			toaster.success({
+				title: imported === 1 ? m.wsview_toast_imported_one({ count: imported }) : m.wsview_toast_imported_other({ count: imported })
+			});
+		} catch (e) {
+			toaster.error({ title: m.wsview_toast_import_failed_title(), description: e instanceof Error ? e.message : String(e) });
+		} finally {
+			await refreshTree();
+		}
+	}
+
+	// a tree drag from another Texpile window: recursive fs-side copy (the source window's
+	// workspace is left untouched; a cross-window MOVE would go stale under its feet)
+	async function copyIntoTree(paths: string[], targetDir: string) {
+		let copied = 0;
+		try {
+			for (const src of paths) {
+				const dest = await uniqueDest(targetDir, basename(src));
+				await copyEntry(src, dest);
+				copied++;
+			}
+			toaster.success({
+				title: copied === 1 ? m.wsview_toast_imported_one({ count: copied }) : m.wsview_toast_imported_other({ count: copied })
+			});
+		} catch (e) {
+			toaster.error({ title: m.wsview_toast_import_failed_title(), description: e instanceof Error ? e.message : String(e) });
+		} finally {
+			await refreshTree();
 		}
 	}
 
@@ -566,26 +766,22 @@
 	let terminalHeight = $state(240);
 	let terminalShrink = $state(false); // dock only under the editor; the preview pane keeps full height
 	let terminalMounted = $state(false); // stay mounted after first open so shells persist across toggles
-	// VSCode-style multi-terminal: one active (shown), the rest kept mounted (hidden)
-	type TermRef =
-		| { run: (cmd: string, onDone?: (output: string) => void) => void; focus: () => void; refit: () => void; interrupt: () => void }
-		| undefined;
-	let terminals = $state<{ id: number; title: string }[]>([]);
-	let activeTermId = $state<number | null>(null);
-	let termMenuOpen = $state(false);
-	let termSeq = 0;
-	const termRefs: Record<number, TermRef> = {};
-	const activeRef = (): TermRef => (activeTermId != null ? termRefs[activeTermId] : undefined);
+	// the bottom dock (terminal + problems tabs) owns its own multi-terminal state; we hold a ref
+	// to drive it (run a compile command, refit on resize, reset on folder change)
+	let dock = $state<{
+		runCommand(cmd: string, onDone?: (o: string) => void): void;
+		reset(): void;
+		refit(): void;
+		focusActive(): void;
+		addTerminal(): void;
+		interrupt(): void;
+	}>();
 	let compileCommand = $state(''); // the compile command; {main} expands to the main file's path
 	let compileModalOpen = $state(false);
-	let compileMenuOpen = $state(false); // the small caret dropdown next to the Compile button
 	let compileDraft = $state('');
 	// Advanced (per-folder) output-path overrides, edited in the compile modal
 	let compileOutputsDraft = $state<{ pdf: string; log: string }>({ pdf: '', log: '' });
 	let advancedOpen = $state(false);
-	// quick-setup chip highlight state, reflected live from the draft (null engine = unrecognized)
-	const draftEngine = $derived(detectEngine(compileDraft));
-	const draftLatexmk = $derived(usesLatexmk(compileDraft));
 	// per-folder command wins over the global default (the last one saved anywhere)
 	const resolveCompileCommand = (root: string | null, global: string) => (root && savedCompileCommand(root)) || global || '';
 	let formatModalOpen = $state(false);
@@ -676,9 +872,19 @@
 		finishMainConfirm();
 		projectMacros = await gatherProjectMacros(chosen, root);
 	}
-	// dismissed without confirming: compile with the detected file for this session, ask again next time
-	function dismissMainConfirm() {
-		finishMainConfirm();
+	// closing the prompt still settles it: persist the pre-selected (detected) file so it doesn't
+	// return on every open. Nothing is locked in, the main file can be changed anytime via the file tree.
+	async function dismissMainConfirm() {
+		const root = get(workspaceRoot);
+		const chosen = mainChoice ?? mainDetected;
+		if (root && chosen) {
+			setMainFile(root, chosen);
+			void loadExistingPdf();
+			finishMainConfirm();
+			projectMacros = await gatherProjectMacros(chosen, root);
+		} else {
+			finishMainConfirm();
+		}
 	}
 	// live mode compiles on its own as soon as the pane is open; surface the question then.
 	// Strictly `=== false`: null means initProject is still resolving, never a modal.
@@ -816,15 +1022,17 @@
 		runDraftDecision();
 	});
 	// Draft mode leans on the on-disk file staying current: the full compile reads from disk,
-	// and a successful instant patch is in-memory only (nothing is written until the next
-	// recompile or an autosave). So force autosave on while draft mode is enabled -- the
-	// Preferences toggle is disabled to match.
-	$effect(() => {
-		if ($settings.draftMode && !$settings.autosave) updateSettings({ autosave: true });
-	});
+	// Live mode and hosting a session both need current-on-disk content (the draft engine writes
+	// nothing until a recompile; a session's host is the persistence authority). So autosave is
+	// forced effectively on in both, WITHOUT changing the user's setting (it reverts on exit).
+	// The Preferences toggle shows this as forced+disabled.
+	function autosaveActive(): boolean {
+		const s = get(settings);
+		return s.autosave !== false || s.draftMode || (session.active && !guest);
+	}
 
 	function stopCompile() {
-		activeRef()?.interrupt();
+		dock?.interrupt();
 		compiling = false;
 	}
 	// a new folder's diagnostics start blank, the previous folder's log is meaningless here
@@ -836,9 +1044,59 @@
 		compileGen++; // any pollers still watching the previous folder's paths stand down
 		compileCommand = resolveCompileCommand(root, get(settings).compileCommand);
 	});
+	// guests: surface the host's shared compile diagnostics through the same Problems UI the
+	// host has (the raw log never crosses the wire; this rebuilds the parsed shape from intel)
+	$effect(() => {
+		if (!guest) return;
+		const intel = session.compileIntel;
+		if (!intel) {
+			compileLog.set(null);
+			return;
+		}
+		const entries = intel.log.map((e) => ({
+			level: e.level,
+			message: e.message,
+			file: e.file,
+			line: e.line,
+			lineEnd: e.lineEnd,
+			column: e.column,
+			anchorText: e.anchorText,
+			hint: e.hint,
+			command: e.command,
+			raw: e.message
+		}));
+		compileLog.set({
+			entries,
+			errors: entries.filter((e) => e.level === 'error'),
+			warnings: entries.filter((e) => e.level === 'warning'),
+			badboxes: entries.filter((e) => e.level === 'badbox'),
+			files: [],
+			status: { fatal: false, emergencyStop: false, noPages: false },
+			logPath: '',
+			updatedAt: Date.now()
+		});
+	});
+
 	// last compile's problems for the file open in source mode; badboxes ride along
 	// as "info" so they underline without alarming colors
 	const sourceDiagnostics = $derived.by(() => {
+		// guest: the host's shared parse (files already root-relative), same shape as below
+		if (guest) {
+			const shared = session.compileIntel;
+			const file = loadedPath?.replace(/^session\//, '');
+			if (!shared || !file) return [];
+			return shared.log
+				.filter((e) => e.line !== undefined && samePath(e.file, file))
+				.map((e) => ({
+					line: e.line!,
+					lineEnd: e.lineEnd,
+					severity: e.level === 'error' ? ('error' as const) : e.level === 'badbox' ? ('info' as const) : ('warning' as const),
+					message: e.hint ? `${e.message}\n\n${e.hint}` : e.message,
+					column: e.column,
+					anchorText: e.anchorText,
+					token: e.command
+				}));
+		}
 		const log = $compileLog;
 		const root = $workspaceRoot;
 		const file = loadedPath;
@@ -867,70 +1125,36 @@
 	let sourceGotoLine = $state<{ line: number; token: number; selectText?: string } | undefined>(undefined);
 	let gotoToken = 0;
 
-	function ensureTerminal() {
-		if (terminals.length === 0) {
-			const id = ++termSeq;
-			terminals = [{ id, title: `Terminal ${id}` }];
-			activeTermId = id;
-		}
-	}
 	function showTerminal() {
-		terminalMounted = true;
-		ensureTerminal();
+		terminalMounted = true; // mounts BottomDock, which creates its first shell (host only)
 		terminalVisible = true;
-		updateSettings({ terminalVisible: true });
-		setTimeout(() => activeRef()?.refit(), 0);
+		if (!guest) updateSettings({ terminalVisible: true });
+		setTimeout(() => dock?.refit(), 0);
 	}
 	function toggleTerminal() {
 		if (terminalVisible) {
 			terminalVisible = false;
-			updateSettings({ terminalVisible: false });
+			if (!guest) updateSettings({ terminalVisible: false });
 		} else {
 			showTerminal();
-			setTimeout(() => activeRef()?.focus(), 40);
+			setTimeout(() => dock?.focusActive(), 40);
 		}
 	}
 	function toggleTerminalShrink() {
 		terminalShrink = !terminalShrink;
 		if (browser) localStorage.setItem('texpile:terminalShrink', terminalShrink ? '1' : '0');
 	}
-	function addTerminal() {
-		const id = ++termSeq;
-		terminals = [...terminals, { id, title: `Terminal ${id}` }];
-		activeTermId = id;
+	// on folder change, replace the shells so they respawn in the new cwd
+	function resetTerminalsForWorkspace() {
+		dock?.reset();
+	}
+	// menu "New Terminal": open the dock (its first shell is auto-created) or add another
+	function newTerminalFromMenu() {
+		const wasMounted = terminalMounted;
 		terminalMounted = true;
 		terminalVisible = true;
-		termMenuOpen = false;
 		updateSettings({ terminalVisible: true });
-		setTimeout(() => activeRef()?.focus(), 50);
-	}
-	// replace every open shell with one fresh shell in the current workspace: removing the old
-	// Terminal components kills their shells, and the new one mounts with the new cwd
-	function resetTerminalsForWorkspace() {
-		if (terminals.length === 0) return; // none open; the next one opened will spawn in the new folder
-		const id = ++termSeq;
-		terminals = [{ id, title: `Terminal ${id}` }];
-		activeTermId = id;
-		if (terminalVisible) setTimeout(() => activeRef()?.refit(), 0);
-	}
-	function selectTerminal(id: number) {
-		activeTermId = id;
-		termMenuOpen = false;
-		setTimeout(() => {
-			activeRef()?.refit();
-			activeRef()?.focus();
-		}, 0);
-	}
-	function killTerminal(id: number) {
-		terminals = terminals.filter((t) => t.id !== id);
-		termRefs[id] = undefined;
-		if (activeTermId === id) activeTermId = terminals.at(-1)?.id ?? null;
-		if (terminals.length === 0) {
-			terminalVisible = false;
-			updateSettings({ terminalVisible: false });
-		} else {
-			setTimeout(() => activeRef()?.refit(), 0);
-		}
+		setTimeout(() => (wasMounted ? dock?.addTerminal() : dock?.focusActive()), 0);
 	}
 	function startTerminalResize(e: MouseEvent) {
 		e.preventDefault();
@@ -938,7 +1162,7 @@
 		const startH = terminalHeight;
 		const onMove = (ev: MouseEvent) => {
 			terminalHeight = Math.min(700, Math.max(120, startH + (startY - ev.clientY))); // drag up = taller
-			activeRef()?.refit();
+			dock?.refit();
 		};
 		const onUp = () => {
 			window.removeEventListener('mousemove', onMove);
@@ -953,7 +1177,7 @@
 		if (e.key !== 'ArrowUp' && e.key !== 'ArrowDown') return;
 		e.preventDefault();
 		terminalHeight = Math.min(700, Math.max(120, terminalHeight + (e.key === 'ArrowUp' ? 16 : -16))); // up = taller
-		activeRef()?.refit();
+		dock?.refit();
 		updateSettings({ terminalHeight });
 	}
 
@@ -977,18 +1201,19 @@
 		// quote a path containing spaces so the shell keeps it one argument;
 		// a {main} the user already wrapped in quotes stays untouched
 		const quoted = /\s/.test(rel) ? `"${rel}"` : rel;
-		return cmd.replace(/(["']){main}\1/g, `$1${rel}$1`).replaceAll('{main}', quoted);
+		// function replacements so a path containing $&, $1, $` etc. is inserted literally, not as a
+		// replacement-pattern reference
+		return cmd.replace(/(["']){main}\1/g, (_m, q: string) => `${q}${rel}${q}`).replaceAll('{main}', () => quoted);
 	}
 
 	// show the terminal, wait for mount, then run (the shell queues the command until it has
 	// spawned). onDone fires when the shell reports the line finished (Terminal.run's sentinel echo).
 	function runInTerminal(cmd: string, onDone?: (output: string) => void, tries = 0) {
-		const ref = activeRef();
-		if (ref) {
-			ref.run(cmd, onDone);
+		if (dock) {
+			dock.runCommand(cmd, onDone);
 			return;
 		}
-		if (tries < 40) setTimeout(() => runInTerminal(cmd, onDone, tries + 1), 25); // ~1s for first mount
+		if (tries < 40) setTimeout(() => runInTerminal(cmd, onDone, tries + 1), 25); // ~1s for the dock to mount
 	}
 	// Draft mode: preview via the incremental per-page engine instead of the terminal
 	// command. Saves first (so the compile sees the buffer), opens the preview pane, and
@@ -1038,12 +1263,17 @@
 		// cleared the main file, so let them pick one (then compile). Dismissing leaves it unset.
 		if (cmd.includes('{main}') && !get(mainFile)) {
 			if (get(texFiles).length === 0) {
-				toaster.error({ title: 'Nothing to compile', description: 'No .tex file found in this folder.' });
+				toaster.error({ title: m.wsview_toast_nothing_to_compile_title(), description: m.wsview_toast_nothing_to_compile_desc() });
 			} else {
 				void openMainConfirm(() => {
 					if (get(mainFile)) void runCompile();
 				});
 			}
+			return;
+		}
+		// shared session: guests can inject LaTeX the host compiles, so shell escape stays off
+		if (session.active && /(^|[^-\w])(-{1,2}shell-escape|-{1,2}enable-write18)\b/.test(cmd)) {
+			toaster.error({ title: m.wsview_toast_shell_escape_blocked(), duration: 5000 });
 			return;
 		}
 		// write the buffer to disk BEFORE compiling so SyncTeX indexes exactly what the editor
@@ -1071,7 +1301,12 @@
 					}
 				: undefined
 		);
-		if (pdfPath) watchPdf(gen, pdfPath, before);
+		// with the completion marker on, finalizeCompile loads the finished PDF once the command
+		// exits. Don't ALSO poll-load here: LaTeX rewrites the PDF across passes (and truncates it
+		// mid-write), so an early poll would load a partial/pass-1 PDF, then finalize reloads the
+		// final one -- a double reload that flashes. Without the marker there's no exit signal, so
+		// watchPdf is the fallback, and it now waits for the file to stop changing before loading.
+		if (!track && pdfPath) watchPdf(gen, pdfPath, before);
 		if (logPath) watchLog(gen, logPath, logBefore);
 		// reload the explorer as the build writes its output (also covers builds that produce no PDF)
 		[2000, 6000].forEach((d) => setTimeout(refreshTree, d));
@@ -1079,96 +1314,16 @@
 
 	// the output dir named in the command (-output-directory= / -outdir=), else the folder root.
 	// takes an explicit command so callers that run before compileCommand hydrates can pass the settings value.
-	function compileOutDir(cmd = compileCommand): string {
-		const m = cmd.match(/-(?:output-directory|outdir)[=\s]+("[^"]*"|'[^']*'|\S+)/);
-		return m && m[1] ? m[1].replace(/^["']|["']$/g, '') : '.';
-	}
-
-	// Quick-setup chips are a best-effort REFLECTION of the command text and a one-way GENERATOR
-	// on click - never a silent two-way binding. detectEngine returns null for anything we don't
-	// recognize (make, arara, tectonic, a script, multi-engine), so no chip lights up rather than
-	// mislabeling it; clicking a chip regenerates the whole command (visible, Cancel-able as a draft).
-	type Engine = 'pdflatex' | 'lualatex' | 'xelatex';
-	const ENGINE_FLAG: Record<Engine, string> = { pdflatex: '-pdf', lualatex: '-lualatex', xelatex: '-xelatex' };
-	function detectEngine(cmd: string): Engine | null {
-		if (/\b(lualatex|pdflua)\b/.test(cmd)) return 'lualatex';
-		if (/\b(xelatex|pdfxe)\b/.test(cmd)) return 'xelatex';
-		if (/\bpdflatex\b/.test(cmd)) return 'pdflatex';
-		if (/\blatexmk\b/.test(cmd) && /\bpdf\b/.test(cmd)) return 'pdflatex'; // latexmk -pdf defaults to pdflatex
-		return null;
-	}
-	function usesLatexmk(cmd: string) {
-		return /\blatexmk\b/.test(cmd);
-	}
-	// regenerate a standard command, carrying over the current output dir (default 'output')
-	function buildCompileCommand(engine: Engine, latexmk: boolean, cmd: string): string {
-		const cur = compileOutDir(cmd);
-		const out = `-output-directory=${cur === '.' ? 'output' : cur}`;
-		const flags = `-interaction=nonstopmode -file-line-error -synctex=1 ${out}`;
-		return latexmk ? `latexmk ${ENGINE_FLAG[engine]} ${flags} {main}` : `${engine} ${flags} {main}`;
-	}
-	function applyEngine(engine: Engine) {
-		compileDraft = buildCompileCommand(engine, usesLatexmk(compileDraft), compileDraft);
-	}
-	function applyLatexmk(on: boolean) {
-		compileDraft = buildCompileCommand(detectEngine(compileDraft) ?? 'pdflatex', on, compileDraft);
-	}
-	// a Windows drive (C:\), or a POSIX/UNC leading separator
-	const isAbsolutePath = (p: string) => /^([a-zA-Z]:[\\/]|[\\/])/.test(p);
-	// a user-entered override: absolute stays as-is, else it's relative to the folder root
-	function resolveOutputPath(root: string, p: string): string {
-		return isAbsolutePath(p) ? p : joinPath(root, p);
-	}
-
-	// DETECTED (not overridden) PDF path, purely from the command + main file: shown as the
-	// placeholder. <root>/<outdir>/<main-basename>.pdf
-	function detectedPdfPath(cmd = compileCommand): string | null {
-		const root = get(workspaceRoot);
-		const main = get(mainFile) ?? loadedPath;
-		if (!root || !main) return null;
-		const pdf = basename(main).replace(/\.tex$/i, '') + '.pdf';
-		const dir = compileOutDir(cmd);
-		return dir === '.' ? joinPath(root, pdf) : joinPath(joinPath(root, dir), pdf);
-	}
-	// DETECTED log: <jobname>.log next to the (actual, possibly-overridden) PDF, unless an aux
-	// directory (latexmk -auxdir / MiKTeX -aux-directory) redirects it
-	function detectedLogPath(cmd = compileCommand): string | null {
-		const pdf = expectedPdfPath(cmd);
-		if (!pdf) return null;
-		const aux = cmd.match(/-(?:aux-directory|auxdir)[=\s]+("[^"]*"|'[^']*'|\S+)/);
-		const log = basename(pdf).replace(/\.pdf$/i, '.log');
-		if (aux && aux[1]) {
-			const root = get(workspaceRoot);
-			if (!root) return null;
-			return joinPath(joinPath(root, aux[1].replace(/^["']|["']$/g, '')), log);
-		}
-		return pdf.replace(/\.pdf$/i, '.log');
-	}
-	// ACTUAL PDF/log the preview, log parser, and SyncTeX all use: the folder's manual override
-	// wins (Advanced options in the compile modal), else the detected path
+	// compile-command parsing/generation lives in compileCommand.ts; these thin wrappers supply the
+	// reactive root / main-file / per-folder overrides the pure functions take as arguments
 	function expectedPdfPath(cmd = compileCommand): string | null {
 		const root = get(workspaceRoot);
-		const ov = root ? savedCompileOutputs(root).pdf : undefined;
-		return root && ov ? resolveOutputPath(root, ov) : detectedPdfPath(cmd);
+		return cc.expectedPdfPath(cmd, root, get(mainFile) ?? loadedPath, root ? savedCompileOutputs(root).pdf : undefined);
 	}
 	function expectedLogPath(cmd = compileCommand): string | null {
 		const root = get(workspaceRoot);
-		const ov = root ? savedCompileOutputs(root).log : undefined;
-		return root && ov ? resolveOutputPath(root, ov) : detectedLogPath(cmd);
+		return cc.expectedLogPath(cmd, root, get(mainFile) ?? loadedPath, root ? savedCompileOutputs(root) : undefined);
 	}
-	// root-relative detected paths, shown as the Advanced inputs' placeholders; re-derive live as
-	// the user edits the command draft or switches main file
-	// The Advanced output paths are LITERAL file paths, one file each: the command's {main} is
-	// NOT expanded here, and each must be an actual .pdf / .log. Blank = auto-detect. Warn on
-	// either mistake; the Auto button clears the field back to auto-detect.
-	function outputPathWarning(v: string, ext: '.pdf' | '.log'): string | null {
-		if (!v.trim()) return null;
-		if (/\{[^}]*\}/.test(v)) return 'No {main} here, type the actual file path';
-		if (!v.trim().toLowerCase().endsWith(ext)) return `Should end in ${ext}`;
-		return null;
-	}
-	const pdfPathWarning = $derived(outputPathWarning(compileOutputsDraft.pdf, '.pdf'));
-	const logPathWarning = $derived(outputPathWarning(compileOutputsDraft.log, '.log'));
 
 	// dvipdfmx/xdvipdfmx write diagnostics to stdout, not the .log; captured per compile by the
 	// terminal's sentinel tracking and cleared at the start of each run
@@ -1176,7 +1331,7 @@
 
 	// read the .log plus the sibling .blg (it reflects the LAST bib run, which stays valid
 	// even on compiles where latexmk skips bibtex) and publish the parsed problems
-	async function publishLogDiagnostics(logPath: string, mtimeMs: number) {
+	async function publishLogDiagnostics(logPath: string, mtimeMs: number, quiet = false) {
 		const blgPath = logPath.replace(/\.log$/i, '.blg');
 		const blgText = (await statFile(blgPath)).exists ? await readTextFile(blgPath) : null;
 		const parsed = await parseCompileDiagnosticsInWorker(await readTextFile(logPath), blgText, compileStdout || null);
@@ -1193,9 +1348,11 @@
 			}
 		}
 		compileLog.set({ ...parsed, logPath, updatedAt: mtimeMs });
+		shareCompileState(); // guests get the fresh diagnostics without waiting for the intel rescan
 		// a failed build produces no fresh PDF, so nothing else tells the user: surface the
-		// Problems list. clean/warning-only results never steal the dock.
-		if (parsed.errors.length > 0) {
+		// Problems list. clean/warning-only results never steal the dock. (quiet = a baseline share
+		// on session start, which shouldn't yank the host's dock open.)
+		if (!quiet && parsed.errors.length > 0) {
 			dockView = 'problems';
 			showTerminal();
 		}
@@ -1270,7 +1427,7 @@
 	}
 	async function ensureOutputDir() {
 		const root = get(workspaceRoot);
-		const dir = compileOutDir();
+		const dir = cc.compileOutDir(compileCommand);
 		if (root && dir !== '.') {
 			try {
 				await createEntry(joinPath(root, dir), 'dir'); // mkdir -p, idempotent
@@ -1282,6 +1439,7 @@
 	// load a freshly compiled PDF into the pane; no-op if this exact build is already
 	// shown so the poller and finalizeCompile can't reload it twice
 	function showCompiledPdf(pdfPath: string, mtimeMs: number) {
+		void session.pushPdf(pdfPath); // shared session: guests get the fresh bytes
 		const url = fileUrl(pdfPath) + '&t=' + Math.round(mtimeMs); // cache-bust so it reloads
 		if (get(pdfStore) === url) return;
 		pdfFilename = basename(pdfPath);
@@ -1289,23 +1447,90 @@
 		setPdfPaneOpen(true);
 		refreshTree(); // the compiled output landed; reload the file explorer
 	}
-	// poll the expected PDF after a compile; when it's newer than before, load it and open the pane
-	function watchPdf(gen: number, pdfPath: string, before: number, elapsed = 0) {
-		if (pdfWatchTimer) clearTimeout(pdfWatchTimer);
-		pdfWatchTimer = setTimeout(async () => {
-			if (gen !== compileGen) return; // superseded: a newer compile, finalize, or folder switch
+
+	// A joiner needs the CURRENT pdf + log even when no fresh compile happens: latexmk skips
+	// rebuilding an up-to-date project, so finalizeCompile's mtime gate never fires and nothing is
+	// pushed. Read what's on disk (located via our own compile command) and share it once when we
+	// start hosting; guests request the pdf off the published rev and read the log from doc meta.
+	let outputsSharedForSession = false;
+	async function shareExistingOutputs() {
+		if (!session.active || session.isGuest) return;
+		const pdfPath = expectedPdfPath();
+		if (pdfPath) {
 			const s = await statFile(pdfPath);
-			if (s.exists && s.size > 0 && s.mtimeMs > before) {
-				showCompiledPdf(pdfPath, s.mtimeMs);
-				pdfWatchTimer = null;
-				compiling = false; // the PDF landed: the run succeeded
-			} else if (elapsed < 180000) {
-				watchPdf(gen, pdfPath, before, elapsed + 1200); // keep polling up to 3 min
-			} else {
-				pdfWatchTimer = null;
-				compiling = false;
+			if (s.exists && s.size > 0) await session.pushPdf(pdfPath);
+		}
+		const logPath = expectedLogPath();
+		if (logPath) {
+			const s = await statFile(logPath);
+			if (s.exists && s.size > 0) await publishLogDiagnostics(logPath, s.mtimeMs, true);
+		}
+	}
+	$effect(() => {
+		if (session.active && !session.isGuest) {
+			if (!outputsSharedForSession) {
+				outputsSharedForSession = true;
+				void shareExistingOutputs();
 			}
-		}, 1200);
+		} else {
+			outputsSharedForSession = false;
+		}
+	});
+	// not a guest (solo or host): if the folder already has a .log from a previous compile, load its
+	// problems on open so they show without a recompile. Re-runs as the command + main file resolve
+	// (they fix the log path); a real compile that fills the log first wins.
+	let existingLogLoadedFor: string | null = null;
+	$effect(() => {
+		const root = $workspaceRoot;
+		void compileCommand; // dep: the log path depends on the resolved command
+		void $mainFile; // dep: and on the detected main file
+		if (guest || !root) {
+			existingLogLoadedFor = null;
+			return;
+		}
+		if (existingLogLoadedFor === root) return;
+		untrack(() => {
+			if (get(compileLog)) {
+				existingLogLoadedFor = root; // a compile already populated it
+				return;
+			}
+			const logPath = expectedLogPath();
+			if (!logPath) return; // command / main file not resolved yet; a later run retries
+			existingLogLoadedFor = root;
+			void (async () => {
+				const s = await statFile(logPath);
+				if (s.exists && s.size > 0 && get(workspaceRoot) === root && !get(compileLog)) {
+					await publishLogDiagnostics(logPath, s.mtimeMs, true);
+				}
+			})();
+		});
+	});
+	// poll the expected PDF after a compile (no-completion-marker fallback); load it once it has
+	// stopped changing, so a mid-write partial or an intermediate latexmk pass isn't shown. `stableAt`
+	// is the mtime seen on the previous poll; a match means the file settled.
+	function watchPdf(gen: number, pdfPath: string, before: number, elapsed = 0, stableAt = 0) {
+		if (pdfWatchTimer) clearTimeout(pdfWatchTimer);
+		pdfWatchTimer = setTimeout(
+			async () => {
+				if (gen !== compileGen) return; // superseded: a newer compile, finalize, or folder switch
+				const s = await statFile(pdfPath);
+				if (s.exists && s.size > 0 && s.mtimeMs > before) {
+					if (s.mtimeMs === stableAt) {
+						showCompiledPdf(pdfPath, s.mtimeMs); // unchanged since the last poll: it's done
+						pdfWatchTimer = null;
+						compiling = false;
+					} else {
+						watchPdf(gen, pdfPath, before, elapsed + 600, s.mtimeMs); // still changing: re-check soon
+					}
+				} else if (elapsed < 180000) {
+					watchPdf(gen, pdfPath, before, elapsed + 1200); // keep polling up to 3 min
+				} else {
+					pdfWatchTimer = null;
+					compiling = false;
+				}
+			},
+			stableAt ? 600 : 1200 // poll faster once the file has started changing, to catch it settling
+		);
 	}
 
 	// on load and main-file change, show the already-compiled PDF sitting on disk; clears the
@@ -1378,13 +1603,23 @@
 	// forward: a source line -> the matching place in the PDF (scroll + flash a highlight).
 	// Live mode syncs against the reconcile PDF (same layout the canvases show).
 	async function syncForwardLine(line: number) {
+		if (guest) {
+			// the host holds the .synctex data; ask it to resolve, then scroll our PDF copy
+			if (!loadedPath) return;
+			const res = await collabGuest.syncForward(loadedPath, line);
+			if (res) {
+				setPdfPaneOpen(true);
+				jumpPdf(res.page, res.x, res.y, res.w, res.h);
+			}
+			return;
+		}
 		const live = get(settings).draftMode;
 		const pdf = live ? draftRoot + '/_draft/draft.pdf' : expectedPdfPath();
 		if (!loadedPath || kind !== 'tex' || !pdf) return;
 		const res = await synctexForward(pdf, loadedPath, line);
 		console.debug('[synctex] forward', { tex: loadedPath, line, pdf, res });
 		if (!res.ok) {
-			toaster.error({ title: 'SyncTeX', description: res.error ?? 'No match.' });
+			toaster.error({ title: 'SyncTeX', description: res.error ?? m.wsview_toast_synctex_no_match() });
 			return;
 		}
 		setPdfPaneOpen(true);
@@ -1401,14 +1636,25 @@
 	}
 	// open a file in source mode and jump to a 1-based line (SyncTeX inverse + Find-in-Files)
 	function openFileAtLine(file: string, line: number, selectText?: string) {
+		// a guest's file keys are manifest-relative, but resolved jump targets (the Problems panel
+		// root-joins via resolveLogPath) arrive prefixed with the synthetic 'session' root. Strip it
+		// back off, else activeFilePath -> the Y.Text binding keys on 'session/foo.tex' and opens an
+		// empty buffer instead of the real shared file. No-op for host absolute paths.
+		const root = get(workspaceRoot);
+		const target = guest && root && file.startsWith(root + '/') ? file.slice(root.length + 1) : file;
 		viewMode = 'source';
 		localStorage.setItem('texpile:viewMode', 'source');
 		sourceGotoLine = { line, token: ++gotoToken, selectText };
-		if (!samePath(get(activeFilePath) ?? '', file)) activeFilePath.set(file);
+		if (!samePath(get(activeFilePath) ?? '', target)) activeFilePath.set(target);
 	}
 	// inverse: a double-click in the PDF opens the source at the matching line; selectText
 	// lets the editor snap to the real text even if the line drifted
 	async function onPdfDoubleClick(page: number, x: number, y: number, selectText?: string) {
+		if (guest) {
+			const res = await collabGuest.syncInverse(page, x, y);
+			if (res && res.line >= 1) openFileAtLine(res.file, res.line, res.selectText ?? selectText);
+			return;
+		}
 		const pdf = expectedPdfPath();
 		if (!pdf) return;
 		const res = await synctexInverse(pdf, page, x, y);
@@ -1458,9 +1704,9 @@
 			isDirty.set(true);
 			scheduleSave(loadedPath, texSource);
 			if (viewMode === 'visual') rebuildVisualFromSource();
-			toaster.success({ title: 'Formatted', description: basename(loadedPath) });
+			toaster.success({ title: m.wsview_toast_formatted_title(), description: basename(loadedPath) });
 		} catch (e) {
-			toaster.error({ title: 'Format failed', description: e instanceof Error ? e.message : String(e) });
+			toaster.error({ title: m.wsview_toast_format_failed_title(), description: e instanceof Error ? e.message : String(e) });
 		} finally {
 			formatting = false;
 		}
@@ -1516,7 +1762,7 @@
 
 	// after a rename/move, find \includegraphics/\input across the project's .tex files
 	// that pointed at the file (AST-based) and offer to repoint them
-	let pendingRefUpdate = $state<{ oldRel: string; newRel: string; hits: { path: string; count: number }[]; total: number } | null>(null);
+	let pendingRefUpdate = $state<RefUpdate | null>(null);
 
 	async function afterRename(oldPath: string, newPath: string) {
 		const root = get(workspaceRoot);
@@ -1587,12 +1833,87 @@
 			: [];
 		// the .aux sits next to the log (output/aux dirs included); fall back to a main-sibling .aux
 		const aux = expectedLogPath()?.replace(/\.log$/i, '.aux') ?? (main ? main.replace(/\.tex$/i, '.aux') : null);
-		void refreshProjectIntel(files, bibs, aux, active ?? null);
+		// a guest has no aux on disk; the host's shared parse fills the numbers in (and re-runs
+		// this when a fresh compile lands). Reading session.active also seeds the host's share
+		// when a session starts against an already-compiled project.
+		const live = session.active;
+		const sharedAux =
+			guest && session.compileIntel ? { numbers: session.compileIntel.auxNumbers, pages: session.compileIntel.auxPages } : null;
+		void refreshProjectIntel(files, bibs, guest ? null : aux, active ?? null, readTextFile, sharedAux).then(() => {
+			if (live && !guest) shareCompileState();
+		});
 	});
+
+	// publish the parsed compile products (aux label numbers + diagnostics) to guests: parse once
+	// here, share small JSON via session meta, instead of syncing wholesale .aux/.log artifacts
+	// (which rewrite per compile and would bloat the shared doc's history)
+	function shareCompileState() {
+		const root = get(workspaceRoot);
+		if (guest || !root || !session.active) return;
+		const intel = get(projectIntelStore);
+		const log = get(compileLog);
+		// share every error/warning/badbox, line-anchored or not: line-less warnings (undefined
+		// \ref/\cite, package warnings) still belong in the guest's Problems panel
+		const entries = (log?.entries ?? [])
+			.filter((e) => e.level !== 'info')
+			.map((e) => {
+				const abs = e.file ? resolveLogPath(root, e.file) : null;
+				return {
+					file: abs ? relativeTo(root, abs).replace(/\\/g, '/') : '',
+					line: e.line,
+					lineEnd: e.lineEnd,
+					level: e.level as 'error' | 'warning' | 'badbox',
+					message: e.message,
+					hint: e.hint,
+					column: e.column,
+					anchorText: e.anchorText,
+					command: e.command
+				};
+			});
+		session.shareCompileIntel({ auxNumbers: intel.auxNumbers, auxPages: intel.auxPages, log: entries });
+	}
 
 	// \includegraphics hover preview: candidate texfile:// URLs (current dir, root, and any
 	// \graphicspath dirs, adding raster extensions when the path has none); the tooltip's img
 	// advances past misses
+	// the visual editor's shared-session machinery (remote patches, presence) lives in
+	// VisualCollab; this api hands it doc-state access, the ref carries its editor hooks
+	let visualCollab = $state<{ noteLocalEdit(): void; noteFreshParse(): void; publishCursor(): void } | null>(null);
+	const visualCollabApi = {
+		get texSource() {
+			return texSource;
+		},
+		set texSource(v: string) {
+			texSource = v;
+		},
+		get lastParsedSource() {
+			return lastParsedSource;
+		},
+		set lastParsedSource(v: string) {
+			lastParsedSource = v;
+		},
+		get docMeta() {
+			return docMeta;
+		},
+		parse: async (text: string) => (await tryParseVisual(text)).parsed ?? null,
+		adopt(parsed: ParsedLatexFile, liveDoc: PMNode) {
+			docMeta = { preamble: parsed.preamble, postamble: parsed.postamble, hadDocumentEnv: parsed.hadDocumentEnv };
+			// reference handshake: EditorView sees its own live doc and skips the state swap
+			visualDoc = liveDoc;
+			lastDoc = liveDoc;
+		},
+		commit(path: string, content: string) {
+			isDirty.set(true);
+			scheduleSave(path, content);
+		}
+	};
+
+	// visual-editor file access (figure previews, image paste) resolves through the provider,
+	// so a guest's images come from the session blob cache and uploads go through the session
+	setEditorFileAccess(
+		(p) => provider.fileUrl(p),
+		(p, data) => provider.writeBinary(p, data)
+	);
 	setGraphicResolver((rel) => {
 		const root = get(workspaceRoot);
 		const base = loadedPath ? dirname(loadedPath) : null;
@@ -1610,7 +1931,48 @@
 		for (const dir of dirs) if (dir) for (const n of names) urls.push(fileUrl(joinPath(dir, n)));
 		return [...new Set(urls)];
 	});
-	onDestroy(() => setGraphicResolver(null));
+	onDestroy(() => {
+		setGraphicResolver(null);
+		setEditorFileAccess(null, null);
+	});
+
+	// shared session: guests can ask for a compile; leaving the workspace ends the session
+	let shareModalOpen = $state(false);
+	onMount(() => {
+		session.onCompileRequest = () => {
+			toaster.info({ title: m.wsview_toast_compile_requested_title(), duration: 3000 });
+			void runCompile();
+		};
+		// a guest changed files on the host's disk (upload / rename / delete): refresh our own tree
+		session.onFileOp = () => void refreshTree();
+		// resolve a guest's SyncTeX request against our .synctex data and reply
+		session.onSyncRequest = async (payload, from) => {
+			const root = get(workspaceRoot);
+			const pdf = expectedPdfPath();
+			if (!root || !pdf) return;
+			if (payload.kind === 'synctex-inverse') {
+				const res = await synctexInverse(pdf, payload.page, payload.x, payload.y);
+				if (res.ok && res.input && res.line >= 1) {
+					const rel = relativeTo(root, normPath(res.input)).replace(/\\/g, '/');
+					collabHost.replyControl({ kind: 'synctex-inverse-result', reqId: payload.reqId, file: rel, line: res.line }, from);
+				}
+			} else if (payload.kind === 'synctex-forward') {
+				const res = await synctexForward(pdf, joinPath(root, payload.file), payload.line);
+				if (res.ok) {
+					collabHost.replyControl(
+						{ kind: 'synctex-forward-result', reqId: payload.reqId, page: res.page, x: res.h, y: res.v, w: res.width, h: res.height },
+						from
+					);
+				}
+			}
+		};
+		return () => {
+			session.onCompileRequest = null;
+			session.onSyncRequest = null;
+			session.onFileOp = null;
+			void session.end();
+		};
+	});
 
 	// F12 on an \input{...} target: resolve like LaTeX would (current dir, then root, .tex added)
 	async function jumpToInclude(name: string) {
@@ -1648,21 +2010,67 @@
 		return () => clearTimeout(labelTimer);
 	});
 
-	// load the active file whenever it changes
+	// a switch held back by the save-before-switch dialog: the store reverts to the outgoing file
+	// (tabs and tree stay visually on it) and this carries where the user was headed
+	let heldSwitch: { target: string | null } | null = null;
+	// the modal's outgoing snapshot; non-null while the save-before-switch dialog is up
+	let saveSwitchPrompt = $state<{ name: string; outgoing: { path: string; content: string }; eol: Eol } | null>(null);
+
+	// Save keeps the edit + switches, Discard drops it + switches, Cancel (X / backdrop / Escape)
+	// aborts the whole switch and stays on the current file with the edit intact.
+	function resolveSaveSwitch(choice: 'save' | 'discard' | 'cancel') {
+		const prompt = saveSwitchPrompt;
+		saveSwitchPrompt = null;
+		if (!prompt) return;
+		if (choice === 'cancel') {
+			pendingSave = prompt.outgoing; // reattach so the edit is still tracked and re-guarded next time
+			pendingTabClose = null; // a tab-close that triggered this switch is cancelled too
+			heldSwitch = null;
+			return;
+		}
+		if (choice === 'save') writeChain = writeChain.then(() => doWrite(prompt.outgoing.path, prompt.outgoing.content, false, prompt.eol));
+		if (pendingTabClose) {
+			tabs.close(pendingTabClose);
+			pendingTabClose = null;
+		}
+		const target = heldSwitch?.target ?? null;
+		heldSwitch = null;
+		if (target !== get(activeFilePath)) activeFilePath.set(target);
+	}
+
+	// load the active file whenever it changes. Everything but the store read is untracked, so
+	// this runs exactly once per path change (loadedPath updating mid-load must not re-fire it).
 	$effect(() => {
 		const path = $activeFilePath;
-		// autosave off: the outgoing file's edit wasn't auto-written, so warn before tearing it down
-		if (get(settings).autosave === false && loadedPath && path !== loadedPath && pendingSave?.path === loadedPath) {
-			if (confirm(`Save changes to ${basename(loadedPath)} before switching?`)) flushSave();
-			else pendingSave = null; // discard the unsaved edit
-		} else {
+		untrack(() => {
+			// while the dialog is up, keep the UI parked on the outgoing file; remember the newest
+			// destination (Ctrl+Tab still works under the modal) and resolve it after the answer
+			if (heldSwitch) {
+				if (path !== loadedPath) {
+					heldSwitch.target = path;
+					activeFilePath.set(loadedPath);
+				}
+				return;
+			}
+			// autosave off: the outgoing file's edit wasn't auto-written, so ask BEFORE switching.
+			// The modal (SaveBeforeSwitchModal) decides its fate: Save writes it, Discard drops it,
+			// and Cancel aborts the switch entirely (see resolveSaveSwitch).
+			if (!autosaveActive() && loadedPath && path !== loadedPath && pendingSave?.path === loadedPath) {
+				const outgoing = pendingSave;
+				const eol = docEol; // the outgoing file's EOL, before the switch changes docEol
+				pendingSave = null; // detach so loadFile's teardown / the new file's queue can't touch it
+				heldSwitch = { target: path };
+				activeFilePath.set(loadedPath);
+				saveSwitchPrompt = { name: basename(loadedPath), outgoing, eol };
+				return;
+			}
 			flushSave(); // persist the outgoing file's queued edit before tearing down its buffers
-		}
-		loadError = null;
-		// the outgoing file stays on screen until loadFile has the new one ready: clearing here
-		// first is what made every switch blink through the "Opening…" placeholder
-		if (path) loadFile(path);
-		else closeOpenFile();
+			loadError = null;
+			// the outgoing file stays on screen until loadFile has the new one ready: clearing here
+			// first is what made every switch blink through the "Opening…" placeholder
+			if (path) loadFile(path);
+			else closeOpenFile();
+		});
 	});
 
 	/** drop the open file's buffers. per-file state (anchors, cross-mode history) must not leak. */
@@ -1681,6 +2089,10 @@
 	async function loadFile(path: string) {
 		try {
 			await writeChain; // let any queued write (e.g. the file we just left) land before we read
+			// shared session: assert the lock BEFORE reading disk, so a guest can't slip an edit in
+			// between the flush and the reactive lock effect; then settle pending guest edits to disk
+			if (session.active) session.setVisualLock(hostHoldsExclusively(fileKind(path), viewMode, path) ? path : null);
+			await session.beforeOpen(path); // settle pending guest edits onto disk first
 			if (get(activeFilePath) !== path) return; // a newer switch superseded us
 			const k = fileKind(path);
 			if (k === 'tex') {
@@ -1736,7 +2148,7 @@
 		} catch (e) {
 			if (get(activeFilePath) !== path) return;
 			closeOpenFile(); // a half-open file must not stay on screen behind the error
-			loadError = e instanceof Error ? e.message : 'Failed to open file';
+			loadError = e instanceof Error ? e.message : m.wsview_load_error_fallback();
 		}
 	}
 
@@ -1745,6 +2157,8 @@
 	async function checkExternalChange() {
 		const path = loadedPath;
 		if (!path || (kind !== 'tex' && kind !== 'text' && kind !== 'bib') || conflict) return;
+		await writeChain; // let any in-flight autosave finish, so we don't read our own half-written file
+		if (loadedPath !== path) return; // the file switched while we waited
 		let raw: string;
 		try {
 			raw = await readTextFile(path);
@@ -1770,6 +2184,12 @@
 			rawContent = disk;
 		}
 		isDirty.set(false);
+		// the buffer now matches disk: drop any queued autosave of the edits we just replaced, or a
+		// later flush would clobber the version the user chose to keep
+		discardPendingSave();
+		// shared session: fold the adopted disk content into the shared doc so guests see it too
+		// (the host materializer's lastWritten update prevents an echo write back to disk)
+		if (loadedPath) session.edit(loadedPath, disk);
 	}
 
 	function resolveConflict(choice: 'reload' | 'keep') {
@@ -1794,8 +2214,18 @@
 		if (!docMeta) return;
 		lastDoc = doc;
 		texSource = serializeLatexFile(docMeta, doc);
+		// nodeviews settling on load (or an edit undone back to the saved bytes) fire a docChanged
+		// transaction that serializes right back to disk: that isn't an unsaved change, so don't
+		// flag the pristine file dirty or queue a no-op save that would nag on the next switch
+		if (texSource === diskBaseline) {
+			if (get(isDirty)) isDirty.set(false);
+			discardPendingSave();
+			return;
+		}
 		isDirty.set(true);
 		scheduleSave(loadedPath, texSource);
+		// live session: the doc's orig stamps just went stale; VisualCollab re-stamps on the lull
+		visualCollab?.noteLocalEdit();
 		// the user is editing: a still-pending mode-switch scroll anchor is moot, and restoring
 		// it later would yank the view away from where they're typing
 		pendingVisualAnchor = null;
@@ -1828,10 +2258,17 @@
 	// so switching files can never drop the previous file's edit
 	function scheduleSave(path: string | null, content: string) {
 		if (!path) return;
+		// shared session: every edit streams into the shared doc per keystroke, host and guest
+		// alike (a no-op splice when the source editor is already Y-bound)
+		session.edit(path, content);
+		// a guest has no disk to save to: their edits live in the CRDT only. Skipping pendingSave
+		// keeps the (host-only) save-before-switch dialog and disk writes from ever firing for them.
+		if (guest) return;
 		if (pendingSave && pendingSave.path !== path) flushSave();
 		pendingSave = { path, content };
-		// autosave off: track the edit (so Save / the switch-guard have it) but don't auto-write
-		if (get(settings).autosave === false) return;
+		// autosave off: track the edit (so Save / the switch-guard have it) but don't auto-write.
+		// live mode and hosting a session force it on (see autosaveActive).
+		if (!autosaveActive()) return;
 		if (autosaveTimer) clearTimeout(autosaveTimer);
 		autosaveTimer = setTimeout(flushSave, AUTOSAVE_MS);
 	}
@@ -1862,6 +2299,15 @@
 		pendingSave = null;
 	}
 
+	/** repoint a queued autosave when its file (or a parent folder) is renamed/moved, so the edit
+	 *  lands in the new path instead of re-creating the old one. */
+	function retargetPendingSave(from: string, to: string) {
+		if (!pendingSave) return;
+		const sep = from.includes('\\') ? '\\' : '/';
+		if (samePath(pendingSave.path, from)) pendingSave = { ...pendingSave, path: to };
+		else if (pendingSave.path.startsWith(from + sep)) pendingSave = { ...pendingSave, path: to + pendingSave.path.slice(from.length) };
+	}
+
 	// append a write to the serial chain (never overlap, never reject: errors are toasted). snapshot
 	// the line ending now so a queued write still applies the right one if the user switches files first.
 	function enqueueWrite(path: string, content: string, notify: boolean): Promise<void> {
@@ -1882,9 +2328,9 @@
 				const live = kind === 'tex' ? texSource : rawContent;
 				if (content === live) isDirty.set(false);
 			}
-			if (notify) toaster.success({ title: 'Saved', description: basename(path), duration: 1200 });
+			if (notify) toaster.success({ title: m.wsview_toast_saved_title(), description: basename(path), duration: 1200 });
 		} catch (e) {
-			toaster.error({ title: 'Save failed', description: e instanceof Error ? e.message : 'Unknown error' });
+			toaster.error({ title: m.wsview_toast_save_failed_title(), description: e instanceof Error ? e.message : m.wsview_error_unknown() });
 		} finally {
 			saving = false;
 		}
@@ -1913,59 +2359,40 @@
 	 * (cursor), the exact inverse of the source-to-visual mapping. An off-screen caret is ignored:
 	 * flashing a line the user wasn't looking at would read as a wrong jump.
 	 */
+	// orig.start stamps are body-relative; bodyOffsetOf knows where the body begins in the FILE
+	// (fragments synthesize a preamble that is not in the file, so theirs starts at 0)
+	const visualBodyOffset = () => (docMeta ? bodyOffsetOf(docMeta) : 0);
+
 	function captureVisualAnchor(): { scroll: number | null; cursor: number | null } | null {
 		const v = get(editorViewStore);
 		if (!v) return null;
-		const bodyOffset = docMeta?.preamble.length ?? 0;
 		const doc = v.state.doc;
+		const map = buildBlockMap(doc, visualBodyOffset());
 		const scRect = findScrollParent(v.dom)?.getBoundingClientRect();
 		const scTop = (scRect?.top ?? 0) + 4;
 		const scBottom = scRect?.bottom ?? Number.POSITIVE_INFINITY;
 
-		// per-block PM positions + parse-time source offsets (orig.start; null on editor-created blocks)
-		const positions: number[] = [];
-		const starts: (number | null)[] = [];
-		for (let i = 0, pos = 0; i < doc.childCount; i++) {
-			positions.push(pos);
-			const start = (doc.child(i).attrs?.orig as { start?: number } | undefined)?.start;
-			starts.push(typeof start === 'number' ? start : null);
-			pos += doc.child(i).nodeSize;
-		}
-		// absolute source offset for a block, falling back to the nearest stamped block above
-		const sourceAt = (index: number): number | null => {
-			for (let i = index; i >= 0; i--) if (starts[i] != null) return bodyOffset + (starts[i] as number);
-			return null;
-		};
-
 		// scroll anchor: the topmost visible block
-		let topIndex = -1;
-		for (let i = 0; i < doc.childCount; i++) {
-			const dom = v.nodeDOM(positions[i]);
+		let scroll: number | null = null;
+		for (const b of map) {
+			const dom = v.nodeDOM(b.pmPos);
 			if (dom instanceof HTMLElement && dom.getBoundingClientRect().bottom > scTop) {
-				topIndex = i;
+				scroll = sourceStartAt(map, b.index);
 				break;
 			}
 		}
-		const scroll = topIndex >= 0 ? sourceAt(topIndex) : null;
 
-		// cursor anchor: the caret's block, proportional within its slice; only when on-screen
+		// cursor anchor: only when the caret's block is on-screen (an off-screen caret must not
+		// yank the incoming view away from the reading position)
 		let cursor: number | null = null;
 		const head = v.state.selection.head;
-		for (let i = 0; i < doc.childCount; i++) {
-			if (head < positions[i] || head >= positions[i] + doc.child(i).nodeSize) continue;
-			const dom = v.nodeDOM(positions[i]);
+		const cb = blockAtPm(map, head);
+		if (cb) {
+			const dom = v.nodeDOM(cb.pmPos);
 			const r = dom instanceof HTMLElement ? dom.getBoundingClientRect() : null;
 			if (r && r.bottom > scTop && r.top < scBottom) {
-				const block = doc.child(i);
-				const orig = block.attrs?.orig as { start?: number; latex?: string } | undefined;
-				if (typeof orig?.start === 'number' && orig.latex?.length) {
-					const frac = Math.min(1, Math.max(0, (head - positions[i] - 1) / Math.max(1, block.content.size)));
-					cursor = bodyOffset + orig.start + Math.round(frac * orig.latex.length);
-				} else {
-					cursor = sourceAt(i);
-				}
+				cursor = pmPosToSourceOffset(doc, map, head) ?? sourceStartAt(map, cb.index);
 			}
-			break;
 		}
 
 		return scroll == null && cursor == null ? null : { scroll, cursor };
@@ -2001,36 +2428,18 @@
 				try {
 					if (v.isDestroyed) return; // the view can be torn down between consume and resolve
 					const doc = v.state.doc; // live doc (includes normalization blocks, which carry no orig)
-					const bodyOffset = docMeta?.preamble.length ?? 0;
-					// last block whose orig.start <= the given body-relative offset
-					const blockAt = (bodyRel: number): { index: number; pos: number; start: number } | null => {
-						let found: { index: number; pos: number; start: number } | null = null;
-						for (let i = 0, pos = 0; i < doc.childCount; i++) {
-							const start = (doc.child(i).attrs?.orig as { start?: number } | undefined)?.start;
-							if (typeof start === 'number' && start <= bodyRel) found = { index: i, pos, start };
-							pos += doc.child(i).nodeSize;
-						}
-						return found;
-					};
+					const map = buildBlockMap(doc, visualBodyOffset());
 					// scroll: restore the reading position (the block that topped the source viewport)
-					const scrollHit = blockAt(anchor.scroll - bodyOffset);
+					const scrollHit = blockAtSource(map, anchor.scroll);
 					if (scrollHit) {
-						const dom = v.nodeDOM(scrollHit.pos);
+						const dom = v.nodeDOM(scrollHit.pmPos);
 						if (dom instanceof HTMLElement) dom.scrollIntoView({ block: 'start' });
 					}
-					// caret: land in the block containing the source cursor, proportionally inside it
-					// (markup and rendered text aren't 1:1); falls back to the scroll block. no
-					// scrollIntoView on the tr: the scroll anchor owns the viewport.
-					const caretHit = (anchor.cursor != null ? blockAt(anchor.cursor - bodyOffset) : null) ?? scrollHit;
-					if (!caretHit) return; // everything resolved into the preamble, stay at the top
-					const block = doc.child(caretHit.index);
-					let inner = 1;
-					const orig = block.attrs?.orig as { start?: number; latex?: string } | undefined;
-					if (anchor.cursor != null && orig?.latex?.length) {
-						const frac = Math.min(1, Math.max(0, (anchor.cursor - bodyOffset - caretHit.start) / orig.latex.length));
-						inner = 1 + Math.round(frac * Math.max(0, block.content.size - 1));
-					}
-					const caretPos = Math.min(caretHit.pos + inner, caretHit.pos + Math.max(1, block.nodeSize - 1));
+					// caret: text-anchored inside the block containing the source cursor, falling back
+					// to the scroll block. no scrollIntoView on the tr: the scroll anchor owns the viewport.
+					const caretPos =
+						(anchor.cursor != null ? sourceOffsetToPmPos(doc, map, anchor.cursor) : null) ?? (scrollHit ? scrollHit.pmPos + 1 : null);
+					if (caretPos == null) return; // everything resolved into the preamble, stay at the top
 					v.dispatch(v.state.tr.setSelection(TextSelection.near(v.state.doc.resolve(caretPos))).setMeta('addToHistory', false));
 					// reclaim DOM focus for PM: the mount-time selection can sit inside a CM-backed
 					// nodeview that focuses its inner CodeMirror; PM then never syncs the DOM caret
@@ -2038,7 +2447,8 @@
 					v.focus();
 					// flash the caret's block, same amber as the SyncTeX flash. a node decoration
 					// (flash-plugin) because a bare classList.add doesn't survive PM redraws.
-					flashNodeAt(v, caretHit.pos);
+					const flashBlock = blockAtPm(map, caretPos);
+					if (flashBlock) flashNodeAt(v, flashBlock.pmPos);
 				} catch {
 					/* best-effort; never break the mode switch over a scroll */
 				}
@@ -2146,7 +2556,7 @@
 		if (loadedPath !== path) return; // a file switch superseded this snapshot
 		diffLoading = false;
 		if (!res.ok) {
-			diffError = res.reason === 'no-git' ? 'Git is not installed.' : (res.error ?? 'Could not read the committed version.');
+			diffError = res.reason === 'no-git' ? m.wsview_diff_error_no_git() : (res.error ?? m.wsview_diff_error_default());
 			diffOriginal = '';
 			diffHasHead = false;
 			return;
@@ -2165,11 +2575,11 @@
 		const res = await gitInit(root);
 		scmBusy = false;
 		if (!res.ok) {
-			toaster.error({ title: 'Could not initialize repository', description: res.error });
+			toaster.error({ title: m.wsview_toast_git_init_failed_title(), description: res.error });
 			return;
 		}
 		await refreshGitStatus(root);
-		toaster.success({ title: 'Initialized empty Git repository' });
+		toaster.success({ title: m.wsview_toast_git_init_success_title() });
 	}
 
 	async function scmStage(paths: string[]) {
@@ -2178,7 +2588,7 @@
 		scmBusy = true;
 		const res = await gitStage(root, paths);
 		scmBusy = false;
-		if (!res.ok) toaster.error({ title: 'Stage failed', description: res.error });
+		if (!res.ok) toaster.error({ title: m.wsview_toast_stage_failed_title(), description: res.error });
 		await refreshGitStatus(root);
 	}
 
@@ -2188,15 +2598,21 @@
 		scmBusy = true;
 		const res = await gitUnstage(root, paths);
 		scmBusy = false;
-		if (!res.ok) toaster.error({ title: 'Unstage failed', description: res.error });
+		if (!res.ok) toaster.error({ title: m.wsview_toast_unstage_failed_title(), description: res.error });
 		await refreshGitStatus(root);
 	}
 
 	async function scmDiscard(changes: GitStatusEntry[]) {
 		const root = get(workspaceRoot);
 		if (!root || !changes.length) return;
-		const label = changes.length === 1 ? `"${basename(changes[0].path)}"` : `${changes.length} files`;
-		if (!confirm(`Discard changes to ${label}? This cannot be undone.`)) return;
+		const confirmMsg =
+			changes.length === 1
+				? m.wsview_confirm_discard_one({ name: basename(changes[0].path) })
+				: m.wsview_confirm_discard_other({ count: changes.length });
+		if (!(await confirmAsk(confirmMsg, { confirmLabel: m.vcs_discard_changes(), danger: true }))) return;
+		// if the open file is being discarded, drop its queued autosave first: otherwise a debounced
+		// write scheduled just before the confirm lands after git reverts and re-creates the changes
+		if (loadedPath && changes.some((c) => samePath(c.path, loadedPath))) discardPendingSave();
 		scmBusy = true;
 		// untracked files are deleted; tracked files are reverted to their staged/committed state
 		const untracked = changes.filter((c) => c.x === '?').map((c) => c.path);
@@ -2214,7 +2630,7 @@
 			if (!res.ok) err = res.error;
 		}
 		scmBusy = false;
-		if (err) toaster.error({ title: 'Discard failed', description: err });
+		if (err) toaster.error({ title: m.wsview_toast_discard_failed_title(), description: err });
 		const openAffected = !!loadedPath && changes.some((c) => c.path === loadedPath);
 		await refreshTree();
 		await refreshGitStatus(root);
@@ -2231,19 +2647,19 @@
 			const s = await gitStage(root, []);
 			if (!s.ok) {
 				scmBusy = false;
-				toaster.error({ title: 'Stage failed', description: s.error });
+				toaster.error({ title: m.wsview_toast_stage_failed_title(), description: s.error });
 				return false;
 			}
 		}
 		const res = await gitCommit(root, message);
 		scmBusy = false;
 		if (!res.ok) {
-			toaster.error({ title: 'Commit failed', description: res.error });
+			toaster.error({ title: m.wsview_toast_commit_failed_title(), description: res.error });
 			return false;
 		}
 		await refreshGitStatus(root);
 		if (viewMode === 'diff') void captureDiffSnapshot(); // the open diff now compares against the new HEAD
-		toaster.success({ title: 'Commit created' });
+		toaster.success({ title: m.wsview_toast_commit_created_title() });
 		return true;
 	}
 
@@ -2288,9 +2704,9 @@
 		visualDoc = null;
 		pendingVisualAnchor = null; // never re-anchor a later visual entry off this failed switch
 		if (failure.timeout) {
-			toaster.warning({ title: 'File too large to open in visual mode' });
+			toaster.warning({ title: m.wsview_toast_file_too_large_title() });
 		} else {
-			toaster.error({ title: 'Could not parse source', description: failure.message });
+			toaster.error({ title: m.wsview_toast_parse_failed_title(), description: failure.message });
 		}
 	}
 
@@ -2309,6 +2725,7 @@
 			// quirk: this records the CURRENT texSource, which may be post-edit text if the user
 			// typed while the parse was in flight. harmless: onChange clears the anchor on edits.
 			lastParsedSource = texSource;
+			visualCollab?.noteFreshParse(); // a full re-parse stamped everything fresh
 			// EditorView reacts to the new localValue and swaps state on the existing instance: no remount, no flicker
 		});
 	}
@@ -2378,9 +2795,16 @@
 	const uiZoomReset = () => setUiZoom(1);
 
 	function onKeydown(e: KeyboardEvent) {
-		if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 's') {
+		if ((e.metaKey || e.ctrlKey) && !e.shiftKey && !e.altKey && e.key.toLowerCase() === 'w') {
 			e.preventDefault();
-			save();
+			if (loadedPath) closeTab(loadedPath);
+		} else if (e.ctrlKey && e.key === 'Tab') {
+			e.preventDefault();
+			const next = tabs.cycle(get(activeFilePath), e.shiftKey ? -1 : 1);
+			if (next) activeFilePath.set(next);
+		} else if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 's') {
+			e.preventDefault(); // block the browser save dialog; guests have nothing to save (edits are live)
+			if (!guest) save();
 		} else if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.key.toLowerCase() === 'f') {
 			e.preventDefault();
 			void openGlobalSearch();
@@ -2407,136 +2831,84 @@
 </script>
 
 <svelte:window onkeydown={onKeydown} />
-<svelte:head><title>{loadedPath ? `Texpile: ${basename(loadedPath)}` : 'Texpile'}</title></svelte:head>
+<!-- file - folder - app (VS Code's order); the folder segment tells windows apart in the taskbar -->
+<svelte:head
+	><title>{$workspaceRoot ? `${loadedPath ? `${basename(loadedPath)} - ` : ''}${basename($workspaceRoot)} - Texpile` : 'Texpile'}</title
+	></svelte:head
+>
 
 <div class="flex h-screen flex-col overflow-hidden">
-	<WorkspaceMenuBar
-		disabled={!loadedPath}
-		imageDir={loadedPath && kind === 'tex' ? dirname(loadedPath) : undefined}
-		onNewFile={(ext) => newFileOfType(ext)}
-		onOpenFolder={openFolderFromMenu}
-		onCloseWorkspace={closeWorkspace}
-		onSave={save}
-		{terminalAvailable}
-		{terminalVisible}
-		onCompile={runCompile}
-		onConfigureCompile={openCompileModal}
-		onNewTerminal={addTerminal}
-		onToggleTerminal={toggleTerminal}
-		onFormatDocument={openFormatModal}
-		onOpenTutorial={() => (tutorialModalOpen = true)}
-		{uiZoomPercent}
-		onZoomIn={uiZoomIn}
-		onZoomOut={uiZoomOut}
-		onZoomReset={uiZoomReset}
-	/>
+	{#if guest}
+		<GuestBar />
+	{:else}
+		<WorkspaceMenuBar
+			disabled={!loadedPath}
+			imageDir={loadedPath && kind === 'tex' ? dirname(loadedPath) : undefined}
+			onNewFile={(ext) => newFileOfType(ext)}
+			onOpenFolder={openFolderFromMenu}
+			onCloseWorkspace={closeWorkspace}
+			onSave={save}
+			onShareSession={isDesktop() ? () => (shareModalOpen = true) : undefined}
+			{terminalAvailable}
+			{terminalVisible}
+			onCompile={runCompile}
+			onConfigureCompile={openCompileModal}
+			onNewTerminal={newTerminalFromMenu}
+			onToggleTerminal={toggleTerminal}
+			onFormatDocument={openFormatModal}
+			onOpenTutorial={() => (tutorialModalOpen = true)}
+			{uiZoomPercent}
+			onZoomIn={uiZoomIn}
+			onZoomOut={uiZoomOut}
+			onZoomReset={uiZoomReset}
+		/>
+	{/if}
 	<div class="flex min-h-0 flex-1 overflow-hidden">
 		{#if sidebarOpen}
-			<aside class="border-surface-200-800 bg-surface-50-950 flex shrink-0 flex-col border-r" style="width: {sidebarWidth}px">
-				<div class="border-surface-200-800 flex h-12 items-center justify-between gap-2 border-b px-3">
-					<span class="truncate text-sm font-semibold" title={$workspaceRoot ?? ''}>
-						{$workspaceRoot ? basename($workspaceRoot) : 'No folder'}
-					</span>
-					<div class="flex items-center gap-1">
-						<button class="btn-icon btn-icon-sm hover:preset-tonal" title="New file" onclick={() => fileTreeRef?.newAtRoot('file')}>
-							<FilePlus class="size-4" />
-						</button>
-						<button class="btn-icon btn-icon-sm hover:preset-tonal" title="New folder" onclick={() => fileTreeRef?.newAtRoot('dir')}>
-							<FolderPlus class="size-4" />
-						</button>
-						<button class="btn-icon btn-icon-sm hover:preset-tonal" title="Refresh file tree" onclick={refreshTree}>
-							<RefreshCw class="size-4" />
-						</button>
-						<button
-							class="btn-icon btn-icon-sm {sidebarView === 'scm' ? 'text-primary-500' : 'hover:preset-tonal'}"
-							title="Source Control"
-							aria-label="Source Control"
-							onclick={() => (sidebarView = sidebarView === 'scm' ? 'explorer' : 'scm')}
-						>
-							<GitBranch class="size-4" />
-						</button>
-						<button
-							class="btn-icon btn-icon-sm {sidebarView === 'search' ? 'text-primary-500' : 'hover:preset-tonal'}"
-							title={`Find in files (${modLabel}+Shift+F)`}
-							aria-label="Find in files"
-							onclick={() => (sidebarView === 'search' ? (sidebarView = 'explorer') : void openGlobalSearch())}
-						>
-							<Search class="size-4" />
-						</button>
-					</div>
-				</div>
-				{#if sidebarView === 'search'}
-					<GlobalSearch
-						bind:this={globalSearchRef}
-						root={$workspaceRoot ?? ''}
-						onOpen={openFileAtLine}
-						onClose={() => void closeGlobalSearch()}
-					/>
-				{:else if sidebarView === 'scm'}
-					<div class="min-h-0 flex-1 overflow-y-auto">
-						<SourceControlPanel
-							root={$workspaceRoot ?? ''}
-							isRepo={$isGitRepo}
-							branch={$gitBranch}
-							changes={$gitChanges}
-							busy={scmBusy}
-							onInit={scmInit}
-							onStage={scmStage}
-							onUnstage={scmUnstage}
-							onDiscard={scmDiscard}
-							onCommit={scmCommit}
-							onOpenDiff={scmOpenDiff}
-							onRefresh={() => refreshGitStatus($workspaceRoot)}
-						/>
-					</div>
-				{:else}
-					<div class="flex min-h-0 flex-1 flex-col" bind:this={splitEl}>
-						<div class="min-h-0 overflow-y-auto p-1.5" style={showToc ? `flex: ${1 - tocFraction} 1 0%` : 'flex: 1 1 0%'}>
-							<FileTree
-								bind:this={fileTreeRef}
-								tree={$fileTree}
-								rootPath={$workspaceRoot ?? ''}
-								activePath={$activeFilePath}
-								mainPath={$mainFile}
-								gitStatus={$gitStatusMap}
-								onOpen={openEntry}
-								onCreate={createInTree}
-								onRename={renameInTree}
-								onDelete={deleteInTree}
-								onMove={moveInTree}
-								onSetMain={(entry) => applyMainFile(entry.path)}
-							/>
-						</div>
-						{#if showToc}
-							<!-- arrow keys resize when focused: the WAI-ARIA window-splitter pattern
-							     (role=separator + tabindex), which svelte's a11y rule doesn't special-case -->
-							<!-- eslint-disable-next-line svelte/valid-compile -->
-							<div
-								class="hover:bg-primary-500/40 active:bg-primary-500/60 h-1 shrink-0 cursor-row-resize bg-transparent transition-colors"
-								onmousedown={startTocResize}
-								onkeydown={resizeTocByKey}
-								role="separator"
-								aria-orientation="horizontal"
-								aria-label="Resize table of contents"
-								tabindex="0"
-							></div>
-							<div class="border-surface-200-800 min-h-0 overflow-y-auto border-t p-2" style="flex: {tocFraction} 1 0%">
-								<TableOfContents mode={viewMode === 'source' ? 'source' : 'visual'} onOpenFile={openFileAtLine} />
-							</div>
-						{/if}
-					</div>
-				{/if}
-			</aside>
+			<WorkspaceSidebar
+				width={sidebarWidth}
+				{guest}
+				{modLabel}
+				bind:view={sidebarView}
+				{scmBusy}
+				{showToc}
+				{tocFraction}
+				{viewMode}
+				bind:fileTreeRef
+				bind:globalSearchRef
+				bind:splitEl
+				onRefreshTree={refreshTree}
+				onOpenGlobalSearch={() => void openGlobalSearch()}
+				onCloseGlobalSearch={() => void closeGlobalSearch()}
+				onOpenFileAt={openFileAtLine}
+				onOpenEntry={openEntry}
+				onCreate={createInTree}
+				onRename={renameInTree}
+				onDelete={deleteManyInTree}
+				onMove={moveManyInTree}
+				onImport={importIntoTree}
+				onCopyIn={copyIntoTree}
+				onSetMain={(entry) => applyMainFile(entry.path)}
+				onStartTocResize={startTocResize}
+				onResizeTocByKey={resizeTocByKey}
+				onRefreshGit={() => refreshGitStatus($workspaceRoot)}
+				{scmInit}
+				{scmStage}
+				{scmUnstage}
+				{scmDiscard}
+				{scmCommit}
+				{scmOpenDiff}
+			/>
 
 			<!-- same WAI-ARIA window-splitter pattern as above; svelte's a11y rule doesn't special-case it -->
 			<!-- eslint-disable-next-line svelte/valid-compile -->
 			<div
-				class="hover:bg-primary-500/40 active:bg-primary-500/60 w-1 shrink-0 cursor-col-resize bg-transparent transition-colors"
+				class="hover:bg-primary-500/40 active:bg-primary-500/60 relative z-20 -mx-[3px] w-1.5 shrink-0 cursor-col-resize bg-transparent transition-colors"
 				onmousedown={startResize}
 				onkeydown={resizeSidebarByKey}
 				role="separator"
 				aria-orientation="vertical"
-				aria-label="Resize sidebar"
+				aria-label={m.wsview_resize_sidebar_aria()}
 				tabindex="0"
 			></div>
 		{/if}
@@ -2545,791 +2917,170 @@
 			class="grid min-h-0 min-w-0 flex-1"
 			style="grid-template-columns: minmax(0, 1fr) auto auto; grid-template-rows: auto minmax(0, 1fr) auto auto"
 		>
-			<header class="border-surface-200-800 col-span-full flex h-12 items-center justify-between gap-3 border-b px-4">
-				<div class="flex min-w-0 items-center gap-2">
-					<button
-						class="btn-icon btn-icon-sm hover:preset-tonal shrink-0"
-						onclick={toggleSidebar}
-						title={sidebarOpen ? 'Hide file explorer' : 'Show file explorer'}
-						aria-label="Toggle file explorer"
-					>
-						<PanelLeft class="size-4" />
-					</button>
-					<FileText class="text-surface-400 size-4 shrink-0" />
-					<span class="truncate text-sm font-medium">{loadedPath ? basename(loadedPath) : 'No file'}</span>
-					{#if $isDirty}<span class="bg-warning-500 size-2 shrink-0 rounded-full" title="Unsaved changes"></span>{/if}
-					{#if loadedPath && kind === 'tex' && (viewMode === 'visual' || viewMode === 'source')}
-						<span class="border-surface-300-700 ml-2 shrink-0 border-l pl-3"><WordCount /></span>
-					{/if}
-				</div>
-				<div class="flex items-center gap-2">
-					{#if loadedPath && (kind === 'tex' || kind === 'bib')}
-						<!-- visual/source toggle; for .bib it's the reference editor vs raw BibTeX -->
-						<div class="border-surface-300-700 inline-flex shrink-0 overflow-hidden rounded-md border text-xs">
-							<button
-								class="flex items-center gap-1 px-2.5 py-1 {viewMode === 'visual' ? 'preset-filled-primary-500' : 'hover:preset-tonal'}"
-								onclick={() => setViewMode('visual')}
-								title="Visual editor"
-							>
-								<Eye class="size-3.5" /> Visual
-							</button>
-							<button
-								class="flex items-center gap-1 px-2.5 py-1 {viewMode === 'source' ? 'preset-filled-primary-500' : 'hover:preset-tonal'}"
-								onclick={() => setViewMode('source')}
-								title="LaTeX source"
-							>
-								<Code class="size-3.5" /> Source
-							</button>
-						</div>
-					{/if}
-					{#if terminalAvailable}
-						{#if viewMode === 'source' && kind === 'tex'}
-							<button
-								class="btn-icon btn-icon-sm hover:preset-tonal"
-								onclick={syncForward}
-								title="Sync to PDF (SyncTeX forward search)"
-								aria-label="Sync to PDF"
-							>
-								<LocateFixed class="size-4" />
-							</button>
-						{/if}
-						<!-- Compile / Stop with an attached options caret (Overleaf-style) -->
-						<div class="relative flex items-center">
-							{#if compiling}
-								<button
-									class="btn btn-sm preset-tonal-error w-20 justify-center gap-1.5 rounded-r-none"
-									onclick={stopCompile}
-									title={`Stop the running compile (${modLabel}+Alt+Enter)`}
-								>
-									<Square class="size-4" /> Stop
-								</button>
-							{:else if $settings.draftMode && pdfPaneOpen && !draftPaused}
-								<button
-									class="btn btn-sm preset-tonal-success min-w-24 justify-center gap-1.5 rounded-r-none whitespace-nowrap"
-									onclick={pauseDraft}
-									title="Live preview is running. Click to stop the engine"
-								>
-									<span class="bg-success-500 size-2 animate-pulse rounded-full"></span> Live
-								</button>
-							{:else if $settings.draftMode && pdfPaneOpen && draftPaused}
-								<button
-									class="btn btn-sm preset-tonal-warning min-w-24 justify-center gap-1.5 rounded-r-none whitespace-nowrap"
-									onclick={resumeDraft}
-									title="Engine stopped. Click to resume the live preview"
-								>
-									<Play class="size-4" /> Paused
-								</button>
-							{:else}
-								<button
-									class="btn btn-sm preset-tonal-primary w-24 justify-center gap-1.5 rounded-r-none"
-									onclick={runCompile}
-									title={$settings.draftMode ? 'Open the live preview' : `Compile (${modLabel}+Alt+Enter)`}
-								>
-									<Play class="size-4" />
-									{$settings.draftMode ? 'Preview' : 'Compile'}
-								</button>
-							{/if}
-							<button
-								class="btn btn-sm {compiling
-									? 'preset-tonal-error'
-									: $settings.draftMode && pdfPaneOpen
-										? draftPaused
-											? 'preset-tonal-warning'
-											: 'preset-tonal-success'
-										: 'preset-tonal-primary'} rounded-l-none border-l border-black/10 px-1"
-								onclick={() => (compileMenuOpen = !compileMenuOpen)}
-								title="Compile options"
-								aria-label="Compile options"
-								aria-haspopup="menu"
-								aria-expanded={compileMenuOpen}
-							>
-								<ChevronDown class="size-3.5 transition-transform {compileMenuOpen ? 'rotate-180' : ''}" />
-							</button>
-							{#if compileMenuOpen}
-								<!-- click-away layer -->
-								<button
-									class="fixed inset-0 z-1200 cursor-default"
-									onclick={() => (compileMenuOpen = false)}
-									tabindex="-1"
-									aria-hidden="true"
-								></button>
-								<div class="card bg-surface-50-950 border-surface-300-700 absolute top-full right-0 z-1300 mt-1 w-max border p-1 shadow-xl">
-									<button
-										class="hover:preset-tonal flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-sm whitespace-nowrap"
-										onclick={() => {
-											compileMenuOpen = false;
-											openCompileModal();
-										}}
-									>
-										<Settings2 class="size-4 shrink-0" /> Configure compile command…
-									</button>
-								</div>
-							{/if}
-						</div>
-						{#if $compileLog && ($compileLog.errors.length > 0 || $compileLog.warnings.length > 0)}
-							<button
-								class="btn btn-sm gap-1 {$compileLog.errors.length > 0 ? 'preset-tonal-error' : 'preset-tonal-warning'}"
-								onclick={() => {
-									showTerminal();
-									dockView = 'problems';
-								}}
-								title="Show problems from the last compile"
-							>
-								{#if $compileLog.errors.length > 0}
-									<CircleAlert class="size-3.5" /> {$compileLog.errors.length}
-								{/if}
-								{#if $compileLog.warnings.length > 0}
-									<TriangleAlert class="size-3.5" /> {$compileLog.warnings.length}
-								{/if}
-							</button>
-						{/if}
-						<button
-							class="btn-icon btn-icon-sm hover:preset-tonal {pdfPaneOpen ? 'text-primary-500' : ''}"
-							onclick={togglePdfPane}
-							title="Toggle PDF preview"
-							aria-label="Toggle PDF preview"
-						>
-							<PanelRight class="size-4" />
-						</button>
-					{/if}
-					<button class="btn btn-sm preset-filled-primary-500 gap-1.5" onclick={save} disabled={!loadedPath || saving || !$isDirty}>
-						{#if saving}<Loader2 class="size-4 animate-spin" />{:else}<Save class="size-4" />{/if}
-						Save
-					</button>
-				</div>
-			</header>
+			<EditorTopbar
+				{loadedPath}
+				{kind}
+				{viewMode}
+				{guest}
+				{terminalAvailable}
+				{compiling}
+				{pdfPaneOpen}
+				{draftPaused}
+				{saving}
+				{sidebarOpen}
+				{modLabel}
+				onToggleSidebar={toggleSidebar}
+				onSetViewMode={setViewMode}
+				onSyncForward={syncForward}
+				onStopCompile={stopCompile}
+				onPauseDraft={pauseDraft}
+				onResumeDraft={resumeDraft}
+				onCompile={runCompile}
+				onRequestCompile={() => {
+					collabGuest.requestCompile();
+					toaster.info({ title: m.session_compile_requested(), duration: 2500 });
+				}}
+				onConfigureCompile={openCompileModal}
+				onShowProblems={() => {
+					showTerminal();
+					dockView = 'problems';
+				}}
+				onTogglePdf={togglePdfPane}
+				onSave={save}
+			/>
 
 			<!-- editor column (toolbar + content) with the PDF pane beside it, so the PDF
 			     skips the toolbar while the header (Compile) stays above it. the wrapper is
 			     display:contents so editor/splitter/preview place themselves on main's grid -->
 			<div class="contents">
-				<div class="flex min-h-0 min-w-0 flex-col" style="grid-column: 1; grid-row: 2">
-					{#if visualDoc && loadedPath && kind === 'tex' && viewMode === 'visual'}
-						<div class="border-surface-200-800 toolbar-hscroll overflow-x-auto border-b">
-							<Toolbar minimal />
-						</div>
-					{:else if loadedPath && kind === 'tex' && viewMode === 'source'}
-						<div class="border-surface-200-800 toolbar-hscroll overflow-x-auto border-b px-2 py-1.5">
-							<SourceToolbar />
-						</div>
-					{/if}
-					<!-- relative anchors the floating find bar; it sits outside the scroller so it doesn't scroll away -->
-					<div class="relative min-h-0 min-w-0 flex-1">
-						{#if loadedPath && kind === 'tex' && viewMode === 'visual' && visualDoc}
-							<SearchBar />
-						{/if}
-						<div class="h-full w-full overflow-auto">
-							{#if folderEmpty && !$activeFilePath}
-								<div class="mx-auto mt-16 max-w-xl px-6">
-									<div class="text-center">
-										<h2 class="text-lg font-semibold">Start a new document</h2>
-										<p class="text-surface-500 mt-1 text-sm">This folder has no <code>.tex</code> files yet. Pick a template to begin.</p>
-									</div>
-									<div class="mt-6">
-										<StarterPicker onPick={pickStarter} onBlank={newTexFile} onImport={importStarterFiles} busy={applyingStarter} />
-									</div>
-								</div>
-							{:else if loadError}
-								<div class="text-error-600 mx-auto mt-12 flex max-w-md flex-col items-center gap-2 text-center">
-									<CircleAlert class="size-8" />
-									<p class="text-sm">{loadError}</p>
-								</div>
-							{:else if loadedPath && viewMode === 'diff' && (kind === 'tex' || kind === 'bib' || kind === 'text')}
-								<div class="flex h-full flex-col">
-									<div
-										class="bg-surface-100-900 text-surface-600-300 border-surface-200-800 flex h-8 shrink-0 items-center gap-2 border-b px-3 text-xs"
-									>
-										<GitCompare class="size-3.5 shrink-0" />
-										<span class="font-medium">Changes since last commit</span>
-										{#if diffLoading}<span class="text-surface-500">· loading…</span>
-										{:else if diffError}<span class="text-error-500 truncate">· {diffError}</span>
-										{:else if !diffHasHead}<span class="text-surface-500">· new file (nothing committed yet)</span>{/if}
-										<div class="ml-auto flex shrink-0 items-center gap-1">
-											<button
-												class="hover:preset-tonal rounded px-1.5 py-0.5"
-												onclick={toggleDiffLayout}
-												title={diffLayout === 'unified' ? 'Switch to side-by-side' : 'Switch to inline'}
-											>
-												{diffLayout === 'unified' ? 'Side-by-side' : 'Inline'}
-											</button>
-											<button
-												class="hover:preset-tonal rounded p-0.5"
-												onclick={captureDiffSnapshot}
-												title="Refresh diff"
-												aria-label="Refresh diff"
-											>
-												<RefreshCw class="size-3.5" />
-											</button>
-											<button
-												class="hover:preset-tonal-primary flex items-center gap-1 rounded px-1.5 py-0.5 font-medium"
-												onclick={exitDiff}
-												title="Back to the editor"
-											>
-												<X class="size-3.5" /> Close
-											</button>
-										</div>
-									</div>
-									<div class="min-h-0 flex-1 overflow-auto">
-										{#key loadedPath}
-											<DiffPanel filename={loadedPath} original={diffOriginal} modified={diffModified} layout={diffLayout} />
-										{/key}
-									</div>
-								</div>
-							{:else if loadedPath && kind === 'tex' && viewMode === 'source'}
-								{#key loadedPath}
-									<SourceEditor
-										value={texSource}
-										onInput={onTexInput}
-										gotoLine={sourceGotoLine}
-										onSyncToPdf={syncForwardLine}
-										initialScrollPos={sourceScrollAnchor}
-										onHistoryBoundary={workspaceHistoryStep}
-										diagnostics={sourceDiagnostics}
-										onJumpToFile={jumpToInclude}
-										onOpenFileAt={openFileAtLine}
-									/>
-								{/key}
-							{:else if loadedPath && kind === 'tex' && visualDoc}
-								{#key loadedPath}
-									<!-- texpile-main-editor scopes the editor's right-click context menu (ContextMenu.svelte) -->
-									<!-- px-12 reserves room for the block-handle gutters (~48px left / ~30px right); on narrow
-							     windows the mx-auto centering margin collapses and this padding keeps them from clipping -->
-									<div class="px-12 py-8">
-										<div class="texpile-main-editor mx-auto w-full max-w-3xl min-w-0">
-											{#if docMeta?.hadDocumentEnv}
-												<PreambleFrontmatter preamble={docMeta.preamble} onEdit={editPreambleFrontmatter} />
-											{/if}
-											<EditorView
-												localValue={visualDoc}
-												localReferences={allReferences}
-												imageDir={loadedPath ? dirname(loadedPath) : undefined}
-												onLocalChange={onChange}
-												placeholder="Start writing…"
-												onHistoryBoundary={workspaceHistoryStep}
-											/>
-										</div>
-									</div>
-								{/key}
-							{:else if loadedPath && kind === 'bib' && viewMode === 'source'}
-								{#key loadedPath}
-									<SourceEditor value={rawContent} onInput={onRawInput} filename={loadedPath} gotoLine={sourceGotoLine} />
-								{/key}
-							{:else if loadedPath && kind === 'bib'}
-								{#key loadedPath}
-									<BibManager value={rawContent} onInput={onRawInput} />
-								{/key}
-							{:else if loadedPath && kind === 'text'}
-								{#key loadedPath}
-									<SourceEditor value={rawContent} onInput={onRawInput} filename={loadedPath} gotoLine={sourceGotoLine} />
-								{/key}
-							{:else if loadedPath && kind === 'pdf'}
-								<!-- a .pdf opened directly: its own src, independent of the compile-output pane -->
-								<div class="h-full w-full">
-									<PDFViewer src={fileUrl(loadedPath)} filename={basename(loadedPath)} />
-								</div>
-							{:else if loadedPath && kind === 'image'}
-								<div class="flex h-full items-center justify-center p-8">
-									<img src={fileUrl(loadedPath)} alt={basename(loadedPath)} class="max-h-full max-w-full object-contain" />
-								</div>
-							{:else if loadedPath && kind === 'binary'}
-								<div class="text-surface-500 mt-12 text-center text-sm">{basename(loadedPath)} (binary file, not editable here)</div>
-							{:else if $activeFilePath}
-								<div class="text-surface-500 mt-12 flex items-center justify-center gap-2 text-sm">
-									<Loader2 class="size-4 animate-spin" /> Opening…
-								</div>
-							{:else}
-								<div class="text-surface-500 mt-12 text-center text-sm">Select a file to edit.</div>
-							{/if}
-						</div>
-					</div>
-				</div>
+				<EditorPane
+					openTabs={tabs.list}
+					onActivateTab={activateTab}
+					onCloseTab={closeTab}
+					{loadedPath}
+					{kind}
+					{nameOnly}
+					{viewMode}
+					{session}
+					{folderEmpty}
+					{loadError}
+					{applyingStarter}
+					{texSource}
+					{rawContent}
+					{visualDoc}
+					{docMeta}
+					{allReferences}
+					{sourceGotoLine}
+					{sourceScrollAnchor}
+					{sourceDiagnostics}
+					{diffOriginal}
+					{diffModified}
+					{diffLayout}
+					{diffLoading}
+					{diffError}
+					{diffHasHead}
+					{fileUrl}
+					onPickStarter={pickStarter}
+					onBlankStarter={newTexFile}
+					onImportStarter={importStarterFiles}
+					{onTexInput}
+					{onRawInput}
+					onVisualChange={onChange}
+					onVisualSelection={() => visualCollab?.publishCursor()}
+					onEditFrontmatter={editPreambleFrontmatter}
+					onSyncToPdf={syncForwardLine}
+					onHistoryBoundary={workspaceHistoryStep}
+					onJumpToFile={jumpToInclude}
+					onOpenFileAt={openFileAtLine}
+					onToggleDiffLayout={toggleDiffLayout}
+					onRefreshDiff={captureDiffSnapshot}
+					onExitDiff={exitDiff}
+				/>
 				{#if pdfPaneOpen}
-					<!-- same WAI-ARIA window-splitter pattern as above; svelte's a11y rule doesn't special-case it -->
-					<!-- eslint-disable-next-line svelte/valid-compile -->
-					<div
-						class="hover:bg-primary-500/40 active:bg-primary-500/60 w-1 shrink-0 cursor-col-resize bg-transparent transition-colors"
-						style="grid-column: 2; grid-row: {dockShrunk ? '2 / -1' : '2'}"
-						onmousedown={startPdfResize}
-						onkeydown={resizePdfByKey}
-						role="separator"
-						aria-orientation="vertical"
-						aria-label="Resize PDF preview"
-						tabindex="0"
-					></div>
-					<aside
-						class="border-surface-200-800 flex shrink-0 flex-col border-l"
-						style="width: {pdfPaneWidth}px; grid-column: 3; grid-row: {dockShrunk ? '2 / -1' : '2'}"
-					>
-						<div class="bg-surface-100-900 text-surface-600-300 flex h-8 shrink-0 items-center justify-between border-b px-3 text-xs">
-							<span class="font-medium">{$settings.draftMode ? 'Live preview' : 'PDF preview'}</span>
-							<button class="hover:preset-tonal rounded p-0.5" onclick={togglePdfPane} title="Close preview" aria-label="Close preview">
-								<X class="size-3.5" />
-							</button>
-						</div>
-						<div class="min-h-0 flex-1">
-							{#if $settings.draftMode}
-								<DraftView
-									bind:this={draftRef}
-									root={draftRoot}
-									mainFile={draftMainRel}
-									trigger={draftTrigger}
-									onInverseSync={(file, line, selectText) => openFileAtLine(normPath(file), line, selectText)}
-									onSettled={runDraftDecision}
-								/>
-							{:else}
-								<PDFViewer bind:this={pdfPaneRef} filename={pdfFilename} onPageClick={onPdfDoubleClick} />
-							{/if}
-						</div>
-					</aside>
+					<PreviewPane
+						width={pdfPaneWidth}
+						{dockShrunk}
+						{guest}
+						guestPdf={session.guestPdf}
+						{pdfFilename}
+						{draftRoot}
+						{draftMainRel}
+						{draftTrigger}
+						bind:pdfPaneRef
+						bind:draftRef
+						onStartResize={startPdfResize}
+						onResizeByKey={resizePdfByKey}
+						onClose={togglePdfPane}
+						onPageClick={onPdfDoubleClick}
+						onInverseSync={(file, line, selectText) => openFileAtLine(normPath(file), line, selectText)}
+						onSettled={runDraftDecision}
+					/>
 				{/if}
 			</div>
 
-			<!-- terminal dock; shrunk it stays under the editor column and the preview keeps full height -->
-			{#if terminalMounted && terminalAvailable}
-				{#if terminalVisible}
-					<!-- same WAI-ARIA window-splitter pattern as above; svelte's a11y rule doesn't special-case it -->
-					<!-- eslint-disable-next-line svelte/valid-compile -->
-					<div
-						class="hover:bg-primary-500/40 active:bg-primary-500/60 h-1 shrink-0 cursor-row-resize bg-transparent transition-colors"
-						style="grid-row: 3; grid-column: {dockShrunk ? '1' : '1 / -1'}"
-						onmousedown={startTerminalResize}
-						onkeydown={resizeTerminalByKey}
-						role="separator"
-						aria-orientation="horizontal"
-						aria-label="Resize terminal"
-						tabindex="0"
-					></div>
-				{/if}
-				<!-- kept mounted so shells persist; hidden via display:none -->
-				<section
-					class="border-surface-200-800 flex shrink-0 flex-col border-t"
-					style={`${terminalVisible ? `height: ${terminalHeight}px` : 'display: none'}; grid-row: 4; grid-column: ${dockShrunk ? '1' : '1 / -1'}`}
-				>
-					<div class="bg-surface-100-900 text-surface-600-300 flex h-8 shrink-0 items-center justify-between gap-2 px-2 text-xs">
-						<div class="flex min-w-0 items-center gap-1">
-							<button
-								class="rounded px-2 py-1 {dockView === 'terminal' ? 'preset-tonal font-medium' : 'hover:preset-tonal'}"
-								onclick={() => (dockView = 'terminal')}
-							>
-								Terminal
-							</button>
-							<button
-								class="flex items-center gap-1 rounded px-2 py-1 {dockView === 'problems'
-									? 'preset-tonal font-medium'
-									: 'hover:preset-tonal'}"
-								onclick={() => (dockView = 'problems')}
-							>
-								Problems
-								{#if $compileLog && $compileLog.errors.length > 0}
-									<span class="text-error-500 font-semibold">{$compileLog.errors.length}</span>
-								{:else if $compileLog && $compileLog.warnings.length > 0}
-									<span class="text-warning-600-400 font-semibold">{$compileLog.warnings.length}</span>
-								{/if}
-							</button>
-						</div>
-						<div class="flex items-center gap-0.5">
-							{#if dockView === 'terminal'}
-								<div class="relative">
-									<button
-										class="hover:preset-tonal flex items-center gap-1.5 rounded px-2 py-1"
-										onclick={() => (termMenuOpen = !termMenuOpen)}
-									>
-										<SquareTerminal class="size-3.5" />
-										<span class="font-medium">{terminals.find((t) => t.id === activeTermId)?.title ?? 'Terminal'}</span>
-										<ChevronDown class="size-3" />
-									</button>
-									{#if termMenuOpen}
-										<button class="fixed inset-0 z-40 cursor-default" aria-label="Close menu" onclick={() => (termMenuOpen = false)}
-										></button>
-										<div
-											class="bg-surface-50-950 border-surface-300-700 absolute right-0 bottom-full z-50 mb-1 min-w-52 overflow-hidden rounded border py-1 shadow-lg"
-										>
-											{#each terminals as t (t.id)}
-												<div class="hover:preset-tonal-surface flex items-center">
-													<button class="flex flex-1 items-center gap-2 px-2.5 py-1.5 text-left" onclick={() => selectTerminal(t.id)}>
-														<Check class="size-3.5 {t.id === activeTermId ? '' : 'invisible'}" />
-														<span class="truncate">{t.title}</span>
-													</button>
-													<button
-														class="hover:preset-tonal-error mr-1 rounded p-1"
-														title="Kill terminal"
-														aria-label="Kill terminal"
-														onclick={() => killTerminal(t.id)}
-													>
-														<Trash2 class="size-3.5" />
-													</button>
-												</div>
-											{/each}
-											<button
-												class="hover:preset-tonal-primary border-surface-200-800 mt-1 flex w-full items-center gap-2 border-t px-2.5 py-1.5 text-left"
-												onclick={addTerminal}
-											>
-												<Plus class="size-3.5" /> New terminal
-											</button>
-										</div>
-									{/if}
-								</div>
-								<button class="hover:preset-tonal rounded p-1" title="New terminal" aria-label="New terminal" onclick={addTerminal}>
-									<Plus class="size-3.5" />
-								</button>
-								<button
-									class="hover:preset-tonal-error rounded p-1"
-									title="Kill terminal"
-									aria-label="Kill terminal"
-									onclick={() => activeTermId != null && killTerminal(activeTermId)}
-								>
-									<Trash2 class="size-3.5" />
-								</button>
-							{/if}
-							{#if pdfPaneOpen}
-								<button
-									class="hover:preset-tonal rounded p-1"
-									title={terminalShrink ? 'Expand panel under the preview' : 'Shrink panel to the editor width'}
-									aria-label={terminalShrink ? 'Expand panel to full width' : 'Shrink panel to editor width'}
-									onclick={toggleTerminalShrink}
-								>
-									{#if terminalShrink}
-										<UnfoldHorizontal class="size-3.5" />
-									{:else}
-										<FoldHorizontal class="size-3.5" />
-									{/if}
-								</button>
-							{/if}
-							<button class="hover:preset-tonal rounded p-1" title="Hide panel" aria-label="Hide panel" onclick={toggleTerminal}>
-								<X class="size-3.5" />
-							</button>
-						</div>
-					</div>
-					<!-- all terminals stay mounted (shells persist); only the active one is shown -->
-					<div class="relative min-h-0 flex-1">
-						{#if dockView === 'problems'}
-							<div class="bg-surface-50-950 absolute inset-0 z-10 overflow-hidden">
-								<ProblemsPanel root={$workspaceRoot ?? ''} onJump={openFileAtLine} />
-							</div>
-						{/if}
-						{#each terminals as t (t.id)}
-							<div class="absolute inset-0" style={t.id === activeTermId ? '' : 'display: none'}>
-								<Terminal bind:this={termRefs[t.id]} cwd={$workspaceRoot ?? ''} />
-							</div>
-						{/each}
-					</div>
-				</section>
+			{#if terminalMounted && (terminalAvailable || guest)}
+				<TerminalDock
+					terminalEnabled={terminalAvailable}
+					visible={terminalVisible}
+					height={terminalHeight}
+					shrink={terminalShrink}
+					{dockShrunk}
+					cwd={$workspaceRoot ?? ''}
+					{pdfPaneOpen}
+					bind:view={dockView}
+					bind:dock
+					onStartResize={startTerminalResize}
+					onResizeByKey={resizeTerminalByKey}
+					onToggleShrink={toggleTerminalShrink}
+					onClose={toggleTerminal}
+					onProblemJump={openFileAtLine}
+				/>
 			{/if}
 		</main>
 	</div>
 
 	{#if mainConfirmOpen}
-		<div
-			class="fixed inset-0 z-1300 flex items-center justify-center bg-black/40 p-4"
-			role="presentation"
-			onmousedown={(e) => e.target === e.currentTarget && dismissMainConfirm()}
-		>
-			<div class="card bg-surface-50-950 border-surface-300-700 w-full max-w-lg border p-5 shadow-2xl">
-				<div class="mb-3 flex items-center justify-between">
-					<h2 class="text-base font-semibold">Choose the main file</h2>
-					<button class="btn-icon btn-icon-sm hover:preset-tonal" onclick={dismissMainConfirm} aria-label="Close">
-						<X class="size-4" />
-					</button>
-				</div>
-				<p class="text-surface-600-300 mb-3 text-sm">
-					A project compiles from one main .tex file; the other files are pulled in from it. Texpile picked the most likely one below. You
-					can change it later by right-clicking a file in the explorer and choosing "Set as main file".
-				</p>
-				<div class="border-surface-300-700 mb-4 max-h-64 overflow-y-auto rounded border">
-					{#each mainCandidates as f (f.path)}
-						<label
-							class="hover:preset-tonal-surface flex cursor-pointer items-center gap-2 px-3 py-1.5 text-sm {mainChoice &&
-							samePath(mainChoice, f.path)
-								? 'preset-tonal-primary'
-								: ''}"
-						>
-							<input
-								type="radio"
-								class="radio"
-								name="main-file-choice"
-								value={f.path}
-								checked={!!mainChoice && samePath(mainChoice, f.path)}
-								onchange={() => (mainChoice = f.path)}
-							/>
-							<span class="truncate">{f.relPath}</span>
-							{#if mainDetected && samePath(f.path, mainDetected)}
-								<span class="badge preset-tonal-primary ml-auto shrink-0 text-[10px]">detected</span>
-							{:else if mainDocRoots.has(f.path)}
-								<span class="badge preset-tonal-surface ml-auto shrink-0 text-[10px]">document</span>
-							{/if}
-						</label>
-					{/each}
-				</div>
-				<div class="flex justify-end">
-					<button class="btn btn-sm preset-filled-primary-500" onclick={confirmMainFile} disabled={!mainChoice}>Use this file</button>
-				</div>
-			</div>
-		</div>
+		<MainFileModal
+			candidates={mainCandidates}
+			bind:choice={mainChoice}
+			detected={mainDetected}
+			docRoots={mainDocRoots}
+			onConfirm={confirmMainFile}
+			onDismiss={dismissMainConfirm}
+		/>
 	{/if}
 
-	{#if compileModalOpen}
-		<div
-			class="fixed inset-0 z-1300 flex items-center justify-center bg-black/40 p-4"
-			role="presentation"
-			onmousedown={(e) => e.target === e.currentTarget && (compileModalOpen = false)}
-		>
-			<div class="card bg-surface-50-950 border-surface-300-700 w-full max-w-lg border p-5 shadow-2xl">
-				<div class="mb-3 flex items-center justify-between">
-					<h2 class="text-base font-semibold">Compile command</h2>
-					<button class="btn-icon btn-icon-sm hover:preset-tonal" onclick={() => (compileModalOpen = false)} aria-label="Close">
-						<X class="size-4" />
-					</button>
-				</div>
-				<!-- (main-file selection lives in the first-compile confirm modal and the file
-				     tree's "Set as main file" - not here; this modal is only about the command) -->
+	<CompileCommandModal
+		bind:open={compileModalOpen}
+		bind:command={compileDraft}
+		bind:outputs={compileOutputsDraft}
+		bind:advancedOpen
+		onSave={saveCompileCommand}
+		onUseDefault={useDefaultCommand}
+		onRun={runCompile}
+	/>
 
-				<!-- Live mode has its own lualatex pipeline; when on, the shell command is inert -->
-				<div class="mb-1 flex items-center justify-between gap-4">
-					<span class="text-sm">Live mode <span class="text-surface-500">(experimental)</span></span>
-					<Switch checked={$settings.draftMode} onCheckedChange={(d) => updateSettings({ draftMode: d.checked })}>
-						<Switch.Control><Switch.Thumb /></Switch.Control>
-						<Switch.HiddenInput />
-					</Switch>
-				</div>
-
-				{#if $settings.draftMode}
-					<p class="text-surface-500 mt-1 mb-1 text-xs">
-						Live per-page preview: compiles the whole project with the real engine and re-typesets only what you change. Live mode runs its
-						own <strong>lualatex</strong> pipeline, so the compile command and engine below cannot be customized. Only lualatex is supported.
-					</p>
-					<div class="border-surface-300-700 text-surface-500 mt-3 rounded border border-dashed px-3 py-2 text-xs">
-						Compile command &middot; disabled in live mode
-						<code class="bg-surface-200-800 ml-1 rounded px-1 opacity-70">lualatex (built-in)</code>
-					</div>
-				{:else}
-					<p class="text-surface-600-300 mt-2 mb-3 text-sm">
-						Runs in a shell at the folder root. <code class="bg-surface-200-800 rounded px-1">{'{main}'}</code> expands to your main file. Saved
-						for this folder.
-					</p>
-
-					<!-- quick setup: chips reflect the command when recognizable, and regenerate it on click -->
-					<div class="mb-2 flex flex-wrap items-center gap-2 text-sm">
-						<span class="text-surface-500 text-xs">Engine</span>
-						{#each ['pdflatex', 'lualatex', 'xelatex'] as const as eng (eng)}
-							<button
-								type="button"
-								class="rounded-base border px-2 py-0.5 text-xs {draftEngine === eng
-									? 'border-primary-500 bg-primary-500/10 text-primary-600-400 font-medium'
-									: 'border-surface-300-700 text-surface-600-300 hover:preset-tonal'}"
-								onclick={() => applyEngine(eng)}
-							>
-								{eng}
-							</button>
-						{/each}
-						{#if draftEngine === null && compileDraft.trim()}
-							<span class="text-surface-400 text-xs italic">custom</span>
-						{/if}
-						<label class="text-surface-600-300 ml-auto inline-flex items-center gap-1.5 text-xs">
-							<input type="checkbox" class="checkbox" checked={draftLatexmk} onchange={(e) => applyLatexmk(e.currentTarget.checked)} />
-							use latexmk
-						</label>
-					</div>
-
-					<!-- svelte-ignore a11y_autofocus -->
-					<input
-						class="input w-full font-mono text-sm"
-						bind:value={compileDraft}
-						placeholder={DEFAULT_COMPILE_COMMAND}
-						spellcheck="false"
-						autofocus
-						onkeydown={(e) => {
-							if (e.key === 'Enter' && !(compileDraft.includes('{main}') && !$mainFile)) saveCompileCommand(true);
-							else if (e.key === 'Escape') compileModalOpen = false;
-						}}
-					/>
-					<div class="mt-4 flex items-center justify-between gap-4">
-						<span class="text-sm">Compile completion marker</span>
-						<Switch checked={$settings.compileSentinel} onCheckedChange={(d) => updateSettings({ compileSentinel: d.checked })}>
-							<Switch.Control><Switch.Thumb /></Switch.Control>
-							<Switch.HiddenInput />
-						</Switch>
-					</div>
-					<p class="text-surface-500 mt-1 text-xs">
-						Appends a marker echo after the compile command so the editor knows when it finishes. Turn off if it interferes with your shell
-						or compile command.
-					</p>
-				{/if}
-
-				{#if !$settings.draftMode}
-					<button
-						type="button"
-						class="text-surface-500 hover:text-surface-950-50 mt-4 inline-flex items-center gap-1 text-xs"
-						onclick={() => (advancedOpen = !advancedOpen)}
-					>
-						<ChevronDown class="size-3.5 transition-transform {advancedOpen ? '' : '-rotate-90'}" /> Advanced: output paths
-					</button>
-					{#if advancedOpen}
-						<div class="mt-2 space-y-3">
-							<p class="text-surface-500 text-xs">
-								The exact file your command produces, one each. Override only if auto-detection guesses wrong (a custom
-								<code class="bg-surface-200-800 rounded px-1">-jobname</code> or unusual output layout). SyncTeX follows the PDF. Paths are relative
-								to the folder root.
-							</p>
-							<div>
-								<div class="mb-1 flex items-center justify-between gap-2">
-									<span class="text-surface-600-300 text-xs font-medium">Compiled PDF file</span>
-									{#if pdfPathWarning}<span class="text-warning-600-400 text-xs">{pdfPathWarning}</span>{/if}
-								</div>
-								<div class="flex gap-2">
-									<input
-										class="input flex-1 font-mono text-sm"
-										bind:value={compileOutputsDraft.pdf}
-										placeholder="Auto detected from command"
-										spellcheck="false"
-									/>
-									<button
-										type="button"
-										class="btn btn-sm hover:preset-tonal shrink-0"
-										onclick={() => (compileOutputsDraft.pdf = '')}
-										disabled={!compileOutputsDraft.pdf}
-										title="Clear and auto-detect from the command"
-									>
-										Auto
-									</button>
-								</div>
-							</div>
-							<div>
-								<div class="mb-1 flex items-center justify-between gap-2">
-									<span class="text-surface-600-300 text-xs font-medium">Log file</span>
-									{#if logPathWarning}<span class="text-warning-600-400 text-xs">{logPathWarning}</span>{/if}
-								</div>
-								<div class="flex gap-2">
-									<input
-										class="input flex-1 font-mono text-sm"
-										bind:value={compileOutputsDraft.log}
-										placeholder="Auto detected from command"
-										spellcheck="false"
-									/>
-									<button
-										type="button"
-										class="btn btn-sm hover:preset-tonal shrink-0"
-										onclick={() => (compileOutputsDraft.log = '')}
-										disabled={!compileOutputsDraft.log}
-										title="Clear and auto-detect from the command"
-									>
-										Auto
-									</button>
-								</div>
-							</div>
-						</div>
-					{/if}
-				{/if}
-
-				<div class="mt-4 flex items-center justify-between gap-3">
-					<span class="text-surface-500 text-xs">
-						{#if !$mainFile}Pick a main file to run.{/if}
-					</span>
-					<div class="flex gap-2">
-						<button class="btn btn-sm hover:preset-tonal" onclick={() => (compileModalOpen = false)}>Cancel</button>
-						{#if $settings.draftMode}
-							<button
-								class="btn btn-sm preset-filled-primary-500 gap-1.5"
-								onclick={() => {
-									compileModalOpen = false;
-									runCompile();
-								}}
-								disabled={!$mainFile}
-							>
-								<Play class="size-4" /> Run preview
-							</button>
-						{:else}
-							<button class="btn btn-sm hover:preset-tonal" onclick={() => saveCompileCommand(false)}>Save</button>
-							<button
-								class="btn btn-sm preset-tonal-primary gap-1.5"
-								onclick={useDefaultCommand}
-								disabled={DEFAULT_COMPILE_COMMAND.includes('{main}') && !$mainFile}
-								title="Use the default command and run"
-							>
-								<Play class="size-4" /> Use default
-							</button>
-							<button
-								class="btn btn-sm preset-filled-primary-500 gap-1.5"
-								onclick={() => saveCompileCommand(true)}
-								disabled={compileDraft.includes('{main}') && !$mainFile}
-							>
-								<Play class="size-4" /> Save &amp; run
-							</button>
-						{/if}
-					</div>
-				</div>
-			</div>
-		</div>
-	{/if}
-
-	{#if formatModalOpen}
-		<div
-			class="fixed inset-0 z-1300 flex items-center justify-center bg-black/40 p-4"
-			role="presentation"
-			onmousedown={(e) => e.target === e.currentTarget && (formatModalOpen = false)}
-		>
-			<div class="card bg-surface-50-950 border-surface-300-700 w-full max-w-md border p-5 shadow-2xl">
-				<div class="mb-3 flex items-center justify-between">
-					<h2 class="flex items-center gap-2 text-base font-semibold">
-						<TriangleAlert class="text-warning-500 size-5" /> Format document
-					</h2>
-					<button class="btn-icon btn-icon-sm hover:preset-tonal" onclick={() => (formatModalOpen = false)} aria-label="Close">
-						<X class="size-4" />
-					</button>
-				</div>
-				<p class="text-surface-600-300 mb-4 text-sm">
-					This reindents your LaTeX source with <code class="bg-surface-200-800 rounded px-1">latexindent</code>. It only touches
-					whitespace, but in rare cases (unusual verbatim-like environments, whitespace-sensitive macros) that can still change what
-					renders. Undo (Ctrl+Z) reverts it if something looks off.
-				</p>
-				<div class="flex justify-end gap-2">
-					<button class="btn btn-sm hover:preset-tonal" onclick={() => (formatModalOpen = false)}>Cancel</button>
-					<button class="btn btn-sm preset-filled-primary-500 gap-1.5" onclick={runFormat} disabled={formatting}>
-						{#if formatting}<Loader2 class="size-4 animate-spin" />{/if} Format
-					</button>
-				</div>
-			</div>
-		</div>
-	{/if}
+	<FormatModal bind:open={formatModalOpen} {formatting} onFormat={runFormat} />
 
 	<!-- file edited on disk while we held unsaved edits -->
 	{#if conflict}
-		<div class="fixed inset-0 z-1300 flex items-center justify-center bg-black/40 p-4">
-			<div class="card bg-surface-50-950 border-surface-300-700 w-full max-w-md border p-5 shadow-2xl">
-				<h2 class="text-lg font-semibold">File changed on disk</h2>
-				<p class="text-surface-600-300 mt-2 text-sm">
-					<span class="font-medium">{basename(conflict.path)}</span> was modified outside the editor while you had unsaved changes. Which version
-					do you want to keep?
-				</p>
-				<div class="mt-5 flex justify-end gap-2">
-					<button class="btn hover:preset-tonal" onclick={() => resolveConflict('reload')}>Reload from disk</button>
-					<button class="btn preset-filled-primary-500" onclick={() => resolveConflict('keep')}>Keep my version</button>
-				</div>
-			</div>
-		</div>
+		<ConflictModal path={conflict.path} onResolve={resolveConflict} />
+	{/if}
+
+	<!-- autosave off, switching away from a file with unsaved edits -->
+	{#if saveSwitchPrompt}
+		<SaveBeforeSwitchModal name={saveSwitchPrompt.name} onResolve={resolveSaveSwitch} />
 	{/if}
 
 	{#if pendingRefUpdate}
-		<div
-			class="fixed inset-0 z-1300 flex items-center justify-center bg-black/40 p-4"
-			role="presentation"
-			onmousedown={(e) => e.target === e.currentTarget && (pendingRefUpdate = null)}
-		>
-			<div class="card bg-surface-50-950 border-surface-300-700 w-full max-w-md border p-5 shadow-2xl">
-				<h2 class="text-lg font-semibold">Update file references?</h2>
-				<p class="text-surface-600-300 mt-2 text-sm">
-					{pendingRefUpdate.total} reference{pendingRefUpdate.total === 1 ? '' : 's'} in {pendingRefUpdate.hits.length} file{pendingRefUpdate
-						.hits.length === 1
-						? ''
-						: 's'} point to <code class="text-xs break-all">{pendingRefUpdate.oldRel}</code>. Repoint
-					{pendingRefUpdate.total === 1 ? 'it' : 'them'} to <code class="text-xs break-all">{pendingRefUpdate.newRel}</code>?
-				</p>
-				<div class="mt-5 flex justify-end gap-2">
-					<button class="btn hover:preset-tonal" onclick={() => (pendingRefUpdate = null)}>Keep as-is</button>
-					<button class="btn preset-filled-primary-500" onclick={applyRefUpdate}>Update all</button>
-				</div>
-			</div>
-		</div>
+		<RefUpdateModal update={pendingRefUpdate} onKeep={() => (pendingRefUpdate = null)} onApply={applyRefUpdate} />
 	{/if}
 </div>
 
 <TutorialConfirmModal bind:open={tutorialModalOpen} onConfirm={openTutorial} />
+{#if !guest}
+	<SessionShareModal bind:open={shareModalOpen} root={$workspaceRoot} onBeforeStart={flushSaveAndWait} />
+{/if}
+{#if session.active}
+	<VisualCollab bind:this={visualCollab} {session} path={loadedPath} {kind} {viewMode} api={visualCollabApi} />
+{/if}

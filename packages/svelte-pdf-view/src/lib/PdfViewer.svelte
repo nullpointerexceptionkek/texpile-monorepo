@@ -16,6 +16,8 @@
 	interface Props {
 		/** PDF source - URL string, ArrayBuffer, Uint8Array, or Blob */
 		src: PdfSource;
+		/** logical-document id: unchanged across a src change keeps scroll (recompile), changed resets it */
+		documentKey?: string | number;
 		/** Initial scale (default: 1.0) */
 		scale?: number;
 		/** Custom filename for PDF download (default: extracted from URL or 'document.pdf') */
@@ -27,7 +29,7 @@
 		children?: Snippet;
 	}
 
-	let { src, scale: initialScale = 1.0, downloadFilename, onerror, class: className = '', children }: Props = $props();
+	let { src, documentKey, scale: initialScale = 1.0, downloadFilename, onerror, class: className = '', children }: Props = $props();
 
 	// download needs its own copy of binary source data (PDF.js detaches ArrayBuffers);
 	// set by PdfRenderer before it hands the data to PDF.js
@@ -89,6 +91,7 @@
 	const actions: PdfViewerActions = {
 		zoomIn: () => rendererActions?.zoomIn(),
 		zoomOut: () => rendererActions?.zoomOut(),
+		fitWidth: () => rendererActions?.fitWidth(),
 		setScale: (scale: number) => rendererActions?.setScale(scale),
 		rotateClockwise: () => rendererActions?.rotateClockwise(),
 		rotateCounterClockwise: () => rendererActions?.rotateCounterClockwise(),
@@ -122,6 +125,9 @@
 		get src() {
 			return src;
 		},
+		get documentKey() {
+			return documentKey;
+		},
 		_registerRenderer: (renderer: PdfViewerActions) => {
 			rendererActions = renderer;
 		},
@@ -133,6 +139,7 @@
 </script>
 
 <div class="pdf-viewer-container {className}">
+	<!-- loading is only ever true before the first document lands; reloads swap in place -->
 	{#if viewerState.loading}
 		<div class="pdf-loading">Loading PDF...</div>
 	{:else if viewerState.error}

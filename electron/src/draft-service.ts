@@ -36,12 +36,22 @@ type DraftBody = { root: string; mainFile: string; engineDir: string; engine?: s
 
 const OUT = '_draft';
 
-// Cancel-on-supersede: a newer compileDraft kills the in-flight lualatex (via activeChild) so a
-// hung/slow compile can't hold the 120s pass timeout and stick the preview -- the editor just
-// fires the fresh compile and the stale one bails. compileGen is the monotonic run id; a run is
-// superseded once compileGen moves past it.
-let compileGen = 0;
-let activeChild: import('node:child_process').ChildProcess | null = null;
+// Cancel-on-supersede: a newer compileDraft for the SAME root kills that root's in-flight
+// lualatex so a hung/slow compile can't hold the 120s pass timeout and stick the preview --
+// the editor just fires the fresh compile and the stale one bails. gen is the monotonic run
+// id per root; a run is superseded once its root's gen moves past it. Keyed per root so one
+// window's compile can never cancel another window's.
+type CompileRun = { gen: number; child: import('node:child_process').ChildProcess | null };
+const compileRuns = new Map<string, CompileRun>();
+function runFor(root: string): CompileRun {
+	const key = process.platform === 'win32' ? path.resolve(root).toLowerCase() : path.resolve(root);
+	let r = compileRuns.get(key);
+	if (!r) {
+		r = { gen: 0, child: null };
+		compileRuns.set(key, r);
+	}
+	return r;
+}
 
 // TeX places the shipped page's reference point 1in (72.27pt) from the paper's top-left
 // by default; the extracted box coords are relative to that point.
@@ -52,17 +62,19 @@ export async function compileDraft(body: DraftBody): Promise<DraftResult> {
 	const engineDir = body.engineDir.replace(/\\/g, '/');
 	const engine = body.engine || 'lualatex';
 	const outAbs = path.join(root, OUT);
-	// supersede any in-flight compile: kill its lualatex so this fresh run isn't stuck behind it
-	const gen = ++compileGen;
-	if (activeChild) {
+	// supersede any in-flight compile of THIS root: kill its lualatex so this fresh run
+	// isn't stuck behind it (other roots' compiles are untouched)
+	const run = runFor(root);
+	const gen = ++run.gen;
+	if (run.child) {
 		try {
-			activeChild.kill('SIGKILL');
+			run.child.kill('SIGKILL');
 		} catch {
 			/* already gone */
 		}
-		activeChild = null;
+		run.child = null;
 	}
-	const superseded = () => gen !== compileGen;
+	const superseded = () => gen !== run.gen;
 	fs.mkdirSync(outAbs, { recursive: true });
 	// self-ignoring build dir: users' projects are usually git repos, and the preview's
 	// artifacts must never end up staged in them
@@ -106,13 +118,13 @@ export async function compileDraft(body: DraftBody): Promise<DraftResult> {
 				['-no-shell-escape', '-interaction=nonstopmode', '-synctex=1', `-output-directory=${OUT}`, '-jobname=draft', job],
 				{ cwd: root, timeout: 120000, maxBuffer: 32 * 1024 * 1024 },
 				() => {
-					if (activeChild === child) activeChild = null;
+					if (run.child === child) run.child = null;
 					resolve();
 				}
 			);
-			activeChild = child; // a superseding compile kills this to unblock itself
+			run.child = child; // a superseding compile of this root kills this to unblock itself
 			child.on('error', () => {
-				if (activeChild === child) activeChild = null;
+				if (run.child === child) run.child = null;
 				resolve();
 			}); // engine not on PATH etc -> handled by the manifest check below
 		});

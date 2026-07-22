@@ -1,6 +1,7 @@
 <!-- header form for an environment block: name + \begin args as inline fields -->
 <script lang="ts">
 	import type { Node } from 'prosemirror-model';
+	import { m } from '$lib/paraglide/messages';
 
 	let { node, updateAttrs }: { node: Node; updateAttrs: (attrs: Record<string, unknown>) => void } = $props();
 
@@ -14,7 +15,11 @@
 		argsVal = node.attrs.args || '';
 	});
 
-	const friendlyLabels: Record<string, string> = { abstract: 'Abstract', acknowledgements: 'Acknowledgements', keywords: 'Keywords' };
+	const friendlyLabels: Record<string, string> = {
+		abstract: m.envcomp_label_abstract(),
+		acknowledgements: m.envcomp_label_acknowledgements(),
+		keywords: m.envcomp_label_keywords()
+	};
 	const friendlyLabel = $derived(friendlyLabels[node.attrs.name || '']);
 
 	const isFrame = $derived((node.attrs.name || '') === 'frame');
@@ -51,28 +56,28 @@
 			onblur={commitName}
 			onkeydown={blurOnEnter}
 			spellcheck="false"
-			aria-label="Environment name"
+			aria-label={m.envcomp_aria_env_name()}
 		/>
 		<span class="env-syntax">{'}'}</span>
 		{#if showTitleField}
 			<input
 				class="env-args"
-				placeholder="Title"
+				placeholder={m.envcomp_placeholder_title()}
 				value={titleVal}
 				onblur={(e) => commitTitle((e.currentTarget as HTMLInputElement).value)}
 				onkeydown={blurOnEnter}
 				spellcheck="false"
-				aria-label="Frame title"
+				aria-label={m.envcomp_aria_frame_title()}
 			/>
 		{:else}
 			<input
 				class="env-args"
-				placeholder="[ arguments ]"
+				placeholder={m.envcomp_placeholder_arguments()}
 				bind:value={argsVal}
 				onblur={commitArgs}
 				onkeydown={blurOnEnter}
 				spellcheck="false"
-				aria-label="Environment arguments"
+				aria-label={m.envcomp_aria_env_arguments()}
 			/>
 		{/if}
 	</div>

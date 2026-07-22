@@ -31,6 +31,8 @@ export interface PdfViewerState {
 export interface PdfViewerActions {
 	zoomIn: () => void;
 	zoomOut: () => void;
+	/** scale so the current page fills the available width. */
+	fitWidth: () => void;
 	setScale: (scale: number) => void;
 	rotateClockwise: () => void;
 	rotateCounterClockwise: () => void;
@@ -50,6 +52,9 @@ export interface PdfViewerContext {
 	state: PdfViewerState;
 	actions: PdfViewerActions;
 	src: PdfSource;
+	/** identifies the logical document. When it's unchanged across a src change, the renderer keeps
+	 *  the scroll position (a recompile of the same file); when it changes, it resets to the top. */
+	documentKey?: string | number;
 	_registerRenderer: (renderer: PdfViewerActions) => void;
 	_onerror?: (error: string) => void;
 	// internal: stores a copy of binary data for download (PDF.js detaches ArrayBuffers)

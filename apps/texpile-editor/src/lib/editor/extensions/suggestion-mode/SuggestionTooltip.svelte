@@ -4,6 +4,7 @@
 	import X from '@lucide/svelte/icons/x';
 	import { fly } from 'svelte/transition';
 	import { quintOut } from 'svelte/easing';
+	import { m } from '$lib/paraglide/messages';
 
 	interface Props {
 		position: { x: number; y: number };
@@ -115,7 +116,7 @@
 	style="pointer-events: auto;"
 	onmousedown={handleMouseDown}
 	role="toolbar"
-	aria-label="Suggestion actions"
+	aria-label={m.suggestmode_actions_label()}
 	tabindex="-1"
 	transition:fly={{ y: -4, duration: 150, easing: quintOut }}
 >
@@ -128,8 +129,8 @@
 		class="flex h-6 w-6 items-center justify-center rounded-full text-green-700 transition-colors hover:bg-green-100 dark:text-green-400 dark:hover:bg-green-900/40"
 		onclick={onAccept}
 		onmousedown={handleMouseDown}
-		title="Accept suggestion"
-		aria-label="Accept suggestion"
+		title={m.suggestmode_accept()}
+		aria-label={m.suggestmode_accept()}
 	>
 		<Check class="h-3.5 w-3.5" />
 	</button>
@@ -138,8 +139,8 @@
 		class="flex h-6 w-6 items-center justify-center rounded-full text-red-700 transition-colors hover:bg-red-100 dark:text-red-400 dark:hover:bg-red-900/40"
 		onclick={onReject}
 		onmousedown={handleMouseDown}
-		title="Reject suggestion"
-		aria-label="Reject suggestion"
+		title={m.suggestmode_reject()}
+		aria-label={m.suggestmode_reject()}
 	>
 		<X class="h-3.5 w-3.5" />
 	</button>

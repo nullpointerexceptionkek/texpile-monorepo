@@ -22,13 +22,17 @@ Texpile is a modern, local, offline LaTeX editor for Windows, macOS, and Linux. 
 
 Edit your document as formatted text, math, tables, and figures. The same file opens in source view whenever you want it.
 
-![The Texpile visual editor](landing/src/lib/assets/showcase/visual-dark.png)
+![The Texpile visual editor](landing/src/lib/assets/showcase/editor-visual.webp)
 
 ## Live preview
 
 Type in source view and the page re-typesets with your own LuaLaTeX and updates in place, patched in milliseconds. Math, TikZ, and pgfplots figures render live.
 
 https://github.com/user-attachments/assets/7a2d7997-fe6c-4837-bbe5-1aaa5e0c90b7
+
+## Shared sessions (experimental)
+
+Share a folder for real time editing, no account needed. Start a session to get a code; others join with it from the home screen and edit alongside you, in the visual editor or in source. Everything is end to end encrypted, so the relay server only forwards data it cannot read. You run the compile with your own toolchain, and guests see the resulting PDF.
 
 ## Download
 
@@ -56,7 +60,7 @@ Editing works out of the box. To compile PDFs, install a TeX distribution (TeX L
 
 ## Privacy
 
-Your documents stay on your disk. The app's only network traffic is the update check, which you can turn off in Preferences.
+Your documents stay on your disk. The app's only background network traffic is the update check, which you can turn off in Preferences. The exception is a shared session you start or join: that data flows through a relay server, end to end encrypted so the relay cannot read it.
 
 ## Community
 

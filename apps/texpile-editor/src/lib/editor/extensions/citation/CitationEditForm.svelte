@@ -2,6 +2,7 @@
 	import type { Node as PMNode } from 'prosemirror-model';
 	import { referenceStore, templateFeaturesStore } from '$lib/stores/editorStore';
 	import { ChevronDown } from '@lucide/svelte';
+	import { m } from '$lib/paraglide/messages';
 
 	let {
 		node,
@@ -45,10 +46,10 @@
 	let hasMounted = $state(false);
 
 	const defaultVariantOptions = [
-		{ value: 'autocite', label: 'Automatic', desc: 'Let the document style decide' },
-		{ value: 'parencite', label: 'Parenthetical', desc: '(Author Year)' },
-		{ value: 'textcite', label: 'In-text', desc: 'Author (Year)' },
-		{ value: 'cite', label: 'Basic', desc: 'Simple citation' }
+		{ value: 'autocite', label: m.citation_variant_automatic_label(), desc: m.citation_variant_automatic_desc() },
+		{ value: 'parencite', label: m.citation_variant_parenthetical_label(), desc: m.citation_variant_parenthetical_desc() },
+		{ value: 'textcite', label: m.citation_variant_intext_label(), desc: m.citation_variant_intext_desc() },
+		{ value: 'cite', label: m.citation_variant_basic_label(), desc: m.citation_variant_basic_desc() }
 	];
 
 	const variantOptions = $derived(
@@ -81,30 +82,30 @@
 	}
 </script>
 
-<div class="citation-edit-form" role="dialog" aria-label="Edit citation options" tabindex="-1" onkeydown={handleKeydown}>
+<div class="citation-edit-form" role="dialog" aria-label={m.citation_dialog_aria_label()} tabindex="-1" onkeydown={handleKeydown}>
 	<div class="border-surface-300-700 mb-4 border-b pb-3">
 		{#if onChangeKey && $referenceStore?.length}
-			<span class="text-surface-900-100 text-sm font-medium">Reference</span>
+			<span class="text-surface-900-100 text-sm font-medium">{m.citation_reference_label()}</span>
 			<select class="input mt-1.5 w-full text-sm" value={key} onchange={(e) => onChangeKey?.((e.currentTarget as HTMLSelectElement).value)}>
-				{#if !reference}<option value={key}>{key} (not found)</option>{/if}
+				{#if !reference}<option value={key}>{m.citation_ref_not_found({ key })}</option>{/if}
 				{#each $referenceStore as ref}
 					<option value={ref.key} title={ref.title || ref.key}>{refLabel(ref)}</option>
 				{/each}
 			</select>
 		{:else}
-			<div class="text-surface-900-100 text-base font-semibold">{reference?.author || 'Unknown Author'}</div>
+			<div class="text-surface-900-100 text-base font-semibold">{reference?.author || m.citation_unknown_author()}</div>
 			<div class="text-surface-600-400 text-sm">
-				{reference?.year || 'N/A'}
+				{reference?.year || m.citation_year_na()}
 				{#if reference?.title}<span class="mt-1 block text-xs italic">{reference.title}</span>{/if}
 			</div>
 		{/if}
 	</div>
 
 	<label class="mb-4 block">
-		<span class="text-surface-900-100 text-sm font-medium">Page numbers</span>
-		<span class="text-surface-500-400 ml-1 text-xs">(optional)</span>
-		<input type="text" bind:value={postnote} placeholder="e.g., 23-45, ch. 2" class="input mt-1.5 w-full" />
-		<span class="text-surface-500-400 mt-1 block text-xs"> Add page numbers or chapter references </span>
+		<span class="text-surface-900-100 text-sm font-medium">{m.citation_page_numbers_label()}</span>
+		<span class="text-surface-500-400 ml-1 text-xs">{m.citation_optional()}</span>
+		<input type="text" bind:value={postnote} placeholder={m.citation_page_numbers_placeholder()} class="input mt-1.5 w-full" />
+		<span class="text-surface-500-400 mt-1 block text-xs"> {m.citation_page_numbers_hint()} </span>
 	</label>
 
 	<button
@@ -113,14 +114,14 @@
 		onclick={() => (showAdvanced = !showAdvanced)}
 	>
 		<ChevronDown class="h-4 w-4 transition-transform {showAdvanced ? 'rotate-180' : ''}" />
-		<span>Advanced options</span>
+		<span>{m.citation_advanced_options()}</span>
 	</button>
 
 	{#if showAdvanced}
 		<div class="border-surface-300-700 mb-3 space-y-4 pl-6">
 			{#if showCitationStyleSelector}
 				<label class="block">
-					<span class="text-surface-900-100 text-sm font-medium">Citation style</span>
+					<span class="text-surface-900-100 text-sm font-medium">{m.citation_style_label()}</span>
 					<select bind:value={variant} class="input mt-1.5 w-full text-sm">
 						{#each variantOptions as opt}
 							<option value={opt.value}>
@@ -132,14 +133,14 @@
 			{/if}
 
 			<div>
-				<span class="text-surface-900-100 mb-1.5 block text-sm font-medium">Add prefix</span>
+				<span class="text-surface-900-100 mb-1.5 block text-sm font-medium">{m.citation_add_prefix_label()}</span>
 				<div class="mb-2 flex flex-wrap gap-2">
 					<button type="button" class="btn btn-sm preset-outlined-primary-500" onclick={() => (prenote = 'see')}> see </button>
 					<button type="button" class="btn btn-sm preset-outlined-primary-500" onclick={() => (prenote = 'cf.')}> cf. </button>
 					<button type="button" class="btn btn-sm preset-outlined-primary-500" onclick={() => (prenote = 'compare')}> compare </button>
 				</div>
-				<input type="text" bind:value={prenote} placeholder="Custom prefix text" class="input w-full text-sm" />
-				<span class="text-surface-500-400 mt-1 block text-xs"> Text to appear before the citation </span>
+				<input type="text" bind:value={prenote} placeholder={m.citation_prefix_placeholder()} class="input w-full text-sm" />
+				<span class="text-surface-500-400 mt-1 block text-xs"> {m.citation_prefix_hint()} </span>
 			</div>
 		</div>
 	{/if}

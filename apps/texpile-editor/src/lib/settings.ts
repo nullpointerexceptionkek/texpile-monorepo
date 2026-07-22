@@ -2,6 +2,7 @@
 // browser dev. new settings also go in the main process DEFAULT_SETTINGS so on-disk defaults match.
 import { browser } from '$lib/runtime';
 import { writable, get } from 'svelte/store';
+import { setLocale as setParaglideLocale } from '$lib/paraglide/runtime';
 
 export interface AppSettings {
 	reopenLastFolder: boolean;
@@ -39,12 +40,22 @@ export interface AppSettings {
 	whatsNewSeen: string;
 	/** live math preview tooltip in source mode. */
 	mathPreview: boolean;
+	/** UI display language. Not the LaTeX document language (see DocumentLanguage). */
+	uiLocale: 'en' | 'zh-Hans' | 'zh-Hant' | 'de';
+	/** shared-session relay endpoint (ws:// or wss://). */
+	collabRelayUrl: string;
+	/** folders open across windows; maintained by the MAIN process for session restore.
+	 *  read-only here: renderers never write it. */
+	openFolders: string[];
 }
 
 /** default compile command. -interaction=nonstopmode keeps errors from parking the engine at its
  *  interactive prompt; -synctex=1 enables source<->PDF sync; -file-line-error gives file:line attribution. */
 export const DEFAULT_COMPILE_COMMAND =
 	'latexmk -lualatex -interaction=nonstopmode -file-line-error -synctex=1 -output-directory=output {main}';
+
+/** the hosted blind relay; users can point at their own, and the share/join dialogs reset to this */
+export const DEFAULT_COLLAB_RELAY_URL = 'wss://collab.texpile.com';
 
 const DEFAULTS: AppSettings = {
 	reopenLastFolder: true,
@@ -67,7 +78,10 @@ const DEFAULTS: AppSettings = {
 	checkForUpdates: true,
 	uiZoom: 1,
 	whatsNewSeen: '',
-	mathPreview: true
+	mathPreview: true,
+	uiLocale: 'en',
+	collabRelayUrl: DEFAULT_COLLAB_RELAY_URL,
+	openFolders: []
 };
 
 const LS_KEY = 'texpile:settings';
@@ -109,9 +123,20 @@ export function loadSettings(): Promise<AppSettings> {
 		}
 		const merged = { ...DEFAULTS, ...raw };
 		settings.set(merged);
+		// reload:false: this runs before main.ts mounts the app, so nothing has rendered
+		// the base locale yet and there's nothing to correct with a reload.
+		applyUiLocale(merged.uiLocale, { reload: false });
 		return merged;
 	})();
 	return loadPromise;
+}
+
+/** syncs Paraglide's runtime locale and <html lang> to match a uiLocale value. reload defaults
+ *  to true (Paraglide's default): none of the app's message() calls are reactive in place, so
+ *  a locale switch after the app has already rendered needs a full reload to take effect. */
+export function applyUiLocale(locale: AppSettings['uiLocale'], opts?: { reload?: boolean }): void {
+	if (typeof document !== 'undefined') document.documentElement.lang = locale;
+	setParaglideLocale(locale, opts);
 }
 
 /** back-compat alias used by the start screen. */
@@ -119,15 +144,17 @@ export async function getSettings(): Promise<AppSettings> {
 	return loadSettings();
 }
 
-function persist(next: AppSettings): void {
+// send ONLY the changed fields: the main process merges them into settings.json, so two
+// windows writing different settings can't clobber each other's fields with stale copies
+function persist(patch: Partial<AppSettings>): void {
 	const n = native();
 	if (n?.setSettings) {
-		n.setSettings(next).catch(() => {});
+		n.setSettings(patch).catch(() => {});
 		return;
 	}
 	if (browser) {
 		try {
-			localStorage.setItem(LS_KEY, JSON.stringify(next));
+			localStorage.setItem(LS_KEY, JSON.stringify(get(settings)));
 		} catch {
 			/* ignore */
 		}
@@ -138,7 +165,7 @@ function persist(next: AppSettings): void {
 export function updateSettings(partial: Partial<AppSettings>): void {
 	const next = { ...get(settings), ...partial };
 	settings.set(next);
-	persist(next);
+	persist(partial);
 }
 
 // hydrate at module load so the store holds real values before any UI writes,

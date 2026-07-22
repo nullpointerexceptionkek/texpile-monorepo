@@ -10,9 +10,10 @@ export default (pluginSettings: ImagePluginSettings) => (view: EditorView, event
 		left: event.clientX
 	});
 	if (textData && posData) {
-		const container = document.createElement('div');
-		container.innerHTML = textData;
-		const firstChild = container.children[0];
+		// parse inert: assigning innerHTML (even on a detached node) still loads <img src> and fires
+		// onerror/onload; DOMParser builds the tree without executing or fetching anything
+		const parsed = new DOMParser().parseFromString(textData, 'text/html');
+		const firstChild = parsed.body.children[0];
 		if (
 			// drag originated in ProseMirror, let PM handle it
 			!(firstChild instanceof HTMLImageElement) ||
@@ -20,7 +21,7 @@ export default (pluginSettings: ImagePluginSettings) => (view: EditorView, event
 		) {
 			return false;
 		}
-		if (container.children.length === 1 && firstChild instanceof HTMLImageElement) {
+		if (parsed.body.children.length === 1 && firstChild instanceof HTMLImageElement) {
 			const fileFromHTML = dataURIToFile(firstChild.src, encodeURIComponent(firstChild.alt || 'dragged image'));
 			startImageUpload(view, fileFromHTML, pluginSettings.defaultAlt, pluginSettings, view.state.schema, posData.pos);
 		}

@@ -42,4 +42,46 @@ describe('settings hydration (auto-reopen depends on this)', () => {
 		expect(b.lastFolder).toBe('/x');
 		expect(calls).toBe(1); // one read, shared (the eager module-load hydrate)
 	});
+
+	it('applies a persisted uiLocale to the Paraglide runtime, not just the settings store', async () => {
+		(globalThis as { window?: unknown }).window = {
+			texpileNative: {
+				getSettings: () => Promise.resolve({ uiLocale: 'zh-Hans' }),
+				setSettings: () => Promise.resolve()
+			}
+		};
+		const { loadSettings } = await import('../../../src/lib/settings');
+		const { getLocale } = await import('../../../src/lib/paraglide/runtime');
+		const s = await loadSettings();
+		expect(s.uiLocale).toBe('zh-Hans');
+		expect(getLocale()).toBe('zh-Hans'); // regression guard: the two must not drift apart
+	});
+
+	it('defaults uiLocale to en when nothing is persisted', async () => {
+		(globalThis as { window?: unknown }).window = {
+			texpileNative: { getSettings: () => Promise.resolve({}), setSettings: () => Promise.resolve() }
+		};
+		const { loadSettings } = await import('../../../src/lib/settings');
+		const s = await loadSettings();
+		expect(s.uiLocale).toBe('en');
+	});
+
+	it('persists only the changed fields, not the whole settings object', async () => {
+		// two windows share settings.json; a whole-object write would clobber the other
+		// window's fields with this window's stale copies (the multi-window regression)
+		const writes: Record<string, unknown>[] = [];
+		(globalThis as { window?: unknown }).window = {
+			texpileNative: {
+				getSettings: () => Promise.resolve({ sidebarWidth: 999 }),
+				setSettings: (p: Record<string, unknown>) => {
+					writes.push(p);
+					return Promise.resolve({});
+				}
+			}
+		};
+		const { loadSettings, updateSettings } = await import('../../../src/lib/settings');
+		await loadSettings();
+		updateSettings({ terminalHeight: 300 });
+		expect(writes.at(-1)).toEqual({ terminalHeight: 300 });
+	});
 });

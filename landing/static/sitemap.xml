@@ -1,15 +1,91 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9" xmlns:xhtml="http://www.w3.org/1999/xhtml">
   <url>
     <loc>https://texpile.com/</loc>
     <lastmod>2026-07-09</lastmod>
     <changefreq>weekly</changefreq>
     <priority>1.0</priority>
+    <xhtml:link rel="alternate" hreflang="en" href="https://texpile.com/" />
+    <xhtml:link rel="alternate" hreflang="zh-Hans" href="https://texpile.com/zh-Hans/" />
+    <xhtml:link rel="alternate" hreflang="zh-Hant" href="https://texpile.com/zh-Hant/" />
+    <xhtml:link rel="alternate" hreflang="de" href="https://texpile.com/de/" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://texpile.com/" />
+  </url>
+  <url>
+    <loc>https://texpile.com/zh-Hans/</loc>
+    <lastmod>2026-07-09</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>1.0</priority>
+    <xhtml:link rel="alternate" hreflang="en" href="https://texpile.com/" />
+    <xhtml:link rel="alternate" hreflang="zh-Hans" href="https://texpile.com/zh-Hans/" />
+    <xhtml:link rel="alternate" hreflang="zh-Hant" href="https://texpile.com/zh-Hant/" />
+    <xhtml:link rel="alternate" hreflang="de" href="https://texpile.com/de/" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://texpile.com/" />
+  </url>
+  <url>
+    <loc>https://texpile.com/zh-Hant/</loc>
+    <lastmod>2026-07-09</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>1.0</priority>
+    <xhtml:link rel="alternate" hreflang="en" href="https://texpile.com/" />
+    <xhtml:link rel="alternate" hreflang="zh-Hans" href="https://texpile.com/zh-Hans/" />
+    <xhtml:link rel="alternate" hreflang="zh-Hant" href="https://texpile.com/zh-Hant/" />
+    <xhtml:link rel="alternate" hreflang="de" href="https://texpile.com/de/" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://texpile.com/" />
+  </url>
+  <url>
+    <loc>https://texpile.com/de/</loc>
+    <lastmod>2026-07-09</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>1.0</priority>
+    <xhtml:link rel="alternate" hreflang="en" href="https://texpile.com/" />
+    <xhtml:link rel="alternate" hreflang="zh-Hans" href="https://texpile.com/zh-Hans/" />
+    <xhtml:link rel="alternate" hreflang="zh-Hant" href="https://texpile.com/zh-Hant/" />
+    <xhtml:link rel="alternate" hreflang="de" href="https://texpile.com/de/" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://texpile.com/" />
   </url>
   <url>
     <loc>https://texpile.com/download</loc>
     <lastmod>2026-07-09</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.9</priority>
+    <xhtml:link rel="alternate" hreflang="en" href="https://texpile.com/download" />
+    <xhtml:link rel="alternate" hreflang="zh-Hans" href="https://texpile.com/zh-Hans/download" />
+    <xhtml:link rel="alternate" hreflang="zh-Hant" href="https://texpile.com/zh-Hant/download" />
+    <xhtml:link rel="alternate" hreflang="de" href="https://texpile.com/de/download" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://texpile.com/download" />
+  </url>
+  <url>
+    <loc>https://texpile.com/zh-Hans/download</loc>
+    <lastmod>2026-07-09</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.9</priority>
+    <xhtml:link rel="alternate" hreflang="en" href="https://texpile.com/download" />
+    <xhtml:link rel="alternate" hreflang="zh-Hans" href="https://texpile.com/zh-Hans/download" />
+    <xhtml:link rel="alternate" hreflang="zh-Hant" href="https://texpile.com/zh-Hant/download" />
+    <xhtml:link rel="alternate" hreflang="de" href="https://texpile.com/de/download" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://texpile.com/download" />
+  </url>
+  <url>
+    <loc>https://texpile.com/zh-Hant/download</loc>
+    <lastmod>2026-07-09</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.9</priority>
+    <xhtml:link rel="alternate" hreflang="en" href="https://texpile.com/download" />
+    <xhtml:link rel="alternate" hreflang="zh-Hans" href="https://texpile.com/zh-Hans/download" />
+    <xhtml:link rel="alternate" hreflang="zh-Hant" href="https://texpile.com/zh-Hant/download" />
+    <xhtml:link rel="alternate" hreflang="de" href="https://texpile.com/de/download" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://texpile.com/download" />
+  </url>
+  <url>
+    <loc>https://texpile.com/de/download</loc>
+    <lastmod>2026-07-09</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.9</priority>
+    <xhtml:link rel="alternate" hreflang="en" href="https://texpile.com/download" />
+    <xhtml:link rel="alternate" hreflang="zh-Hans" href="https://texpile.com/zh-Hans/download" />
+    <xhtml:link rel="alternate" hreflang="zh-Hant" href="https://texpile.com/zh-Hant/download" />
+    <xhtml:link rel="alternate" hreflang="de" href="https://texpile.com/de/download" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://texpile.com/download" />
   </url>
 </urlset>

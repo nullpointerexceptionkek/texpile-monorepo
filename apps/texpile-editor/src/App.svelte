@@ -1,45 +1,33 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { route, navigate } from '$lib/router.svelte';
-	import { native, scanTexFiles, dirname } from '$lib/workspace/fileSystem';
-	import { workspaceRoot, texFiles, activeFilePath, addRecentFolder } from '$lib/workspace/workspaceStore';
-	import { updateSettings, loadSettings } from '$lib/settings';
+	import { native, claimWorkspace, scanTexFiles, statFile, dirname, openNewWindow } from '$lib/workspace/fileSystem';
+	import { workspaceRoot, texFiles, activeFilePath, addRecentFolder, savedLastFile } from '$lib/workspace/workspaceStore';
+	import { settings, updateSettings, loadSettings } from '$lib/settings';
 	import { checkForUpdate, updateModalOpen } from '$lib/updates';
 	import UpdateAvailableModal from '$lib/components/UpdateAvailableModal.svelte';
 	import WhatsNewModal from '$lib/components/WhatsNewModal.svelte';
-	import { unseenEntries, type ChangelogEntry } from '$lib/whatsNew';
+	import { entriesToShow, whatsNewOpen } from '$lib/whatsNew';
 
 	// every released CHANGELOG.md entry, injected at build (vite.config)
 	const whatsNew = __WHATS_NEW__;
+	// the panel is opened from Help / the start screen, never thrown at you on launch
+	const whatsNewEntries = $derived(entriesToShow(whatsNew, $settings.whatsNewSeen));
 
 	import StartView from './views/StartView.svelte';
 	import WorkspaceView from './views/WorkspaceView.svelte';
+	import SessionRoute from './views/SessionRoute.svelte';
 	import ErrorView from './views/ErrorView.svelte';
-
-	let whatsNewOpen = $state(false);
-	let whatsNewEntries = $state<ChangelogEntry[]>([]);
-	let updatePending = false;
 
 	onMount(async () => {
 		const s = await loadSettings();
-		// every release the user skipped, so upgrading across versions doesn't swallow what's between
-		whatsNewEntries = unseenEntries(whatsNew, s.whatsNewSeen);
-		if (whatsNewEntries.length) whatsNewOpen = true;
-		if (!s.checkForUpdates) return;
+		// once per app SESSION, not per window: without this every new window would re-check
+		// for updates (claim falls back to true in browser dev)
+		const primary = (await native()?.claimStartupTasks?.()) ?? true;
+		if (!primary || !s.checkForUpdates) return;
 		// a failed silent check stays silent; the manual Help-menu check surfaces errors
-		if ((await checkForUpdate()) === 'update') {
-			// don't stack modals: hold the update notice until What's New is dismissed
-			if (whatsNewOpen) updatePending = true;
-			else updateModalOpen.set(true);
-		}
+		if ((await checkForUpdate()) === 'update') updateModalOpen.set(true);
 	});
-
-	function onWhatsNewClose() {
-		if (updatePending) {
-			updatePending = false;
-			updateModalOpen.set(true);
-		}
-	}
 
 	// OS "Open With" hands us a .tex via the main process; open its folder and activate the file
 	onMount(() => {
@@ -48,6 +36,9 @@
 		return n.onOpenPath(async (filePath) => {
 			try {
 				const root = dirname(filePath);
+				// main routes files to the window already owning the folder, so a failed claim
+				// (folder open elsewhere) only happens in odd races; that window was focused
+				if (!(await claimWorkspace(root)).ok) return;
 				const { files } = await scanTexFiles(root);
 				const match = files.find((f) => f.path === filePath || f.path.toLowerCase() === filePath.toLowerCase());
 				workspaceRoot.set(root);
@@ -62,11 +53,47 @@
 		});
 	});
 
+	// session restore + "Open Folder in New Window": the main process pushes a folder for this
+	// window to open (the StartView-side auto-reopen is gone; it would misfire in new windows)
+	onMount(() => {
+		const n = native();
+		if (!n?.onOpenFolder) return;
+		return n.onOpenFolder(async (root) => {
+			try {
+				if (!(await claimWorkspace(root)).ok) return;
+				const { files } = await scanTexFiles(root);
+				// reopen the file the user last had open in this folder, like the old restore did
+				const saved = savedLastFile(root);
+				const active = saved && (await statFile(saved)).exists ? saved : (files[0]?.path ?? null);
+				workspaceRoot.set(root);
+				texFiles.set(files);
+				activeFilePath.set(active);
+				addRecentFolder(root);
+				updateSettings({ lastFolder: root });
+				navigate('/workspace');
+			} catch {
+				/* folder is gone or unreadable: stay on the start screen */
+			}
+		});
+	});
+
+	// app-level so it works on the start screen too, not just inside a workspace. There is no
+	// native menu to hang an accelerator on (main.ts clears it outside macOS), so it lives here.
+	function onKeydown(e: KeyboardEvent) {
+		if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.key.toLowerCase() === 'n') {
+			e.preventDefault();
+			openNewWindow();
+		}
+	}
+
 	import { Toast } from '@skeletonlabs/skeleton-svelte';
 	import { toaster } from '$lib/modals/toaster-svelte';
+	import ConfirmHost from '$lib/modals/ConfirmHost.svelte';
 
 	import MobileSupportBanner from '$lib/components/MobileSupportBanner.svelte';
 </script>
+
+<svelte:window onkeydown={onKeydown} />
 
 <Toast.Group {toaster}>
 	{#snippet children(toast)}
@@ -75,10 +102,15 @@
 				<Toast.Title>{toast.title}</Toast.Title>
 				<Toast.Description>{toast.description}</Toast.Description>
 			</Toast.Message>
+			{#if toast.action}
+				<Toast.ActionTrigger>{toast.action.label}</Toast.ActionTrigger>
+			{/if}
 			<Toast.CloseTrigger />
 		</Toast>
 	{/snippet}
 </Toast.Group>
+
+<ConfirmHost />
 
 <div class="pointer-events-none fixed inset-x-0 top-0 z-[1100] flex flex-col">
 	<div class="pointer-events-auto">
@@ -90,12 +122,14 @@
 	<StartView />
 {:else if route.path === '/workspace'}
 	<WorkspaceView />
+{:else if route.path === '/session'}
+	<SessionRoute />
 {:else}
 	<ErrorView status={404} />
 {/if}
 
 {#if whatsNewEntries.length}
-	<WhatsNewModal bind:open={whatsNewOpen} entries={whatsNewEntries} onClose={onWhatsNewClose} />
+	<WhatsNewModal bind:open={$whatsNewOpen} entries={whatsNewEntries} />
 {/if}
 <UpdateAvailableModal />
 

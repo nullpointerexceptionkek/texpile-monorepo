@@ -1,8 +1,10 @@
 import type { VirtualKeyboardLayout, VirtualKeyboardName } from 'mathlive';
+import { m } from '$lib/paraglide/messages';
+import { loadSettings } from '$lib/settings';
 
-const basicLayout: VirtualKeyboardLayout = {
-	label: 'Basic',
-	tooltip: 'Common math operations',
+const basicLayout = (): VirtualKeyboardLayout => ({
+	label: m.mathpal_kbd_basic_label(),
+	tooltip: m.mathpal_kbd_basic_tooltip(),
 	rows: [
 		[
 			{ latex: '\\frac{#@}{#0}', class: 'small', variants: ['\\tfrac{#@}{#0}', '\\dfrac{#@}{#0}'] },
@@ -53,11 +55,11 @@ const basicLayout: VirtualKeyboardLayout = {
 			'[right]'
 		]
 	]
-};
+});
 
-const calculusLayout: VirtualKeyboardLayout = {
-	label: 'Calculus',
-	tooltip: 'Derivatives, integrals, limits',
+const calculusLayout = (): VirtualKeyboardLayout => ({
+	label: m.mathpal_kbd_calculus_label(),
+	tooltip: m.mathpal_kbd_calculus_tooltip(),
 	rows: [
 		[
 			{ latex: '\\int_{#?}^{#?}#0\\,d#?', class: 'small' },
@@ -108,11 +110,11 @@ const calculusLayout: VirtualKeyboardLayout = {
 			'[right]'
 		]
 	]
-};
+});
 
-const algebraLayout: VirtualKeyboardLayout = {
-	label: 'Algebra',
-	tooltip: 'Matrices, sets, and logic',
+const algebraLayout = (): VirtualKeyboardLayout => ({
+	label: m.mathpal_kbd_algebra_label(),
+	tooltip: m.mathpal_kbd_algebra_tooltip(),
 	rows: [
 		[
 			{
@@ -175,11 +177,11 @@ const algebraLayout: VirtualKeyboardLayout = {
 			'[right]'
 		]
 	]
-};
+});
 
-const symbolsLayout: VirtualKeyboardLayout = {
-	label: 'Symbols',
-	tooltip: 'Greek letters and symbols',
+const symbolsLayout = (): VirtualKeyboardLayout => ({
+	label: m.mathpal_kbd_symbols_label(),
+	tooltip: m.mathpal_kbd_symbols_tooltip(),
 	rows: [
 		[
 			{ latex: '\\alpha', shift: '\\Alpha' },
@@ -230,11 +232,11 @@ const symbolsLayout: VirtualKeyboardLayout = {
 			'[right]'
 		]
 	]
-};
+});
 
-const trigLayout: VirtualKeyboardLayout = {
-	label: 'Trig',
-	tooltip: 'Trigonometry and functions',
+const trigLayout = (): VirtualKeyboardLayout => ({
+	label: m.mathpal_kbd_trig_label(),
+	tooltip: m.mathpal_kbd_trig_tooltip(),
 	rows: [
 		[
 			{ latex: '\\sin', class: 'small', variants: ['\\sin^{-1}', '\\arcsin'] },
@@ -282,16 +284,11 @@ const trigLayout: VirtualKeyboardLayout = {
 			'[right]'
 		]
 	]
-};
+});
 
-export const texpileKeyboardLayouts: (VirtualKeyboardLayout | VirtualKeyboardName)[] = [
-	basicLayout,
-	calculusLayout,
-	algebraLayout,
-	trigLayout,
-	symbolsLayout,
-	'alphabetic'
-];
+export function texpileKeyboardLayouts(): (VirtualKeyboardLayout | VirtualKeyboardName)[] {
+	return [basicLayout(), calculusLayout(), algebraLayout(), trigLayout(), symbolsLayout(), 'alphabetic'];
+}
 
 function isTouchDevice(): boolean {
 	if (typeof window === 'undefined') return false;
@@ -302,7 +299,9 @@ function isTouchDevice(): boolean {
 export function configureMathVirtualKeyboard(): void {
 	if (typeof window !== 'undefined' && 'mathVirtualKeyboard' in window) {
 		const keyboard = window.mathVirtualKeyboard;
-		keyboard.layouts = texpileKeyboardLayouts;
+		// after settings: this module is imported before the persisted uiLocale is applied, and
+		// mathlive wants plain strings, so the layouts can't be built any earlier than this
+		loadSettings().then(() => (keyboard.layouts = texpileKeyboardLayouts()));
 
 		if (!isTouchDevice()) {
 			const style = document.createElement('style');

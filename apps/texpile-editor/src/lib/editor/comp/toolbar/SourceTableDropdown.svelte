@@ -6,6 +6,7 @@
 	import { sourceCmView } from '$lib/stores/editorStore';
 	import { tableLatex } from './tableLatex';
 	import { insertSnippetAtCursor } from './sourceInsert';
+	import { m } from '$lib/paraglide/messages';
 
 	const MAX = 10;
 
@@ -45,8 +46,8 @@
 		<button
 			class="toolbarButton flex items-center rounded p-1 hover:preset-tonal"
 			class:preset-tonal-primary={open}
-			aria-label="Insert table"
-			title="Insert table"
+			aria-label={m.tbar_insert_table_aria()}
+			title={m.tbar_insert_table_aria()}
 			tabindex="-1"
 			onmousedown={preventFocusLoss}
 		>
@@ -76,7 +77,7 @@
 									cols = cell.col;
 								}}
 								onclick={() => insert(cell.row, cell.col)}
-								aria-label={`Insert ${cell.row}x${cell.col} table`}
+								aria-label={m.tbar_insert_table_size_aria({ rows: cell.row, cols: cell.col })}
 							></button>
 						{/each}
 					</div>
@@ -88,7 +89,7 @@
 							onCheckedChange={(e) => (float = e.checked)}
 							class="flex cursor-pointer items-center justify-between gap-6 text-sm"
 						>
-							<Switch.Label>Caption and label</Switch.Label>
+							<Switch.Label>{m.tbar_caption_and_label()}</Switch.Label>
 							<Switch.Control class="preset-filled-surface-200-700 data-[state=checked]:preset-filled-primary-500">
 								<Switch.Thumb />
 							</Switch.Control>
@@ -100,7 +101,7 @@
 							onCheckedChange={(e) => (rules = e.checked)}
 							class="flex cursor-pointer items-center justify-between gap-6 text-sm"
 						>
-							<Switch.Label>Horizontal rules</Switch.Label>
+							<Switch.Label>{m.tbar_horizontal_rules()}</Switch.Label>
 							<Switch.Control class="preset-filled-surface-200-700 data-[state=checked]:preset-filled-primary-500">
 								<Switch.Thumb />
 							</Switch.Control>
@@ -113,7 +114,7 @@
 							disabled={!rules}
 							class="flex items-center justify-between gap-6 text-sm {rules ? 'cursor-pointer' : 'cursor-not-allowed opacity-50'}"
 						>
-							<Switch.Label>Header row</Switch.Label>
+							<Switch.Label>{m.tbar_header_row()}</Switch.Label>
 							<Switch.Control class="preset-filled-surface-200-700 data-[state=checked]:preset-filled-primary-500">
 								<Switch.Thumb />
 							</Switch.Control>

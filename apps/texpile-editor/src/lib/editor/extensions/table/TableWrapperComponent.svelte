@@ -16,6 +16,7 @@
 	import { isReadOnly } from '$lib/stores/permissionStore';
 	import { templateFeaturesStore } from '$lib/stores/editorStore';
 	import { parseColspec, generateColspec, type ColAlign } from '$lib/latex-parser/colspec';
+	import { m } from '$lib/paraglide/messages';
 
 	interface Props {
 		tableNumber: number;
@@ -51,11 +52,11 @@
 	}: Props = $props();
 
 	const ALIGN_ICONS = [
-		{ value: 'l' as ColAlign, icon: AlignLeft, title: 'Left' },
-		{ value: 'c' as ColAlign, icon: AlignCenter, title: 'Center' },
-		{ value: 'r' as ColAlign, icon: AlignRight, title: 'Right' },
-		{ value: 'p' as ColAlign, icon: WrapText, title: 'Paragraph (fixed width)' },
-		{ value: 'X' as ColAlign, icon: StretchHorizontal, title: 'Stretch (X)', tabularx: true }
+		{ value: 'l' as ColAlign, icon: AlignLeft, title: m.tablewrap_align_left() },
+		{ value: 'c' as ColAlign, icon: AlignCenter, title: m.tablewrap_align_center() },
+		{ value: 'r' as ColAlign, icon: AlignRight, title: m.tablewrap_align_right() },
+		{ value: 'p' as ColAlign, icon: WrapText, title: m.tablewrap_align_paragraph() },
+		{ value: 'X' as ColAlign, icon: StretchHorizontal, title: m.tablewrap_align_stretch(), tabularx: true }
 	];
 	// columns the table actually has (first row's colspans summed)
 	const columnCount = $derived.by(() => {
@@ -136,7 +137,7 @@
 	}
 
 	// display number is calculated (updates when the table moves); the label is only for \ref
-	let tableDisplay = $derived(`Table ${tableNumber}`);
+	let tableDisplay = $derived(m.tablewrap_table_display({ number: tableNumber }));
 
 	let hasPlaceholderCaption = $derived.by(() => {
 		if (!node.content || node.content.childCount === 0) return false;
@@ -208,7 +209,7 @@
 	{#if !tableCaptionEnabled}
 		<div class="table-caption-warning">
 			<AlertCircle class="h-4 w-4" />
-			<span>Numbered tables are not supported by this template. The caption and numbering won't appear in the output.</span>
+			<span>{m.tablewrap_caption_unsupported_warning()}</span>
 		</div>
 	{/if}
 	<div class="table-header">
@@ -219,7 +220,7 @@
 					<Tooltip.Trigger class="flex items-center">
 						<AlertCircle class="text-warning-500 h-4 w-4" />
 					</Tooltip.Trigger>
-					<Tooltip.Content class="card preset-filled p-2 text-sm">A caption is required for numbered tables.</Tooltip.Content>
+					<Tooltip.Content class="card preset-filled p-2 text-sm">{m.tablewrap_caption_required_tooltip()}</Tooltip.Content>
 				</Tooltip>
 			{/if}
 		</div>
@@ -230,7 +231,7 @@
 			positioning={{ placement: 'bottom-end', offset: { mainAxis: 4 } }}
 		>
 			<Popover.Trigger class="table-settings-btn">
-				<button aria-label="Table settings" title="Table settings" type="button" disabled={$isReadOnly}>
+				<button aria-label={m.tablewrap_settings_button()} title={m.tablewrap_settings_button()} type="button" disabled={$isReadOnly}>
 					<Settings class="h-4 w-4" />
 				</button>
 			</Popover.Trigger>
@@ -241,7 +242,7 @@
 						<div class="settings-content">
 							{#if colModel && colModel.columns.length > 0}
 								<div class="settings-row">
-									<div class="text-surface-700-300 mb-1.5 text-xs font-semibold">Columns</div>
+									<div class="text-surface-700-300 mb-1.5 text-xs font-semibold">{m.tablewrap_columns_heading()}</div>
 									{#each colModel.columns as col, i (i)}
 										<div class="mb-1 flex items-center gap-2">
 											<span class="text-surface-400 w-4 text-right text-xs">{i + 1}</span>
@@ -265,7 +266,7 @@
 													class="input w-16 px-1.5 py-0.5 text-xs"
 													value={col.width ?? ''}
 													placeholder="3cm"
-													aria-label="Column {i + 1} width"
+													aria-label={m.tablewrap_column_width_aria({ index: i + 1 })}
 													onchange={(e) => setWidth(i, (e.currentTarget as HTMLInputElement).value)}
 												/>
 											{/if}
@@ -276,7 +277,7 @@
 										onCheckedChange={(e) => setVerticalLines(e.checked)}
 										class="mt-2 flex items-center justify-between gap-3"
 									>
-										<Switch.Label>Vertical lines</Switch.Label>
+										<Switch.Label>{m.tablewrap_vertical_lines()}</Switch.Label>
 										<Switch.Control class="preset-filled-surface-200-700 data-[state=checked]:preset-filled-primary-500"
 											><Switch.Thumb /></Switch.Control
 										>
@@ -287,21 +288,21 @@
 							{:else if colspec && colspec.trim()}
 								<!-- spec too exotic to model visually: edit the verbatim string -->
 								<div class="settings-row">
-									<div class="text-surface-700-300 mb-1.5 text-xs font-semibold">Column spec</div>
+									<div class="text-surface-700-300 mb-1.5 text-xs font-semibold">{m.tablewrap_column_spec()}</div>
 									<input
 										class="input w-full px-1.5 py-0.5 text-xs"
 										value={colspec}
-										aria-label="Column spec"
+										aria-label={m.tablewrap_column_spec()}
 										onchange={(e) => setColspec((e.currentTarget as HTMLInputElement).value)}
 									/>
-									<div class="text-surface-400 mt-1 text-xs">Too complex to edit visually. Edit the spec directly.</div>
+									<div class="text-surface-400 mt-1 text-xs">{m.tablewrap_column_spec_hint()}</div>
 									<hr class="border-surface-200-800 mt-3" />
 								</div>
 							{/if}
 							<div class="settings-row">
 								{#if tableNotesEnabled}
 									<Switch checked={showNotesInput} onCheckedChange={handleNotesToggle} class="flex items-center justify-between gap-3">
-										<Switch.Label>Show notes section</Switch.Label>
+										<Switch.Label>{m.tablewrap_show_notes()}</Switch.Label>
 										<Switch.Control class="preset-filled-surface-200-700 data-[state=checked]:preset-filled-primary-500">
 											<Switch.Thumb />
 										</Switch.Control>
@@ -311,7 +312,7 @@
 									<Tooltip positioning={{ placement: 'top' }} openDelay={200}>
 										<Tooltip.Trigger class="w-full">
 											<Switch checked={false} disabled class="flex cursor-not-allowed items-center justify-between gap-3 opacity-50">
-												<Switch.Label>Show notes section</Switch.Label>
+												<Switch.Label>{m.tablewrap_show_notes()}</Switch.Label>
 												<Switch.Control class="preset-filled-surface-200-700">
 													<Switch.Thumb />
 												</Switch.Control>
@@ -321,7 +322,7 @@
 										<Portal>
 											<Tooltip.Positioner class="z-floating-ui">
 												<Tooltip.Content class="card preset-filled p-2 text-sm">
-													This feature is not enabled for this template
+													{m.tablewrap_notes_disabled_tooltip()}
 												</Tooltip.Content>
 											</Tooltip.Positioner>
 										</Portal>
@@ -333,7 +334,7 @@
 								<div class="settings-row">
 									<Switch checked={spanningInput} onCheckedChange={handleSpanningToggle} class="flex items-center justify-between gap-3">
 										<Switch.Label class="flex items-center gap-2">
-											Span columns
+											{m.tablewrap_span_columns()}
 											<Tooltip positioning={{ placement: 'top' }} openDelay={200}>
 												<Tooltip.Trigger class="inline-flex items-center">
 													<Info class="text-surface-500 h-3.5 w-3.5" />
@@ -341,7 +342,7 @@
 												<Portal>
 													<Tooltip.Positioner class="z-floating-ui">
 														<Tooltip.Content class="card preset-filled p-2 text-sm">
-															Table spans across all columns (table* environment)
+															{m.tablewrap_span_columns_tooltip()}
 														</Tooltip.Content>
 													</Tooltip.Positioner>
 												</Portal>
@@ -361,15 +362,15 @@
 								onclick={() => (showAdvanced = !showAdvanced)}
 							>
 								<ChevronDown class="h-4 w-4 transition-transform {showAdvanced ? 'rotate-180' : ''}" />
-								<span>Advanced options</span>
+								<span>{m.tablewrap_advanced_options()}</span>
 							</button>
 
 							{#if showAdvanced}
 								<div class="border-surface-300-700 mb-3 space-y-4 pl-6">
 									<label class="label">
 										<span>
-											LaTeX Label
-											<span class="text-surface-600-400 text-sm">(for \ref commands)</span>
+											{m.tablewrap_latex_label()}
+											<span class="text-surface-600-400 text-sm">{m.tablewrap_latex_label_hint()}</span>
 										</span>
 										<input
 											id="table-label-input"
@@ -378,18 +379,18 @@
 											value={labelInput}
 											oninput={handleLabelInput}
 											onblur={handleLabelBlur}
-											placeholder="Custom label (e.g., results-table)"
+											placeholder={m.tablewrap_label_placeholder()}
 										/>
 										{#if isTexpileManagedLabel(labelInput)}
 											<span class="text-surface-500-400 mt-1 flex items-center gap-1 text-xs">
 												<Info class="h-3 w-3" />
-												Auto-generated unique identifier. You can customize it here.
+												{m.tablewrap_label_auto_generated_hint()}
 											</span>
 										{/if}
 										{#if isDuplicate}
 											<p class="text-error-500 mt-1 flex items-center gap-1 text-sm">
 												<AlertCircle class="h-4 w-4" />
-												This label is already used
+												{m.tablewrap_label_duplicate()}
 											</p>
 										{/if}
 									</label>
@@ -397,27 +398,27 @@
 									<!-- per-row rules (\hline, \toprule, ...); empty = no rule before that row -->
 									<div class="space-y-1.5">
 										<span class="text-surface-900-100 block text-sm font-medium">
-											Row rules <span class="text-surface-600-400 text-xs">(e.g. \hline)</span>
+											{m.tablewrap_row_rules_heading()} <span class="text-surface-600-400 text-xs">{m.tablewrap_row_rules_hint()}</span>
 										</span>
 										{#each rowRules as rule, i (i)}
 											<div class="flex items-center gap-2">
-												<span class="text-surface-500-400 w-24 shrink-0 text-xs">Before row {i + 1}</span>
+												<span class="text-surface-500-400 w-24 shrink-0 text-xs">{m.tablewrap_before_row({ index: i + 1 })}</span>
 												<input
 													type="text"
 													class="input flex-1 text-xs"
 													value={rule}
-													placeholder="(none)"
+													placeholder={m.tablewrap_rule_placeholder()}
 													onchange={(e) => setRowRule(i, (e.currentTarget as HTMLInputElement).value)}
 												/>
 											</div>
 										{/each}
 										<div class="flex items-center gap-2">
-											<span class="text-surface-500-400 w-24 shrink-0 text-xs">After last row</span>
+											<span class="text-surface-500-400 w-24 shrink-0 text-xs">{m.tablewrap_after_last_row()}</span>
 											<input
 												type="text"
 												class="input flex-1 text-xs"
 												value={bottomRule}
-												placeholder="(none)"
+												placeholder={m.tablewrap_rule_placeholder()}
 												onchange={(e) => setBottomRule((e.currentTarget as HTMLInputElement).value)}
 											/>
 										</div>

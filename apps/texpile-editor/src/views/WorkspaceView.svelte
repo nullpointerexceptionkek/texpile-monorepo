@@ -220,6 +220,11 @@
 		if (!session.active) return;
 		session.setVisualLock(hostHoldsExclusively(kind, viewMode, loadedPath) ? loadedPath : null);
 	});
+	// live/draft mode isn't supported in a shared session: guests can't run the incremental engine,
+	// they see the host's compiled PDF. Force it off while hosting (the toggle is disabled there too).
+	$effect(() => {
+		if (session.active && !guest && $settings.draftMode) updateSettings({ draftMode: false });
+	});
 
 	let applyingStarter = $state(false);
 	async function pickStarter(s: Starter) {
@@ -1325,7 +1330,7 @@
 
 	// read the .log plus the sibling .blg (it reflects the LAST bib run, which stays valid
 	// even on compiles where latexmk skips bibtex) and publish the parsed problems
-	async function publishLogDiagnostics(logPath: string, mtimeMs: number) {
+	async function publishLogDiagnostics(logPath: string, mtimeMs: number, quiet = false) {
 		const blgPath = logPath.replace(/\.log$/i, '.blg');
 		const blgText = (await statFile(blgPath)).exists ? await readTextFile(blgPath) : null;
 		const parsed = await parseCompileDiagnosticsInWorker(await readTextFile(logPath), blgText, compileStdout || null);
@@ -1344,8 +1349,9 @@
 		compileLog.set({ ...parsed, logPath, updatedAt: mtimeMs });
 		shareCompileState(); // guests get the fresh diagnostics without waiting for the intel rescan
 		// a failed build produces no fresh PDF, so nothing else tells the user: surface the
-		// Problems list. clean/warning-only results never steal the dock.
-		if (parsed.errors.length > 0) {
+		// Problems list. clean/warning-only results never steal the dock. (quiet = a baseline share
+		// on session start, which shouldn't yank the host's dock open.)
+		if (!quiet && parsed.errors.length > 0) {
 			dockView = 'problems';
 			showTerminal();
 		}
@@ -1440,6 +1446,35 @@
 		setPdfPaneOpen(true);
 		refreshTree(); // the compiled output landed; reload the file explorer
 	}
+
+	// A joiner needs the CURRENT pdf + log even when no fresh compile happens: latexmk skips
+	// rebuilding an up-to-date project, so finalizeCompile's mtime gate never fires and nothing is
+	// pushed. Read what's on disk (located via our own compile command) and share it once when we
+	// start hosting; guests request the pdf off the published rev and read the log from doc meta.
+	let outputsSharedForSession = false;
+	async function shareExistingOutputs() {
+		if (!session.active || session.isGuest) return;
+		const pdfPath = expectedPdfPath();
+		if (pdfPath) {
+			const s = await statFile(pdfPath);
+			if (s.exists && s.size > 0) await session.pushPdf(pdfPath);
+		}
+		const logPath = expectedLogPath();
+		if (logPath) {
+			const s = await statFile(logPath);
+			if (s.exists && s.size > 0) await publishLogDiagnostics(logPath, s.mtimeMs, true);
+		}
+	}
+	$effect(() => {
+		if (session.active && !session.isGuest) {
+			if (!outputsSharedForSession) {
+				outputsSharedForSession = true;
+				void shareExistingOutputs();
+			}
+		} else {
+			outputsSharedForSession = false;
+		}
+	});
 	// poll the expected PDF after a compile (no-completion-marker fallback); load it once it has
 	// stopped changing, so a mid-write partial or an intermediate latexmk pass isn't shown. `stableAt`
 	// is the mtime seen on the previous poll; a match means the file settled.
@@ -1571,10 +1606,16 @@
 	}
 	// open a file in source mode and jump to a 1-based line (SyncTeX inverse + Find-in-Files)
 	function openFileAtLine(file: string, line: number, selectText?: string) {
+		// a guest's file keys are manifest-relative, but resolved jump targets (the Problems panel
+		// root-joins via resolveLogPath) arrive prefixed with the synthetic 'session' root. Strip it
+		// back off, else activeFilePath -> the Y.Text binding keys on 'session/foo.tex' and opens an
+		// empty buffer instead of the real shared file. No-op for host absolute paths.
+		const root = get(workspaceRoot);
+		const target = guest && root && file.startsWith(root + '/') ? file.slice(root.length + 1) : file;
 		viewMode = 'source';
 		localStorage.setItem('texpile:viewMode', 'source');
 		sourceGotoLine = { line, token: ++gotoToken, selectText };
-		if (!samePath(get(activeFilePath) ?? '', file)) activeFilePath.set(file);
+		if (!samePath(get(activeFilePath) ?? '', target)) activeFilePath.set(target);
 	}
 	// inverse: a double-click in the PDF opens the source at the matching line; selectText
 	// lets the editor snap to the real text even if the line drifted
@@ -2748,7 +2789,7 @@
 
 <div class="flex h-screen flex-col overflow-hidden">
 	{#if guest}
-		<GuestBar onTogglePdf={togglePdfPane} />
+		<GuestBar />
 	{:else}
 		<WorkspaceMenuBar
 			disabled={!loadedPath}
@@ -2845,6 +2886,10 @@
 				onPauseDraft={pauseDraft}
 				onResumeDraft={resumeDraft}
 				onCompile={runCompile}
+				onRequestCompile={() => {
+					collabGuest.requestCompile();
+					toaster.info({ title: m.session_compile_requested(), duration: 2500 });
+				}}
 				onConfigureCompile={openCompileModal}
 				onShowProblems={() => {
 					showTerminal();

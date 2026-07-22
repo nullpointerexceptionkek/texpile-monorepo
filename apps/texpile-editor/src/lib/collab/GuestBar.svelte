@@ -1,28 +1,17 @@
 <script lang="ts">
-	// The guest session's top bar: connection status, who's here, request a compile, leave. Shown
-	// in place of the host menu bar when WorkspaceView runs over a shared session, so it matches
-	// that bar's geometry and presence cluster rather than looking like a separate chrome.
+	// The guest session's top bar: connection status, who's here, and leave. Shown in place of the
+	// host menu bar when WorkspaceView runs over a shared session. Compile and PDF controls live in
+	// the editor top bar (EditorTopbar), same spot and style as the host's, so the two match.
 	import { navigate } from '$lib/router.svelte';
 	import { collabGuest } from '$lib/collab/guestStore.svelte';
-	import { toaster } from '$lib/modals/toaster-svelte';
 	import { m } from '$lib/paraglide/messages';
-	import { Users, LogOut, Play, PanelRight } from '@lucide/svelte';
-
-	let { onTogglePdf }: { onTogglePdf: () => void } = $props();
+	import { Users, LogOut } from '@lucide/svelte';
 
 	const online = $derived(collabGuest.status === 'online' && collabGuest.hostOnline);
-	const statusText = $derived(
-		!collabGuest.hostOnline
-			? m.session_host_gone()
-			: collabGuest.status === 'online'
-				? m.session_status_online()
-				: m.session_status_reconnecting()
-	);
+	// only surfaced when something is off (reconnecting / host gone); a healthy session needs no
+	// "connected" label next to "Collaborating"
+	const statusText = $derived(!collabGuest.hostOnline ? m.session_host_gone() : m.session_status_reconnecting());
 
-	function requestCompile() {
-		collabGuest.requestCompile();
-		toaster.info({ title: m.session_compile_requested(), duration: 2500 });
-	}
 	function leave() {
 		collabGuest.leave();
 		navigate('/');
@@ -35,7 +24,9 @@
 	<span class="flex items-center gap-2 px-1.5 py-1">
 		<span class="{online ? 'bg-success-500' : 'bg-warning-500'} size-2 shrink-0 rounded-full"></span>
 		<span class="text-sm font-medium">{m.session_collaborating()}</span>
-		<span class="text-surface-500 text-xs">{statusText}</span>
+		{#if !online}
+			<span class="text-surface-500 text-xs">{statusText}</span>
+		{/if}
 	</span>
 
 	<div class="ml-auto flex items-center gap-0.5">
@@ -53,13 +44,6 @@
 				</span>
 			</span>
 		{/if}
-		<button class={btnClass} onclick={requestCompile} title={m.session_request_compile()}>
-			<Play class="size-4" />
-			{m.session_request_compile()}
-		</button>
-		<button class={btnClass} onclick={onTogglePdf} title={m.session_pdf_tab()} aria-label={m.session_pdf_tab()}>
-			<PanelRight class="size-4" />
-		</button>
 		<button class="{btnClass} text-error-600-400" onclick={leave}>
 			<LogOut class="size-4" />
 			{m.session_leave()}

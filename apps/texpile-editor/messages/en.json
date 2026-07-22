@@ -143,6 +143,7 @@
 	"wsview_use_this_file": "Use this file",
 	"wsview_compile_modal_title": "Compile command",
 	"wsview_live_mode_label": "Live mode",
+	"wsview_live_mode_collab_note": "Live preview is not available while you host a shared session; guests see the compiled PDF.",
 	"wsview_experimental_label": "(experimental)",
 	"wsview_livemode_desc_pre": "Live per-page preview: compiles the whole project with the real engine and re-typesets only what you change. Live mode runs its own",
 	"wsview_livemode_desc_post": "pipeline, so the compile command and engine below cannot be customized. Only lualatex is supported.",

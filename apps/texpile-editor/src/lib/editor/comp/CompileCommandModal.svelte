@@ -6,7 +6,11 @@
 	import * as cc from '$lib/workspace/compileCommand';
 	import { mainFile } from '$lib/workspace/workspaceStore';
 	import { settings, updateSettings, DEFAULT_COMPILE_COMMAND } from '$lib/settings';
+	import { collabHost } from '$lib/collab/hostStore.svelte';
 	import { m } from '$lib/paraglide/messages';
+
+	// live mode isn't supported while hosting a shared session (guests can't run the incremental engine)
+	const sessionActive = $derived(collabHost.active);
 
 	interface Props {
 		open: boolean;
@@ -66,11 +70,15 @@
 			<!-- Live mode has its own lualatex pipeline; when on, the shell command is inert -->
 			<div class="mb-1 flex items-center justify-between gap-4">
 				<span class="text-sm">{m.wsview_live_mode_label()} <span class="text-surface-500">{m.wsview_experimental_label()}</span></span>
-				<Switch checked={$settings.draftMode} onCheckedChange={(d) => updateSettings({ draftMode: d.checked })}>
+				<Switch checked={$settings.draftMode} disabled={sessionActive} onCheckedChange={(d) => updateSettings({ draftMode: d.checked })}>
 					<Switch.Control><Switch.Thumb /></Switch.Control>
 					<Switch.HiddenInput />
 				</Switch>
 			</div>
+
+			{#if sessionActive}
+				<p class="text-warning-700-300 mt-1 mb-1 text-xs">{m.wsview_live_mode_collab_note()}</p>
+			{/if}
 
 			{#if $settings.draftMode}
 				<p class="text-surface-500 mt-1 mb-1 text-xs">

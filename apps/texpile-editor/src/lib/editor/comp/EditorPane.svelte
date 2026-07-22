@@ -123,11 +123,11 @@
 <div class="flex min-h-0 min-w-0 flex-col" style="grid-column: 1; grid-row: 2">
 	<TabBar tabs={openTabs} activePath={loadedPath} dirty={$isDirty && !session.isGuest} onActivate={onActivateTab} onClose={onCloseTab} />
 	{#if visualDoc && loadedPath && kind === 'tex' && viewMode === 'visual'}
-		<div class="border-surface-200-800 toolbar-hscroll overflow-x-auto border-b">
+		<div class="border-surface-200-800 toolbar-hscroll flex min-h-10 items-center overflow-x-auto border-b px-2">
 			<Toolbar minimal />
 		</div>
 	{:else if loadedPath && kind === 'tex' && viewMode === 'source'}
-		<div class="border-surface-200-800 toolbar-hscroll overflow-x-auto border-b px-2 py-1.5">
+		<div class="border-surface-200-800 toolbar-hscroll flex min-h-10 items-center overflow-x-auto border-b px-2">
 			<SourceToolbar />
 		</div>
 	{/if}
@@ -209,7 +209,9 @@
 						</div>
 					</div>
 				{/key}
-			{:else if loadedPath && kind === 'bib' && viewMode === 'source'}
+			{:else if loadedPath && kind === 'bib' && (viewMode === 'source' || session.isGuest)}
+				<!-- guests always co-edit .bib through the Y-bound source editor; BibManager isn't
+				     CRDT-bound and would desync or clobber remote edits -->
 				{#key sourceKey}
 					<SourceEditor
 						value={rawContent}

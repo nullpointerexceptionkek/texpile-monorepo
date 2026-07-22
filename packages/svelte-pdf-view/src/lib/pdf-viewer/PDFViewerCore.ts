@@ -305,6 +305,16 @@ export class PDFViewerCore {
 		this.scale = this.currentScale - DEFAULT_SCALE_DELTA;
 	}
 
+	/** scale so the top-visible page fills the container width (minus the page padding). */
+	fitWidth(): void {
+		if (!this.pages.length) return;
+		const anchor = this.getScrollAnchor();
+		const page = this.pages[(anchor ? anchor.page : 1) - 1] ?? this.pages[0];
+		const avail = this.container.clientWidth - 2 * CONTAINER_PAD;
+		if (!page.width || avail <= 0) return;
+		this.scale = this.currentScale * (avail / page.width);
+	}
+
 	rotateClockwise(): void {
 		this.rotation = this.currentRotation + 90;
 	}

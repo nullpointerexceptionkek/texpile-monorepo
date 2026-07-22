@@ -1,17 +1,17 @@
 <script lang="ts">
 	// screenshot carousel; all shots share the same size so the frame never shifts, hover pauses
 	import { onMount } from 'svelte';
-	import visual from '$lib/assets/showcase/visual-dark.png';
-	import source from '$lib/assets/showcase/source-dark.png';
-	import diff from '$lib/assets/showcase/diff-dark.png';
-	import errorlog from '$lib/assets/showcase/errorlog-dark.png';
+	import visual from '$lib/assets/showcase/editor-visual.webp';
+	import source from '$lib/assets/showcase/editor-source.webp';
+	import preview from '$lib/assets/showcase/editor-preview.webp';
+	import references from '$lib/assets/showcase/editor-references.webp';
 	import { m } from '$lib/paraglide/messages';
 
 	const shots = [
 		{ src: visual, label: m.showcase_shot_visual() },
 		{ src: source, label: m.showcase_shot_source() },
-		{ src: diff, label: m.showcase_shot_diff() },
-		{ src: errorlog, label: m.showcase_shot_errorlog() }
+		{ src: preview, label: m.showcase_shot_preview() },
+		{ src: references, label: m.showcase_shot_references() }
 	];
 
 	let active = $state(0);
@@ -25,7 +25,7 @@
 	});
 </script>
 
-<div class="mx-auto max-w-6xl px-4 sm:px-6 lg:px-8">
+<div class="mx-auto max-w-5xl px-4 sm:px-6 lg:px-8">
 	<!-- svelte-ignore a11y_no_static_element_interactions -->
 	<div
 		class="border-surface-200 grid overflow-hidden rounded-xl border bg-white shadow-2xl"

@@ -31,6 +31,8 @@ export interface PdfViewerState {
 export interface PdfViewerActions {
 	zoomIn: () => void;
 	zoomOut: () => void;
+	/** scale so the current page fills the available width. */
+	fitWidth: () => void;
 	setScale: (scale: number) => void;
 	rotateClockwise: () => void;
 	rotateCounterClockwise: () => void;

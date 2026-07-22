@@ -15,15 +15,19 @@ export interface MaterializeFs {
 	listFiles(root: string): Promise<{ rel: string; size: number; mtimeMs?: number }[]>;
 }
 
-const TEXT_EXT = /\.(tex|bib|cls|sty|txt|md|csv|dat|bbl|def|tikz|pgf|json|yml|yaml|toml|lco|ldf|clo|bst)$/i;
-// never share compile artifacts or VCS internals
-const EXCLUDE =
-	/(^|\/)(\.git|\.svn|node_modules|__pycache__|output)(\/|$)|\.(aux|log|synctex(\.gz)?|fls|fdb_latexmk|out|toc|lof|lot|blg|bcf|run\.xml|nav|snm|vrb|xdv|dvi)$/i;
+// files co-edited as text through the CRDT (source only). Generated products (.aux, .log, .bbl,
+// the compiled .pdf, ...) are shared too, but as binary the guest fetches on demand and never edits.
+const TEXT_EXT = /\.(tex|bib|cls|sty|txt|md|csv|dat|def|tikz|pgf|json|yml|yaml|toml|lco|ldf|clo|bst)$/i;
+// never shared: VCS internals and dependency trees (credentials + noise). Everything else is shared,
+// gated by size, so a guest can pull the output folder for local intellisense, the log, and the PDF.
+const EXCLUDE = /(^|\/)(\.git|\.svn|node_modules|__pycache__)(\/|$)/i;
 
-export const isTextFile = (rel: string) => TEXT_EXT.test(rel);
 export const isShared = (rel: string) => !EXCLUDE.test(rel);
+// co-editable source text (drives CRDT sync); everything else shared is served as bytes on demand
+export const isTextFile = (rel: string) => TEXT_EXT.test(rel);
 
-const MAX_TEXT_BYTES = 2 * 1024 * 1024; // a text file bigger than this is shared as binary (viewable name, no body)
+const MAX_TEXT_BYTES = 2 * 1024 * 1024; // co-edit cap; larger text is shared as binary (name + on-demand bytes)
+const MAX_BINARY_BYTES = 100 * 1024 * 1024; // a binary/artifact larger than this isn't shared (guest-RAM guard)
 const WRITE_DEBOUNCE_MS = 400;
 
 export const SEED_ORIGIN = 'collab-seed';
@@ -95,7 +99,7 @@ export class HostMaterializer {
 					const t = textOf(this.doc, f.rel);
 					if (t.length > 0) t.delete(0, t.length);
 					t.insert(0, body.text);
-				} else {
+				} else if (f.size <= MAX_BINARY_BYTES) {
 					manifest.set(f.rel, { kind: 'binary', size: f.size, rev: f.mtimeMs ?? 0 });
 				}
 			}
@@ -217,9 +221,9 @@ export class HostMaterializer {
 					const t = textOf(this.doc, f.rel);
 					if (t.length > 0) t.delete(0, t.length);
 					t.insert(0, body.text);
-				} else if (!existing || existing.gone) {
+				} else if ((!existing || existing.gone) && f.size <= MAX_BINARY_BYTES) {
 					manifest.set(f.rel, { kind: 'binary', size: f.size, rev: f.mtimeMs ?? 0 });
-				} else if (existing.kind === 'binary') {
+				} else if (existing?.kind === 'binary') {
 					// a replaced image keeps its path, so the rev is the only thing telling a guest to refetch
 					manifest.set(f.rel, { ...existing, size: f.size, rev: f.mtimeMs ?? existing.rev ?? 0 });
 				}

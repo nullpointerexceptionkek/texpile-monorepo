@@ -143,6 +143,7 @@
 	"wsview_use_this_file": "Diese Datei verwenden",
 	"wsview_compile_modal_title": "Kompilierbefehl",
 	"wsview_live_mode_label": "Live-Modus",
+	"wsview_live_mode_collab_note": "Die Live-Vorschau ist nicht verfügbar, während du eine geteilte Sitzung hostest; Gäste sehen das kompilierte PDF.",
 	"wsview_experimental_label": "(experimentell)",
 	"wsview_livemode_desc_pre": "Seitenweise Live-Vorschau: kompiliert das gesamte Projekt mit der echten Engine und setzt nur das neu, was Sie ändern. Der Live-Modus verwendet eine eigene",
 	"wsview_livemode_desc_post": "-Pipeline, daher können der Kompilierbefehl und die Engine unten nicht angepasst werden. Es wird nur lualatex unterstützt.",

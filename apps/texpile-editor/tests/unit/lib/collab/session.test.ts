@@ -119,13 +119,18 @@ describe('spliceDiff', () => {
 });
 
 describe('sharing filters', () => {
-	it('classifies text vs artifact vs binary paths', () => {
+	it('co-edits source text, shares everything else as bytes, hides only VCS and deps', () => {
+		// co-edited source text (CRDT)
 		expect(isShared('main.tex') && isTextFile('main.tex')).toBe(true);
 		expect(isShared('refs.bib') && isTextFile('refs.bib')).toBe(true);
-		expect(isShared('fig/plot.png')).toBe(true);
-		expect(isTextFile('fig/plot.png')).toBe(false);
-		for (const p of ['main.aux', 'main.log', 'main.synctex.gz', 'output/main.pdf', '.git/config', 'a/output/x.tex']) {
-			expect(isShared(p)).toBe(false);
+		// shared, but as binary the guest fetches on demand: images plus the output folder
+		for (const p of ['fig/plot.png', 'main.aux', 'main.log', 'main.synctex.gz', 'output/main.pdf']) {
+			expect(isShared(p), p).toBe(true);
+			expect(isTextFile(p), p).toBe(false);
+		}
+		// never shared: VCS internals and dependency trees
+		for (const p of ['.git/config', '.svn/entries', 'node_modules/x/index.js', '__pycache__/y.pyc']) {
+			expect(isShared(p), p).toBe(false);
 		}
 	});
 });

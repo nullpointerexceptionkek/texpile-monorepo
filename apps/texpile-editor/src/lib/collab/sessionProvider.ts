@@ -26,6 +26,13 @@ function buildTree(files: { rel: string; kind: 'text' | 'binary' }[], ghostDirs:
 		childrenOf(cut < 0 ? '' : f.rel.slice(0, cut)).push({ name: cut < 0 ? f.rel : f.rel.slice(cut + 1), path: f.rel, type: 'file' });
 	}
 	for (const g of ghostDirs) childrenOf(g); // materialize empty (guest-local) folders
+	// match the host tree order (fs-service): directories first, then files, each alphabetical.
+	// Building from a flat rel-path list would otherwise interleave folders among files.
+	const sortRec = (nodes: TreeEntry[]) => {
+		nodes.sort((a, b) => (a.type === 'dir' ? 0 : 1) - (b.type === 'dir' ? 0 : 1) || a.name.localeCompare(b.name));
+		for (const n of nodes) if (n.children) sortRec(n.children);
+	};
+	sortRec(roots);
 	return roots;
 }
 

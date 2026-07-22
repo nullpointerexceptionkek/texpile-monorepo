@@ -4,8 +4,8 @@
 	import typingWebm from '$lib/assets/showcase/visual-typing.webm';
 	import typingMp4 from '$lib/assets/showcase/visual-typing.mp4';
 	import livePreviewMp4 from '$lib/assets/showcase/live-preview.mp4';
-	import intellisenseShot from '$lib/assets/showcase/intellisense-dark.png';
-	import errorlogZoomShot from '$lib/assets/showcase/errorlog-zoom-dark.png';
+	import collabShot from '$lib/assets/showcase/editor-collab.webp';
+	import intellisenseShot from '$lib/assets/showcase/intellisense.webp';
 	// feature-grid thumbs, all 5:3
 	import thumbSynctex from '$lib/assets/showcase/thumbs/thumb-synctex.png';
 	import thumbTerminal from '$lib/assets/showcase/thumbs/thumb-terminal.png';
@@ -29,10 +29,13 @@
 	// every claim here is backed by the static project parse
 	const intellisensePoints = [m.intellisense_point_1(), m.intellisense_point_2(), m.intellisense_point_3(), m.intellisense_point_4()];
 
+	const collabPoints = [m.collab_point_1(), m.collab_point_2(), m.collab_point_3(), m.collab_point_4()];
+
 	const faqs = [
 		{ q: m.faq_q_free(), a: m.faq_a_free() },
 		{ q: m.faq_q_files(), a: m.faq_a_files() },
 		{ q: m.faq_q_internet(), a: m.faq_a_internet() },
+		{ q: m.faq_q_collab(), a: m.faq_a_collab() },
 		{ q: m.faq_q_rewrite(), a: m.faq_a_rewrite() },
 		{ q: m.faq_q_latex_installed(), a: m.faq_a_latex_installed() },
 		{ q: m.faq_q_electron(), a: m.faq_a_electron() }
@@ -140,7 +143,7 @@
 	<div class="container mx-auto max-w-6xl px-4 sm:px-6 lg:px-8">
 		<h2 class="text-surface-900 mb-10 text-center text-2xl font-semibold md:text-3xl">{m.visual_editing_heading()}</h2>
 		<div class="grid items-center gap-10 lg:grid-cols-2 lg:gap-14">
-			<div class="flex flex-col justify-center gap-6">
+			<div class="order-1 flex flex-col justify-center gap-6 lg:order-2">
 				<p class="text-surface-600 text-lg leading-relaxed">
 					{m.visual_editing_body()}
 				</p>
@@ -153,7 +156,7 @@
 					{/each}
 				</ul>
 			</div>
-			<div class="border-surface-200 mx-auto w-fit overflow-hidden rounded-xl border shadow-2xl">
+			<div class="border-surface-200 order-2 mx-auto w-fit overflow-hidden rounded-xl border shadow-2xl lg:order-1">
 				<!-- muted looping demo, behaves like an animated image -->
 				<video
 					autoplay
@@ -172,20 +175,34 @@
 	</div>
 </section>
 
+<section id="collaboration" class="border-surface-200 border-t bg-white py-16 md:py-20">
+	<div class="container mx-auto max-w-6xl px-4 sm:px-6 lg:px-8">
+		<h2 class="text-surface-900 mb-10 text-center text-2xl font-semibold md:text-3xl">{m.collab_heading()}</h2>
+		<div class="grid items-center gap-10 lg:grid-cols-2 lg:gap-14">
+			<div class="flex flex-col justify-center gap-6">
+				<p class="text-surface-600 text-lg leading-relaxed">{m.collab_body()}</p>
+				<ul class="space-y-3">
+					{#each collabPoints as point (point)}
+						<li class="flex items-start gap-3">
+							<Check class="text-primary-500 mt-1 h-4 w-4 shrink-0" strokeWidth={2.5} />
+							<span class="text-surface-700 leading-relaxed">{point}</span>
+						</li>
+					{/each}
+				</ul>
+			</div>
+			<div class="border-surface-200 mx-auto w-full max-w-xl overflow-hidden rounded-xl border shadow-2xl">
+				<img src={collabShot} alt={m.collab_heading()} loading="lazy" draggable="false" class="block w-full" />
+			</div>
+		</div>
+	</div>
+</section>
+
 <section id="intellisense" class="border-surface-200 border-t bg-white py-16 md:py-20">
 	<div class="container mx-auto max-w-6xl px-4 sm:px-6 lg:px-8">
 		<h2 class="text-surface-900 mb-10 text-center text-2xl font-semibold md:text-3xl">{m.intellisense_heading()}</h2>
 		<div class="grid items-center gap-10 lg:grid-cols-2 lg:gap-14">
-			<div class="order-2 lg:order-1">
-				<div class="border-surface-200 mx-auto w-fit overflow-hidden rounded-xl border shadow-2xl">
-					<img
-						src={intellisenseShot}
-						alt={m.intellisense_shot_alt()}
-						loading="lazy"
-						draggable="false"
-						class="block max-h-[380px] w-auto max-w-full"
-					/>
-				</div>
+			<div class="border-surface-200 order-2 mx-auto w-full max-w-lg overflow-hidden rounded-xl border shadow-2xl lg:order-1">
+				<img src={intellisenseShot} alt={m.intellisense_heading()} loading="lazy" draggable="false" class="block w-full" />
 			</div>
 			<div class="order-1 space-y-6 lg:order-2">
 				<p class="text-surface-600 text-lg leading-relaxed">{m.intellisense_body()}</p>
@@ -197,28 +214,6 @@
 						</li>
 					{/each}
 				</ul>
-			</div>
-		</div>
-	</div>
-</section>
-
-<section id="diagnostics" class="border-surface-200 border-t bg-white py-16 md:py-20">
-	<div class="container mx-auto max-w-6xl px-4 sm:px-6 lg:px-8">
-		<h2 class="text-surface-900 mb-10 text-center text-2xl font-semibold md:text-3xl">{m.diagnostics_heading()}</h2>
-		<div class="grid items-center gap-10 lg:grid-cols-2 lg:gap-14">
-			<div class="space-y-6">
-				<p class="text-surface-600 text-lg leading-relaxed">
-					{m.diagnostics_body()}
-				</p>
-			</div>
-			<div class="border-surface-200 mx-auto w-fit overflow-hidden rounded-xl border shadow-2xl">
-				<img
-					src={errorlogZoomShot}
-					alt={m.diagnostics_shot_alt()}
-					loading="lazy"
-					draggable="false"
-					class="block max-h-[260px] w-auto max-w-full"
-				/>
 			</div>
 		</div>
 	</div>

@@ -43,6 +43,8 @@
 		onPauseDraft: () => void;
 		onResumeDraft: () => void;
 		onCompile: () => void;
+		/** guest only: ask the host to compile (it owns the toolchain). */
+		onRequestCompile: () => void;
 		onConfigureCompile: () => void;
 		onShowProblems: () => void;
 		onTogglePdf: () => void;
@@ -67,6 +69,7 @@
 		onPauseDraft,
 		onResumeDraft,
 		onCompile,
+		onRequestCompile,
 		onConfigureCompile,
 		onShowProblems,
 		onTogglePdf,
@@ -226,6 +229,24 @@
 					</div>
 				{/if}
 			</div>
+			<button
+				class="btn-icon btn-icon-sm hover:preset-tonal {pdfPaneOpen ? 'text-primary-500' : ''}"
+				onclick={onTogglePdf}
+				title={m.wsview_toggle_pdf_preview()}
+				aria-label={m.wsview_toggle_pdf_preview()}
+			>
+				<PanelRight class="size-4" />
+			</button>
+		{/if}
+		{#if guest}
+			<!-- guest: ask the host to compile (its toolchain) and toggle the shared PDF, in the same
+			     spot and style as the host's Compile so the bar reads the same on both sides -->
+			{#if loadedPath && kind === 'tex'}
+				<button class="btn btn-sm preset-tonal-primary gap-1.5" onclick={onRequestCompile} title={m.session_request_compile()}>
+					<Play class="size-4" />
+					{m.session_request_compile()}
+				</button>
+			{/if}
 			<button
 				class="btn-icon btn-icon-sm hover:preset-tonal {pdfPaneOpen ? 'text-primary-500' : ''}"
 				onclick={onTogglePdf}

@@ -239,6 +239,7 @@
 	const rendererActions: PdfViewerActions = {
 		zoomIn: () => viewer?.zoomIn(),
 		zoomOut: () => viewer?.zoomOut(),
+		fitWidth: () => viewer?.fitWidth(),
 		setScale: (scale: number) => {
 			if (viewer) viewer.scale = scale;
 		},

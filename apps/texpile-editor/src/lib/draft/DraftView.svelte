@@ -2370,7 +2370,7 @@
 <div class="bg-surface-200-800 flex h-full w-full flex-col">
 	<!-- one toolbar row: status on the left, zoom + page-nav on the right ("Draft preview"
 	     already labels the pane header above) -->
-	<div class="border-surface-300-700 text-surface-600-300 flex shrink-0 items-center gap-1 border-b px-2 py-1 text-xs">
+	<div class="border-surface-300-700 text-surface-600-300 flex min-h-10 shrink-0 items-center gap-1 border-b px-2 text-xs">
 		{#if error}<span class="text-error-500 shrink-0">{m.draft_preview_error_label()}</span>{:else}<span
 				class="text-surface-700-200 truncate">{status}</span
 			>{/if}

@@ -1,5 +1,16 @@
 <script lang="ts">
-	import { ZoomIn, ZoomOut, RotateCcw, RotateCw, Search, ChevronLeft, ChevronRight, Download, Presentation } from '@lucide/svelte';
+	import {
+		ZoomIn,
+		ZoomOut,
+		MoveHorizontal,
+		RotateCcw,
+		RotateCw,
+		Search,
+		ChevronLeft,
+		ChevronRight,
+		Download,
+		Presentation
+	} from '@lucide/svelte';
 	import { getPdfViewerContext } from './pdf-viewer/context.js';
 
 	const { state: viewerState, actions } = getPdfViewerContext();
@@ -50,20 +61,23 @@
 
 	<div class="pdf-toolbar-group">
 		<button onclick={() => actions.zoomOut()} aria-label="Zoom out" title="Zoom Out">
-			<ZoomOut size={18} />
+			<ZoomOut size={16} />
 		</button>
 		<span class="zoom-level">{Math.round(viewerState.scale * 100)}%</span>
 		<button onclick={() => actions.zoomIn()} aria-label="Zoom in" title="Zoom In">
-			<ZoomIn size={18} />
+			<ZoomIn size={16} />
+		</button>
+		<button onclick={() => actions.fitWidth()} aria-label="Fit width" title="Fit Width">
+			<MoveHorizontal size={16} />
 		</button>
 	</div>
 
 	<div class="pdf-toolbar-group">
 		<button onclick={() => actions.rotateCounterClockwise()} aria-label="Rotate counter-clockwise" title="Rotate Left">
-			<RotateCcw size={18} />
+			<RotateCcw size={16} />
 		</button>
 		<button onclick={() => actions.rotateClockwise()} aria-label="Rotate clockwise" title="Rotate Right">
-			<RotateCw size={18} />
+			<RotateCw size={16} />
 		</button>
 	</div>
 
@@ -77,14 +91,14 @@
 			aria-label="Search in document"
 		/>
 		<button onclick={handleSearch} disabled={viewerState.isSearching} aria-label="Search" title="Search">
-			<Search size={18} />
+			<Search size={16} />
 		</button>
 		{#if viewerState.searchTotal > 0}
 			<button onclick={() => actions.searchPrevious()} aria-label="Previous match" title="Previous">
-				<ChevronLeft size={18} />
+				<ChevronLeft size={16} />
 			</button>
 			<button onclick={() => actions.searchNext()} aria-label="Next match" title="Next">
-				<ChevronRight size={18} />
+				<ChevronRight size={16} />
 			</button>
 			<span class="match-info">{viewerState.searchCurrent}/{viewerState.searchTotal}</span>
 		{/if}
@@ -92,10 +106,10 @@
 
 	<div class="pdf-toolbar-group">
 		<button onclick={() => actions.enterPresentationMode()} aria-label="Presentation Mode" title="Presentation Mode">
-			<Presentation size={18} />
+			<Presentation size={16} />
 		</button>
 		<button onclick={() => actions.download()} aria-label="Download PDF" title="Download">
-			<Download size={18} />
+			<Download size={16} />
 		</button>
 	</div>
 </div>
@@ -109,8 +123,11 @@
 		   past the left edge) once it overflows and scrolls */
 		justify-content: safe center;
 		align-items: center;
-		gap: 1rem;
-		padding: 0.625rem 1rem;
+		/* matches the editor (ProseMirror/CodeMirror) and draft toolbars: a 40px bar, border included */
+		min-height: 40px;
+		box-sizing: border-box;
+		gap: 0.75rem;
+		padding: 0 0.75rem;
 		background-color: var(--pdf-toolbar-bg, #ffffff);
 		color: var(--pdf-toolbar-fg, #333);
 		flex-shrink: 0;
@@ -134,8 +151,8 @@
 		display: inline-flex;
 		align-items: center;
 		justify-content: center;
-		width: 32px;
-		height: 32px;
+		width: 28px;
+		height: 28px;
 		padding: 0;
 		border: 1px solid var(--pdf-toolbar-btn-border, #e0e0e0);
 		background-color: var(--pdf-toolbar-btn-bg, #fafafa);
@@ -182,7 +199,8 @@
 	}
 
 	.pdf-toolbar input[type='number'] {
-		width: 40px;
+		width: 34px;
+		font-size: 0.75rem;
 		text-align: center;
 		appearance: textfield;
 		-moz-appearance: textfield;

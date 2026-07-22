@@ -123,6 +123,9 @@ export function decodeFrame(data: Uint8Array): Frame {
 	}
 }
 
+// the relay caps a session at this many guests; the client only displays it, the relay enforces it
+export const MAX_GUESTS = 8;
+
 // 256 KB chunks: sealed frames must stay under the relay's 1 MiB message cap with room to spare
 export const BLOB_CHUNK_SIZE = 256 * 1024;
 // a reassembled blob (image or PDF) may not exceed this many chunks; caps the buffer a peer can

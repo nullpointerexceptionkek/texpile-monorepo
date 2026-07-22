@@ -1,9 +1,10 @@
 <script lang="ts">
 	// Host-side share dialog: start/stop the session, show the code, count the guests.
 	import { collabHost } from '$lib/collab/hostStore.svelte';
+	import { MAX_GUESTS } from '$lib/collab/protocol';
 	import { settings, updateSettings, DEFAULT_COLLAB_RELAY_URL } from '$lib/settings';
 	import { m } from '$lib/paraglide/messages';
-	import { Copy, Check, X, RotateCcw, ShieldCheck, ChevronDown } from '@lucide/svelte';
+	import { Copy, Check, X, RotateCcw, ShieldCheck, ChevronDown, TriangleAlert } from '@lucide/svelte';
 
 	let {
 		open = $bindable(false),
@@ -82,7 +83,11 @@
 			</div>
 
 			{#if !collabHost.active}
-				<p class="text-surface-600-300 mb-4 text-sm">{m.share_desc()}</p>
+				<p class="text-surface-600-300 mb-3 text-sm">{m.share_desc()} {m.share_capacity({ max: MAX_GUESTS })}</p>
+				<p class="text-warning-700-300 mb-4 flex items-start gap-1.5 text-xs">
+					<TriangleAlert class="text-warning-600-400 mt-px size-3.5 shrink-0" />
+					<span>{m.share_trust_warning()}</span>
+				</p>
 				{#if collabHost.lastError}
 					<p class="text-error-600-400 mb-3 text-sm">{m.share_error_generic({ message: collabHost.lastError })}</p>
 				{/if}
@@ -127,17 +132,22 @@
 				<p class="text-surface-600-300 mb-3 text-sm">{m.share_active_hint()}</p>
 				<div class="mb-3">
 					<span class="mb-1 block text-sm font-medium">{m.share_code_label()}</span>
-					<div class="flex items-center gap-2">
+					<div class="flex items-stretch gap-2">
 						<code class="bg-surface-200-800 flex-1 rounded px-3 py-2 font-mono text-sm tracking-wide select-all"
 							>{collabHost.shareCode}</code
 						>
-						<button class="btn btn-sm preset-tonal" onclick={copyCode}>
-							{#if copied}<Check class="size-4" />{m.share_copied()}{:else}<Copy class="size-4" />{m.share_copy()}{/if}
+						<button
+							class="preset-tonal flex shrink-0 items-center justify-center rounded px-3"
+							onclick={copyCode}
+							title={copied ? m.share_copied() : m.share_copy()}
+							aria-label={m.share_copy()}
+						>
+							{#if copied}<Check class="size-4" />{:else}<Copy class="size-4" />{/if}
 						</button>
 					</div>
 				</div>
 				<p class="text-surface-600-300 mb-2 text-sm">
-					{guestCount === 0 ? m.share_guests_zero() : guestCount === 1 ? m.share_guests_one() : m.share_guests_other({ count: guestCount })}
+					{m.share_guests_count({ count: guestCount, max: MAX_GUESTS })}
 					{#if collabHost.status === 'reconnecting'}<span class="text-warning-600-400"> · {m.session_status_reconnecting()}</span>{/if}
 				</p>
 				<p class="text-surface-500 border-surface-200-800 mt-4 flex items-start gap-1.5 border-t pt-3 text-xs">
